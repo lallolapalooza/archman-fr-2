@@ -1,0 +1,3548 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>netplan(5) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">netplan(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/netplan/">netplan</a></p>
+<p class="lic">Licences: GPL-3.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">Introduction à Netplan(5)</td>
+    <td class="head-vol"></td>
+    <td class="head-rtitle">Introduction à Netplan(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp"><span class="Li">netplan</span> - abstraction de configuration réseau YAML pour divers backends</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNTAXE</a></h1>
+<p class="Pp"><b>netplan</b> [<i>COMMANDE</i>|help]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMMANDS'><a class='permalink' href='#COMMANDS'>COMMANDES</a></h1>
+<p class="Pp">Voir <b>netplan help</b> pour une liste des commandes disponibles sur ce
+    système.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Les installateurs de distribution, l'instanciation cloud, les constructions d'images pour des appareils spécifiques, ou toute autre façon de déployer un système d'exploitation placent la configuration réseau souhaitée dans un ou plusieurs fichiers de configuration YAML. Pendant le démarrage précoce, le « network renderer » de Netplan s'exécute, lit les fichiers <span class="Li">/{lib,etc,run}/netplan/*.yaml</span> et écrit la configuration dans <span class="Li">/run</span> pour déléguer le contrôle des périphériques au démon réseau spécifié.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Les périphériques configurés sont gérés par systemd-networkd par défaut, sauf s'ils sont explicitement marqués comme gérés par un renderer spécifique (NetworkManager).</dd>
+  <dt>&#x2022;</dt>
+  <dd>Les périphériques non couverts par la configuration réseau ne sont pas du tout touchés.</dd>
+  <dt>&#x2022;</dt>
+  <dd>Utilisable dans l'initramfs (peu de dépendances et rapide)</dd>
+  <dt>&#x2022;</dt>
+  <dd>Pas de configuration générée persistante, seulement la configuration YAML originale</dd>
+  <dt>&#x2022;</dt>
+  <dd>Le parseur prend en charge plusieurs fichiers de configuration pour permettre à des applications comme libvirt ou <span class="Li">lxd</span> d'inclure la configuration réseau attendue (<span class="Li">virbr0</span>,
+      <span class="Li">lxdbr0</span>), ou de changer la politique par défaut globale pour utiliser NetworkManager pour tout.</dd>
+  <dt>&#x2022;</dt>
+  <dd>Conserve la flexibilité pour changer les backends/la politique plus tard ou s'adapter à la suppression de NetworkManager, car la configuration générée est éphémère.</dd>
+</dl>
+<section class="Ss">
+<h2 class="Ss" id='General_structure'><a class='permalink' href='#General_structure'>Structure générale</a></h2>
+<p class="Pp">Les fichiers de configuration Netplan utilisent le format
+    <a class="Lk" href="http://yaml.org/spec/1.1/current.html">YAML</a>.
+    Tous les fichiers <span class="Li">/{lib,etc,run}/netplan/*.yaml</span> sont pris en compte.
+    Les fichiers lexicographiquement ultérieurs (quelle que soit leur répertoire) modifient (nouvelles clés de mappage) ou remplacent (mêmes clés de mappage) les précédents. Un fichier dans <span class="Li">/run/netplan</span> masque complètement un fichier du même nom dans <span class="Li">/etc/netplan</span>, et un fichier dans l'un de ces répertoires masque un fichier du même nom dans
+    <span class="Li">/lib/netplan</span>.</p>
+<p class="Pp">Le nœud de plus haut niveau dans un fichier de configuration Netplan est un mappage
+    <span class="Li">network:</span> qui contient
+    <span class="Li">version: 2</span> (le YAML actuellement utilisé par curtin,
+    MAAS, etc. est la version 1), puis des définitions de périphériques regroupées par leur type, comme
+    <span class="Li">ethernets:</span>, <span class="Li">modems:</span>,
+    <span class="Li">wifis:</span>, ou <span class="Li">bridges:</span>. Ce sont
+    les types que notre renderer peut comprendre et qui sont pris en charge par nos backends.</p>
+<p class="Pp">Chaque bloc de type contient des définitions de périphériques sous forme de map où les clés (appelées « IDs de configuration ») sont définies comme ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Device_configuration_IDs'><a class='permalink' href='#Device_configuration_IDs'>IDs de configuration de périphérique</a></h2>
+<p class="Pp">Les noms de clés sous les maps de définition par périphérique (comme
+    <span class="Li">ethernets:</span>) sont appelés « IDs ». Ils doivent être
+    uniques dans l'ensemble des fichiers de configuration. Leur objectif principal est de servir de noms d'ancrage pour les périphériques composites, par exemple pour énumérer les membres d'un pont en cours de définition.</p>
+<p class="Pp">(Depuis 0.97) Si une interface est définie avec un ID dans un fichier de configuration ; elle sera activée par le renderer applicable. Pour ne pas qu'une interface soit touchée par Netplan, elle doit être complètement omise des fichiers de configuration Netplan.</p>
+<p class="Pp">Il existe deux classes de définitions de périphériques, physiquement/structurellement différentes, et le champ ID a une interprétation différente pour chacune d'elles :</p>
+<p class="Pp">Périphériques physiques</p>
+<div class="Bd-indent">
+<p class="Pp">(Exemples : Ethernet, modem, Wi-Fi) Ceux-ci peuvent apparaître et disparaître dynamiquement entre les redémarrages et même pendant l'exécution (connexion à chaud). Dans le cas générique, ils peuvent être sélectionnés par des règles <span class="Li">match:</span> sur des propriétés désirées, telles que le nom/modèle de nom, l'adresse MAC, le pilote ou les chemins d'accès au périphérique. En général, ceux-ci correspondront à un nombre quelconque de périphériques (sauf s'ils font référence à des propriétés uniques telles que le chemin complet ou l'adresse MAC), donc sans connaissance supplémentaire du matériel, ceux-ci seront toujours considérés comme un groupe.</p>
+<p class="Pp">Il est valide de ne spécifier aucune règle de correspondance, auquel cas le champ ID est simplement le nom de l'interface à faire correspondre. Ceci est surtout utile si vous voulez que les cas simples restent simples, et c'est ainsi que la configuration des périphériques réseau a été faite pendant longtemps.</p>
+<p class="Pp">S'il y a des règles <span class="Li">match:</span>, alors le champ ID est un nom purement opaque qui n'est utilisé que pour les références provenant des définitions de périphériques composés dans la configuration.</p>
+</div>
+<p class="Pp">Périphériques virtuels</p>
+<div class="Bd-indent">
+<p class="Pp">(Exemples : <span class="Li">veth</span>,
+    <span class="Li">bridge</span>, <span class="Li">bond</span>,
+    <span class="Li">vrf</span>) Ceux-ci sont entièrement sous le contrôle du
+    fichier (ou des fichiers) de configuration et de la pile réseau. C'est-à-dire que ces périphériques sont créés au lieu d'être mis en correspondance. Ainsi <span class="Li">match:</span> et
+    <span class="Li">set-name:</span> ne sont pas applicables pour ceux-ci, et le champ ID est le nom du périphérique virtuel créé.</p>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='YAML_configuration'><a class='permalink' href='#YAML_configuration'>Configuration YAML</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Top-level_configuration_structure'><a class='permalink' href='#Top-level_configuration_structure'>Structure de configuration de haut niveau</a></h2>
+<p class="Pp">La structure générale d'un fichier YAML Netplan est montrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  version<b>:</b> NOMBRE
+  renderer<b>:</b> CHAÎNE
+  bonds<b>:</b> MAPPE
+  bridges<b>:</b> MAPPE
+  dummy-devices<b>:</b> MAPPE
+  ethernets<b>:</b> MAPPE
+  modems<b>:</b> MAPPE
+  tunnels<b>:</b> MAPPE
+  virtual-ethernets<b>:</b> MAPPE
+  vlans<b>:</b> MAPPE
+  vrfs<b>:</b> MAPPE
+  wifis<b>:</b> MAPPE
+  nm-devices<b>:</b> MAPPE
+</pre>
+  </dd>
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>version</b></span><b></b> (nombre)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit quelle version du format de configuration est utilisée. La seule
+    valeur prise en charge est <span class="Li">2</span>. Par défaut à
+    <span class="Li">2</span> si non défini.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>renderer</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit quel outil de configuration réseau sera utilisé pour configurer
+    votre système. Les valeurs valides sont networkd et
+    <span class="Li">NetworkManager</span>. Par défaut à networkd si non
+  défini.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>bonds</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure des périphériques d'agrégation de liens (bonding).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>bridges</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure des périphériques de pont (bridge).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dummy-devices</b></span><b></b> (mappage)
+      &#x2013; depuis 0.107</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure des périphériques virtuels.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ethernets</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure les interfaces Ethernet physiques.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>modems</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure les modems.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>tunnels</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure différents types de tunnels virtuels.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>virtual-ethernets</b></span><b></b> (mappage)
+      &#x2013; depuis 0.107</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure des périphériques Ethernet virtuels
+    (<span class="Li">veth</span>).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <d
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>vlans</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Crée et configure des VLAN.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>vrfs</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure les périphériques Virtual Routing and Forwarding (VRF).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>wifis</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure les interfaces Wi-Fi physiques en tant que
+    <span class="Li">client</span>, <span class="Li">adhoc</span> ou
+    <span class="Li">access point</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>nm-devices</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp"><span class="Li">nm-devices</span> sont utilisés dans les situations où
+    Netplan ne prend pas en charge le type de connexion. La configuration brute attendue
+    par NetworkManager peut être définie et sera transmise telle quelle
+    (<span class="Li">passthrough</span>) au fichier
+    <span class="Li">.nmconnection</span>. Les utilisateurs n'utiliseront normalement pas ce
+    type de périphérique.</p>
+</div>
+</div>
+<p class="Pp">Toutes les propriétés pour tous les types de périphériques seront décrites dans
+    les sections suivantes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Propriétés_pour_les_types_de_périphériques_physiques'><a class='permalink' href='#Propriétés_pour_les_types_de_périphériques_physiques'>Propriétés pour les types de périphériques physiques</a></h2>
+<p class="Pp">Ces propriétés sont utilisées avec des périphériques physiques tels que les interfaces réseau Ethernet
+    et Wi-Fi.</p>
+<p class="Pp"><b>Note :</b> Certaines options ne fonctionneront pas de manière fiable pour les périphériques
+    identifiés uniquement par leur nom et rendus par networkd, en raison des interactions avec
+    le renommage des périphériques dans udev. Identifiez les périphériques par leur MAC lors de la définition d'options telles que
+    <span class="Li">wakeonlan</span> ou <span class="Li">*-offload</span>.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>match</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Ceci sélectionne un sous-ensemble de périphériques physiques disponibles par diverses
+    propriétés matérielles. La configuration suivante s'appliquera alors à tous
+    les périphériques correspondants, dès leur apparition. <i>Toutes</i> les propriétés spécifiées
+    doivent correspondre.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>name</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Nom d'interface actuel. Les jokers sont pris en charge, et le cas d'utilisation principal
+    pour la correspondance sur les noms, car la sélection d'un nom fixe peut être plus facilement
+    obtenue en n'ayant aucun <span class="Li">match :</span> du tout et en utilisant simplement l'ID
+    (voir ci-dessus). (<span class="Li">NetworkManager :</span> à partir de la v1.14.0)</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>macaddress</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Adresse MAC permanente de 6 octets du périphérique sous la forme
+    <span class="Li">XX:XX:XX:XX:XX:XX</span> ou 20 octets pour les périphériques InfiniBand
+    (IPoIB). Les jokers ne sont pas autorisés. Ceci ne correspond pas aux adresses MAC virtuelles pour
+    <span class="Li">veth</span>, <span class="Li">bridge</span>,
+    <span class="Li">bond</span>, <span class="Li">vlan</span>, ...</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>driver</b></span><b></b> (scalaire ou séquence de
+      scalaires) &#x2013; séquence depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Nom du pilote du noyau, correspondant à la propriété udev
+    <span class="Li">DRIVER</span>. Une séquence de jokers est prise en charge, dont l'un doit
+    correspondre. La correspondance sur le pilote n'est <i>uniquement</i> prise en charge qu'avec
+    networkd.</p>
+</div>
+<p class="Pp">Exemples :</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Toutes les cartes du deuxième bus PCI :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    myinterface<b>:</b>
+      match<b>:</b>
+        name<b>:</b> enp2*
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Adresse MAC fixe :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    interface0<b>:</b>
+      match<b>:</b>
+        macaddress<b>:</b> 11:22:33:AA:BB:FF
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Première carte du pilote <span class="Li">ixgbe</span> :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    nic0<b>:</b>
+      match<b>:</b>
+        driver<b>:</b> ixgbe
+        name<b>:</b> en*s0
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Première carte avec un pilote correspondant à <span class="Li">bcmgenet</span> ou
+      <span class="Li">smsc*</span> :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    nic0<b>:</b>
+      match<b>:</b>
+        driver<b>:</b> <b>[</b>&quot;bcmgenet&quot;<b>,</b> &quot;smsc*&quot;<b>]</b>
+        name<b>:</b> en*
+</pre>
+  </dd>
+</dl>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>set-name</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Lors de la correspondance sur des propriétés uniques telles que le chemin ou l'adresse MAC, ou avec des
+    hypothèses supplémentaires telles que "il n'y aura qu'un seul périphérique Wi-Fi", les règles de correspondance peuvent être écrites de manière à ne correspondre qu'à un seul périphérique.
+    Ensuite, cette propriété peut être utilisée pour donner à ce périphérique un nom plus spécifique ou souhaitable que celui par défaut d'udev si l'on utilise des ifnames. Tout périphérique supplémentaire qui satisfait aux règles de correspondance échouera à être renommé et conservera le nom du noyau d'origine (et <span class="Li">dmesg</span> affichera une erreur).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>wakeonlan</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Active le démarrage par réseau (Wake on LAN). Désactivé par défaut.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>emit-lldp</b></span><b></b> (booléen) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Indique s'il faut émettre des paquets LLDP. Désactivé par défaut.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>receive-checksum-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge matérielle pour le calcul de somme de contrôle des paquets réseau entrants est activée (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>transmit-checksum-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge matérielle pour le calcul de somme de contrôle des paquets réseau sortants est activée (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>tcp-segmentation-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge de segmentation TCP (TSO) est
+    activée (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>tcp6-segmentation-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge de segmentation TCP6
+    (<span class="Li">tx-tcp6-segmentation</span>) est activée (désactivée). Lorsque
+    non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>generic-segmentation-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge de segmentation générique (GSO) est
+    activée (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>generic-receive-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge de réception générique (GRO) est
+    activée (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>large-receive-offload</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Si défini sur <span class="Li">true</span>
+    (<span class="Li">false</span>), la décharge de réception volumineuse (LRO) est activée
+    (désactivée). Lorsque non défini, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>openvswitch</b></span><b></b> (mapping)
+      &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Ceci fournit une configuration supplémentaire pour le périphérique réseau
+    <span class="Li">openvswitch</span>. Si Open vSwitch n'est pas disponible sur le système, Netplan traite la présence d'une configuration
+    <span class="Li">openvswitch</span> comme une erreur.</p>
+<p class="Pp">Tout périphérique réseau pris en charge qui est déclaré avec le
+    mapping <span class="Li">openvswitch</span> (ou toute liaison/pont incluant une interface avec une configuration
+    <span class="Li">openvswitch</span>) sera créé dans
+    <span class="Li">openvswitch</span> au lieu du renderer défini. Dans le cas d'une
+    définition de <span class="Li">vlan</span> déclarée de la même manière, Netplan créera un faux pont VLAN dans
+    <span class="Li">openvswitch</span> avec les propriétés <span class="Li">vlan</span> demandées.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>external-ids</b></span><b></b> (mapping)
+      &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Transmis directement à Open vSwitch</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>other-config</b></span><b></b> (mapping)
+      &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Transmis directement à Open vSwitch</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>lacp</b></span><b></b> (scalaire) &#x2013; depuis
+      0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les interfaces de liaison (bond). Accepte <span class="Li">active</span>,
+    <span class="Li">passive</span> ou <span class="Li">off</span> (le
+<div class="Section">
+<p class="Pp">Valid for bridge interfaces. Accepts <span class="Li">secure</span> or <span class="Li">standalone</span> (the default).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mcast-snooping</b></span><b></b> (booléen) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les interfaces de pont. Faux par défaut.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>protocols</b></span><b></b> (séquence de scalaires) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les interfaces de pont ou la section réseau. Liste des protocoles à utiliser lors de la négociation d'une connexion avec le contrôleur. Accepte <span class="Li">OpenFlow10</span>, <span class="Li">OpenFlow11</span>, <span class="Li">OpenFlow12</span>, <span class="Li">OpenFlow13</span>, <span class="Li">OpenFlow14</span> et <span class="Li">OpenFlow15</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>rstp</b></span><b></b> (booléen) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les interfaces de pont. Faux par défaut.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>controller</b></span><b></b> (mapping) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les interfaces de pont. Spécifiez un contrôleur OpenFlow externe.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>addresses</b></span><b></b> (séquence de scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définissez la liste des adresses à utiliser pour les cibles du contrôleur. La syntaxe de ces adresses est telle que définie dans <b></b><span class="Li"><b>ovs-vsctl</b></span><b></b>(8). Exemple : adresses : <span class="Li">[tcp:127.0.0.1:6653, &quot;ssl:[fe80::1234%eth0]:6653&quot;]</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>connection-mode</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définissez le mode de connexion pour le contrôleur. Les options prises en charge sont <span class="Li">in-band</span> et <span class="Li">out-of-band</span>. La valeur par défaut est <span class="Li">in-band</span>.</p>
+</div>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ports</b></span><b></b> (séquence de séquences de scalaires) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Ports de patch Open vSwitch. Chaque port est déclaré comme une paire de noms qui peuvent être référencés comme interfaces dans les périphériques virtuels dépendants (bonds, bridges).</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>openvswitch<b>:</b>
+  ports<b>:</b>
+    <b>-</b> <b>[</b>patch0-1<b>,</b> patch1-0<b>]</b>
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ssl</b></span><b></b> (mapping) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Valide pour les paramètres globaux <span class="Li">openvswitch</span>. Options pour configurer le point d'extrémité du serveur SSL pour le commutateur.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ca-cert</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant le certificat CA à utiliser.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>certificate</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant le certificat du serveur.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>private-key</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant la clé privée du serveur.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Propriétés_pour_tous_les_types_d_appareils'><a class='permalink' href='#Propriétés_pour_tous_les_types_d_appareils'>Propriétés pour tous les types d'appareils</a></h2>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>renderer</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Utilisez le backend réseau donné pour cette définition. Actuellement pris en charge sont <span class="Li">networkd</span> et <span class="Li">NetworkManager</span>. Cette propriété peut être spécifiée globalement dans <span class="Li">network:</span>, pour un type d'appareil (par exemple dans <span class="Li">ethernets:</span>) ou pour une définition d'appareil particulière. La valeur par défaut est <span class="Li">networkd</span>.</p>
+<p class="Pp">(Depuis 0.99) La propriété <span class="Li">renderer</span> a une valeur acceptable supplémentaire pour les objets VLAN (c'est-à-dire définis dans <span class="Li">vlans:</span>) : <span class="Li">sriov</span>. Si un VLAN est défini avec le renderer <span class="Li">sriov</span> pour une interface de fonction virtuelle SR-IOV, cela amène Netplan à configurer un filtre VLAN matériel pour celui-ci. Il ne peut y en avoir qu'un défini par VF.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dhcp4</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Activer DHCP pour IPv4. Désactivé par défaut.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dhcp6</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Activer DHCP pour IPv6. Désactivé par défaut. Ceci couvre à la fois le DHCP sans état - où le serveur DHCP fournit des informations telles que les serveurs DNS mais pas l'adresse IP - et le DHCP avec état, où le serveur fournit à la fois l'adresse et les autres informations.</p>
+<p class="Pp">Si vous êtes dans un environnement IPv6 uniquement avec une configuration automatique sans état complète (SLAAC avec RDNSS), cette option peut être définie pour faire en sorte que l'interface soit activée. (Définir <span class="Li">accept-ra</span> seul n'est pas suffisant.) La configuration automatique respectera toujours le contenu de la publicité du routeur et n'utilisera le DHCP que si cela est demandé dans le RA.</p>
+<p class="Pp">Notez que <b></b><span class="Li"><b>rdnssd</b></span><b></b>(8) est requis pour utiliser RDNSS avec networkd. Aucun logiciel supplémentaire n'est requis pour NetworkManager.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ipv6-mtu</b></span><b></b> (scalaire) &#x2013; depuis 0.98 &gt; Définissez le MTU IPv6 (uniquement pris en charge avec le backend networkd). Notez que le besoin de définir cela est une exigence inhabituelle. &gt; &gt; <b>Fonctionnalité requise :</b><span class="Li"><b>ipv6-mtu</b></span><b></b></dd>
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ipv6-privacy</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Active les extensions de confidentialité IPv6 (RFC 4941) pour l'interface spécifiée et préfère les adresses temporaires. Par défaut à faux - pas d'extensions de confidentialité. Il n'existe actuellement aucun moyen d'avoir une adresse privée mais de préférer l'adresse publique.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>link-local</b></span><b></b> (séquence de scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure les adresses de lien local à activer. Les options valides sont <span class="Li">ipv4</span> et <span class="Li">ipv6</span>, qui permettent respectivement d'activer l'adressage de lien local IPv4 et IPv6. Si ce champ n'est pas défini, la valeur par défaut est d'activer uniquement les adresses de lien local IPv6. Si le champ est défini mais configuré comme un ensemble vide, les adresses de lien local IPv6 sont désactivées ainsi que les adresses de lien local IPv4.</p>
+<p class="Pp">Cette fonctionnalité active ou désactive les adresses de lien local pour un protocole, mais l'implémentation réelle diffère selon le backend. Sur networkd, cela modifie directement le comportement et peut ajouter une adresse supplémentaire à une interface. Lors de l'utilisation du backend NetworkManager, l'activation du lien local n'a aucun effet si l'interface a également le DHCP activé.</p>
+</div>
+<p class="Pp">Exemples :</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Activer uniquement le lien local IPv4 : <span class="Li">link-local: [ ipv4 ]</span></dd>
+  <dt>&#x2022;</dt>
+  <dd>Activer toutes les adresses de lien local : <span class="Li">link-local: [ ipv4, ipv6 ]</span></dd>
+  <dt>&#x2022;</dt>
+  <dd>Désactiver toutes les adresses de lien local : <span class="Li">link-local: [ ]</span></dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ignore-carrier</b></span><b></b> (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Permet de configurer l'interface spécifiée même si elle n'a pas de porteuse.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>critical</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Désigne la connexion comme &quot;critique pour le système&quot;, ce qui signifie qu'une attention particulière sera portée pour ne pas libérer l'IP attribuée lors du redémarrage du démon. (non reconnu par NetworkManager)</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dhcp-identifier</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Définit la source de l'identifiant client DHCP (v4). Si <span class="Li">mac</span> est spécifié, l'adresse MAC du lien est utilisée. Si cette option est omise, ou si <span class="Li">duid</span> est spécifié, networkd générera un identifiant client conforme à la norme RFC4361 pour l'interface en combinant l'IAID et le DUID du lien.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dhcp4-overrides</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Remplace le comportement DHCP par défaut ; voir la section <span class="Li">DHCP Overrides</span> ci-dessous.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>dhcp6-overrides</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Remplace le comportement DHCP par défaut ; voir la section <span class="Li">DHCP Overrides</span> ci-dessous.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>accept-ra</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Accepte les publicités du routeur qui permettraient au noyau de configurer IPv6 par lui-même. Lorsqu'il est activé, accepte les publicités du routeur. Lorsqu'il est désactivé, ne répond pas aux publicités du routeur. Si non défini, utilise le paramètre par défaut du noyau de l'hôte.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ra-overrides</b></span><b></b> (mapping) &#x2013; depuis 1.1</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Backend networkd uniquement) Remplace le comportement par défaut des publicités de routeur IPv6 (RA) ; voir la section <span cla
+ss="Li">Publicités des routeurs IPv6</span> ci-dessous.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>adresses</b></span><b></b> (séquence de
+      scalaires et de mappages)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Ajoute des adresses statiques à l'interface en plus de celles
+    reçues via DHCP ou RA. Chaque entrée de séquence est en notation CIDR, c'est-à-dire
+    de la forme <span class="Li">addr/prefixlen</span>.
+    <span class="Li">addr</span> est une adresse IPv4 ou IPv6 reconnue par
+    <b></b><span class="Li"><b>inet_pton</b></span><b></b>(3) et
+    <span class="Li">prefixlen</span> le nombre de bits du sous-réseau.</p>
+<p class="Pp">Pour les périphériques virtuels (bridges, bonds, VLAN) s'il n'y a pas d'adresse
+    configurée et que DHCP est désactivé, l'interface peut toujours être mise en ligne,
+    mais ne sera pas adressable depuis le réseau.</p>
+<p class="Pp">En plus des adresses elles-mêmes, on peut spécifier
+    des paramètres de configuration sous forme de mappages. Les options actuellement prises en charge sont :</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>durée de vie</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Par défaut : <span class="Li">jamais</span>. Peut être
+    <span class="Li">jamais</span> ou <span class="Li">0</span> et correspond
+    à l'option <span class="Li">PreferredLifetime</span> dans la
+    section <span class="Li">Address</span> de
+    <span class="Li">systemd-networkd</span>. Actuellement pris en charge uniquement sur le backend networkd.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>label</b></span><b></b> (scalaire) &#x2013; depuis
+      0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une étiquette d'adresse IP, équivalente à la commande
+    <span class="Li">ip address label</span>. Actuellement pris en charge uniquement sur le backend networkd.</p>
+</div>
+</div>
+<p class="Pp">Exemples :</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Simple : <span class="Li">adresses : [192.168.14.2/24,
+      &quot;2001:1::1/64&quot;]</span></dd>
+  <dt>&#x2022;</dt>
+  <dd>Avancé :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth0<b>:</b>
+      adresses<b>:</b>
+        <b>-</b> &quot;10.0.0.15/24&quot;<b>:</b>
+            durée de vie<b>:</b> 0
+            label<b>:</b> &quot;maas&quot;
+        <b>-</b> &quot;2001:1::1/64&quot;
+</pre>
+  </dd>
+</dl>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>génération-d'adresses-ipv6</b></span><b></b>
+      (scalaire) &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure la méthode de création de l'adresse à utiliser avec la configuration automatique d'adresse sans état IPv6 RFC4862. Les valeurs possibles sont
+    <span class="Li">eui64</span> ou <span class="Li">stable-privacy</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>jeton-d'adresse-ipv6</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit un jeton d'adresse IPv6 pour la création d'un identifiant d'interface statique pour la configuration automatique d'adresse sans état IPv6. Ceci est mutuellement exclusif avec
+    <span class="Li">génération-d'adresses-ipv6</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>passerelle4</b></span><b></b>,
+      <b></b><span class="Li"><b>passerelle6</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Obsolète, voir Routes par défaut. Définit la passerelle par défaut pour IPv4/6,
+    pour la configuration manuelle des adresses. Ceci nécessite de définir
+    également <span class="Li">adresses</span>. Les adresses IP de la passerelle doivent être dans un
+    format reconnu par
+    <b></b><span class="Li"><b>inet_pton</b></span><b></b>(3). Il ne devrait y avoir qu'une seule passerelle par famille d'adresses IP définie dans votre configuration globale,
+    pour la rendre non ambiguë. Si vous avez besoin de plusieurs routes par défaut, veuillez les définir via
+    <span class="Li">politique-de-routage</span>.</p>
+</div>
+<p class="Pp">Exemples</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>IPv4 : <span class="Li">passerelle4 : 172.16.0.1</span></dd>
+  <dt>&#x2022;</dt>
+  <dd>IPv6 : <span class="Li">passerelle6 : &quot;2001:4::1&quot;</span></dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>serveurs-noms</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit les serveurs DNS et les domaines de recherche, pour la configuration manuelle des
+    adresses. Il y a deux champs pris en charge :
+    <span class="Li">adresses :</span> est une liste d'adresses IPv4 ou IPv6
+    similaire à <span class="Li">passerelle*</span>, et
+    <span class="Li">recherche :</span> est une liste de domaines de recherche.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    id0<b>:</b>
+      <b>[</b>...<b>]</b>
+      serveurs-noms<b>:</b>
+        recherche<b>:</b> <b>[</b>lab<b>,</b> home<b>]</b>
+        adresses<b>:</b> <b>[</b>8.8.8.8<b>,</b> &quot;FEDC::1&quot;<b>]</b>
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>adresse-mac</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'adresse MAC du périphérique. L'adresse MAC doit être sous la forme
+    &quot;XX:XX:XX:XX:XX:XX&quot;. Les options spéciales suivantes sont également
+    acceptées : <span class="Li">permanent</span> et
+    <span class="Li">aléatoire</span>. En plus de ces options, le rendu NetworkManager accepte également <span class="Li">stable</span>,
+    <span class="Li">stable-ssid</span> (Wi-Fi uniquement) et
+    <span class="Li">préserver</span>.</p>
+<p class="Pp"><b>Remarque :</b> Cela ne fonctionnera pas de manière fiable pour les périphériques identifiés par leur nom seul et rendus par networkd, en raison des interactions avec le renommage des périphériques dans udev. Identifiez les périphériques par leur MAC lors de la définition des adresses MAC.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    id0<b>:</b>
+      match<b>:</b>
+        adresse-mac<b>:</b> 52:54:00:6b:3c:58
+      <b>[</b>...<b>]</b>
+      adresse-mac<b>:</b> 52:54:00:6b:3c:59
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mtu</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'Unité de Transmission Maximale (Maximum Transmission Unit) pour l'interface. La valeur par défaut est 1500. Les valeurs valides dépendent de votre interface réseau.</p>
+<p class="Pp"><b>Remarque :</b> Cela ne fonctionnera pas de manière fiable pour les périphériques identifiés par leur nom seul et rendus par networkd, en raison des interactions avec le renommage des périphériques dans udev. Identifiez les périphériques par leur MAC lors de la définition des MTU.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>facultatif</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Un périphérique facultatif n'est pas requis pour le démarrage. Normalement, networkd attendra un certain temps que le périphérique soit configuré avant de poursuivre le démarrage. Cependant, si un périphérique est marqué comme facultatif, networkd n'attendra pas qu'il soit prêt. Ceci est *uniquement* pris en charge par networkd, et la valeur par défaut est
+  false.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth7<b>:</b>
+<i>      # ceci est connecté à un réseau de test qui est souvent</i>
+<i>      # hors ligne - ne pas attendre qu'il soit en ligne lors du démarrage.</i>
+      dhcp4<b>:</b> true
+      facultatif<b>:</b> true
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>adresses-facultatives</b></span><b></b> (séquence
+      de scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie les types d'adresses qui ne sont pas requis pour qu'un périphérique soit considéré comme en ligne. Ceci modifie le comportement des backends au démarrage afin d'éviter d'attendre les adresses marquées comme facultatives, et ainsi de considérer l'interface comme &quot;utilisable&quot; plus rapidement. Cela ne désactive pas ces adresses, qui seront quand même activées.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth7<b>:</b>
+      dhcp4<b>:</b> true
+      dhcp6<b>:</b> true
+      adresses-facultatives<b>:</b> <b>[</b> ipv4-ll<b>,</b> dhcp6 <b>]</b>
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mode-activation</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.103</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Permet de spécifier la politique de gestion de l'interface sélectionnée.
+    Par défaut, Netplan active toute interface configurée si possible. En utilisant
+    le paramètre <span class="Li">mode-activation</span>, les utilisateurs peuvent remplacer ce comportement en spécifiant <span class="Li">manuel</span>, pour confier le contrôle de l'état de l'interface à l'administrateur ou (pour le backend networkd *uniquement*) <span class="Li">off</span> pour forcer la liaison dans un état désactivé en permanence. Toute interface avec
+    <span class="Li">mode-activation</span> défini est implicitement considérée comme
+    <span class="Li">facultative</span>. Officiellement pris en charge à partir de networkd
+  v248+.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth1<b>:</b>
+<i>      # cette interface ne sera pas mise à l'état UP automatiquement</i>
+      dhcp4<b>:</b> true
+      mode-activation<b>:</b> manuel
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>routes</b></span><b></b> (séquence de
+    mappages)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure le routage statique pour le périphérique ; voir la section
+    <span class="Li">Routage</span> ci-dessous.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>politique-de-routage</b></span><b></b> (séquence de
+      mappages)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure la politique de routage pour le périphérique ; voir la section
+    <span class="Li">Routage</span> ci-dessous.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>suppression-voisins</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Configure si la suppression des voisins ARP et ND est activée pour ce port de bridge. Si elle n'est pas définie, le défaut du noyau sera utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>hairpin</b></span><b></b> (scalaire) &#x2013;
+      depuis <b>1.0</b></dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Configure si le trafic peut être renvoyé par le port de bridge sur lequel il a été reçu. Lorsque ce drapeau est faux, le bridge ne transmet pas le trafic sur le port de réception. S'il n'est pas défini, le backend <span class="Li">par défaut</span> est utilisé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>apprentissage-mac-port</b></span><b></b> (scalaire)
+      &#x2013; depuis <b>1.0</b></dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Configure si l'apprentissage des adresses MAC est activé pour ce port de bridge. S'il n'est pas défini, le défaut du noyau est utilisé. Actuellement pris en charge uniquement sur le backend <span class="Li">networkd</span>.</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='DHC<section class='Sh'>
+<h2 class='Sh' id='DHCP_Overrides'><a class='permalink' href='#DHCP_Overrides'>DHCP Overrides</a></h2>
+<p class='Pp'>Several DHCP behaviour overrides are available. Most currently only have any effect when using the <span class='Li'>networkd</span> back end, with the exception of <span class='Li'>use-routes</span> and <span class='Li'>route-metric</span>.</p>
+<p class='Pp'>Overrides only have an effect if the corresponding <span class='Li'>dhcp4</span> or <span class='Li'>dhcp6</span> is set to <span class='Li'>true</span>.</p>
+<p class='Pp'>If both <span class='Li'>dhcp4</span> and <span class='Li'>dhcp6</span> are <span class='Li'>true</span>, the networkd back end requires that <span class='Li'>dhcp4-overrides</span> and <span class='Li'>dhcp6-overrides</span> contain the same keys and values. If the values do not match, an error will be shown and the network configuration will not be applied.</p>
+<p class='Pp'>When using the NetworkManager back end, different values may be specified for <span class='Li'>dhcp4-overrides</span> and <span class='Li'>dhcp6-overrides</span>, and will be applied to the DHCP client processes as specified in the Netplan YAML.</p>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>dhcp4-overrides</b></span><b></b>, <b></b><span class='Li'><b>dhcp6-overrides</b></span><b></b> (mapping)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>The <span class='Li'>dhcp4-overrides</span> and <span class='Li'>dhcp6-override</span> mappings override the default DHCP behaviour.</p>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-dns</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the DNS servers received from the DHCP server will be used and take precedence over any statically configured ones. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-ntp</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the NTP servers received from the DHCP server will be used by <span class='Li'>systemd-timesyncd</span> and take precedence over any statically configured ones. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>send-hostname</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the machine hostname will be sent to the DHCP server. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-hostname</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the hostname received from the DHCP server will be set as the transient hostname of the system. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-mtu</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the MTU received from the DHCP server will be set as the MTU of the network interface. When <span class='Li'>false</span>, the MTU advertised by the DHCP server will be ignored. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>hostname</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Use this value for the hostname which is sent to the DHCP server, instead of machine's hostname. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-routes</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the routes received from the DHCP server will be installed in the routing table normally. When set to <span class='Li'>false</span>, routes from the DHCP server will be ignored: in this case, the user is responsible for adding static routes if necessary for correct network operation. This allows users to avoid installing a default gateway for interfaces configured via DHCP. Available for both the networkd and <span class='Li'>NetworkManager</span> back ends.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>route-metric</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Use this value for default metric for automatically-added routes. Use this to prioritise routes for devices by setting a lower metric on a preferred interface. Available for both the networkd and NetworkManager back ends.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-domains</b></span><b></b> (scalar) &#x2013; since 0.98</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Takes a boolean, or the special value <span class='Li'>route</span>. When true, the domain name received from the DHCP server will be used as DNS search domain over this link, similar to the effect of the <span class='Li'>Domains=</span> setting. If set to <span class='Li'>route</span>, the domain name received from the DHCP server will be used for routing DNS queries only, but not for searching, similar to the effect of the <span class='Li'>Domains=</span> setting when the argument is prefixed with <span class='Li'>~</span> (tilde).</p>
+<p class='Pp'><b>Requires feature: </b><span class='Li'><b>dhcp-use-domains</b></span><b></b></p>
+</div>
+</div>
+</div>
+</section>
+<section class='Ss'>
+<h2 class='Ss' id='IPv6_Router_Advertisement_Overrides'><a class='permalink' href='#IPv6_Router_Advertisement_Overrides'>IPv6 Router Advertisement Overrides</a></h2>
+<p class='Pp'>Overrides for IPv6 Router Advertisement (RA) behaviour (only supported with networkd back end).</p>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>ra-overrides</b></span><b></b> (mapping) &#x2013; since 1.1</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>The <span class='Li'>ra-overrides</span> mappings override the default IPv6 Router Advertisement behaviour.</p>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-dns</b></span><b></b> (boolean)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Default: <span class='Li'>true</span>. When <span class='Li'>true</span>, the DNS servers received from the Router Advertisement will be used. Currently only has an effect on the networkd back end.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>use-domains</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Takes a boolean, or the special value <span class='Li'>route</span>. When true, the domain name received from the Router Advertisement will be used as DNS search domain over this link. If set to <span class='Li'>route</span>, the domain name received from the IPv6 RA will be used for routing DNS queries only, but not for searching. Defaults to <span class='Li'>false</span>.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>table</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>The routing table number for routes received in the IPv6 RA. Allowed values are positive integers starting from 1. Some values are already in use to refer to specific routing tables: see <span class='Li'>{/etc,/usr/share}/iproute2/rt_tables</span>.</p>
+</div>
+</div>
+</div>
+</section>
+<section class='Ss'>
+<h2 class='Ss' id='Routing'><a class='permalink' href='#Routing'>Routing</a></h2>
+<p class='Pp'>Complex routing is possible with Netplan. Standard static routes as well as policy routing using routing tables are supported via the networkd back end.</p>
+<p class='Pp'>These options are available for all types of interfaces.</p>
+</section>
+<section class='Ss'>
+<h2 class='Ss' id='Default_routes'><a class='permalink' href='#Default_routes'>Default routes</a></h2>
+<p class='Pp'>The most common need for routing concerns the definition of default routes to reach the wider internet. Those default routes can only defined once per IP family and routing table. A typical example would look like the following:</p>
+<dl class='Bl-tag'>
+  <dt></dt>
+  <dd>
+<pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth0<b>:</b>
+      <b>[</b>...<b>]</b>
+      routes<b>:</b>
+        <b>-</b> to<b>:</b> default<i> # could be 0.0.0.0/0 optionally</i>
+          via<b>:</b> 10.0.0.1
+          metric<b>:</b> 100
+          on-link<b>:</b> true
+          advertised-mss<b>:</b> 1400
+        <b>-</b> to<b>:</b> default<i> # could be ::/0 optionally</i>
+          via<b>:</b> cf02:de:ad:be:ef::2
+    eth1<b>:</b>
+      <b>[</b>...<b>]</b>
+      routes<b>:</b>
+        <b>-</b> to<b>:</b> default
+          via<b>:</b> 172.134.67.1
+          metric<b>:</b> 100
+          on-link<b>:</b> true
+<i>          # Not on the main routing table,</i>
+<i>          # does not conflict with the eth0 default route</i>
+      table<b>:</b> 76
+</pre>
+  </dd>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>routes</b></span><b></b> (mapping)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>The <span class='Li'>routes</span> block defines standard static routes for an interface. At least <span class='Li'>to</span> must be specified. If type is <span class='Li'>local</span> or <span class='Li'>nat</span> a default scope of <span class='Li'>host</span> is assumed. If type is <span class='Li'>unicast</span> and no gateway (<span class='Li'>via</span>) is given or type is <span class='Li'>broadcast</span>, <span class='Li'>multicast</span> or <span class='Li'>anycast</span> a default scope of <span class='Li'>link</span> is assumed. Otherwise, a <span class='Li'>global</span> scope is the default setting.</p>
+<p class='Pp'>For <span class='Li'>from</span>, <span class='Li'>to</span> and <span class='Li'>via</span>, both IPv4 and IPv6 addresses are recognised, and must be in the form <span class='Li'>addr/prefixlen</span> or <span class='Li'>addr</span>.</p>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>from</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Set a source IP address for traffic going through the route. (NetworkManager: as of v1.8.0)</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>to</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Destination address for the route.</p>
+</div>
+</div>
+<dl class='Bl-tag'>
+  <dt>&bull;</dt>
+  <dd><b></b><span class='Li'><b>via</b></span><b></b> (scalar)</dd>
+</dl>
+<div class='Bd-indent'>
+<div class='Bd-indent'>
+<p class='Pp'>Address to the gateway to use for this route.</p>
+</div>
+</div>
+<dl class='B
+l-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>on-link</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Lorsqu'il est défini sur <span class="Li">true</span>, spécifie que la route
+    est directement connectée à l'interface.
+    (<span class="Li">NetworkManager</span> : à partir de v1.12.0 pour IPv4 et v1.18.0
+    pour IPv6)</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>metric</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La priorité relative de la route. Doit être un entier positif.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>type</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le type de route. Les options valides sont
+    <span class="Li">unicast</span> (par défaut), <span class="Li">anycast</span>,
+    <span class="Li">blackhole</span>, <span class="Li">broadcast</span>,
+    <span class="Li">local</span>, <span class="Li">multicast</span>,
+    <span class="Li">nat</span>, <span class="Li">prohibit</span>,
+    <span class="Li">throw</span>, <span class="Li">unreachable</span> ou
+    <span class="Li">xresolve</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>scope</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La portée de la route, son étendue sur le réseau. Les valeurs possibles
+    sont <span class="Li">global</span>, <span class="Li">link</span>, ou
+    <span class="Li">host</span>. S'applique uniquement à IPv4.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>table</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le numéro de table à utiliser pour la route. Dans certains scénarios, il peut
+    être utile de définir des routes dans une table de routage séparée. Il peut
+    également être utilisé pour faire référence à des règles de politique de routage
+    qui acceptent également un paramètre
+    <span class="Li">table</span>. Les valeurs autorisées sont des entiers positifs
+    à partir de 1. Certaines valeurs sont déjà utilisées pour faire référence à des
+    tables de routage spécifiques : voir
+    <span class="Li">/etc/iproute2/rt_tables</span>.
+    (<span class="Li">NetworkManager</span> : à partir de v1.10.0)</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mtu</b></span><b></b> (scalaire) &#x2013; depuis
+      0.101</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le MTU à utiliser pour la route, en octets. Doit être un entier positif.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>congestion-window</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.102</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La fenêtre de congestion à utiliser pour la route, représentée par
+    le nombre de segments. Doit être un entier positif.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>advertised-receive-window</b></span><b></b>
+      (scalaire) &#x2013; depuis 0.102</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La fenêtre de réception à annoncer pour la route, représentée par
+    le nombre de segments. Doit être un entier positif.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>advertised-mss</b></span><b></b> (scalaire)
+      &#x2013; depuis 1.1</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La taille maximale de segment (MSS) à annoncer à ces
+    destinations lors de l'établissement de connexions TCP. Si elle n'est pas spécifiée, Linux
+    utilise une valeur par défaut calculée à partir du MTU de l'interface du premier
+    saut. Doit être un entier positif.</p>
+</div>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>routing-policy</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le bloc <span class="Li">routing-policy</span> définit une politique de routage supplémentaire pour un réseau, où le trafic peut être traité spécialement en fonction de l'adresse IP source, du marquage du pare-feu, etc.</p>
+<p class="Pp">Pour <span class="Li">from</span> et <span class="Li">to</span>, les adresses IPv4 et IPv6 sont reconnues et doivent être au format
+    <span class="Li">addr/prefixlen</span> ou <span class="Li">addr</span>.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>from</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit une adresse IP source pour faire correspondre le trafic à cette règle de politique.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>to</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Fait correspondre le trafic allant à la destination spécifiée.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>table</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le numéro de table à faire correspondre pour la route. Dans certains scénarios, il peut
+    être utile de définir des routes dans une table de routage séparée. Il peut
+    également être utilisé pour faire référence à des routes qui acceptent également un paramètre <span class="Li">table</span>.
+    Les valeurs autorisées sont des entiers positifs à partir de
+    <span class="Li">1</span>. Certaines valeurs sont déjà utilisées pour faire référence à des
+    tables de routage spécifiques : voir
+    <span class="Li">/etc/iproute2/rt_tables</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>priority</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit une priorité pour la règle de politique de routage, afin d'influencer l'ordre dans lequel les règles de routage sont traitées. Un nombre plus élevé signifie une priorité plus faible : les règles sont traitées par ordre croissant de numéro de priorité.
+    La spécification d'une priorité explicite et unique pour chaque règle de politique de routage est fortement recommandée et est obligatoire sur le backend
+    <span class="Li">NetworkManager</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mark</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Fait correspondre cette règle de politique de routage au trafic qui a été
+    marqué par le pare-feu iptables avec cette valeur. Les valeurs autorisées sont des entiers positifs à partir de <span class="Li">1</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>type-of-service</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Fait correspondre cette règle de politique en fonction du numéro de type de service appliqué au trafic.</p>
+</div>
+</div>
+</div>
+<p class="Pp">(yaml-auth)= ## Authentification</p>
+<p class="Pp">Netplan prend en charge des paramètres d'authentification avancés pour les interfaces Ethernet et Wi-Fi, ainsi que pour les réseaux Wi-Fi individuels, au moyen du bloc
+    <span class="Li">auth</span>.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>auth</b></span><b></b> (mapping)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie les paramètres d'authentification pour un appareil de type
+    <span class="Li">ethernets:</span>, ou une entrée
+    <span class="Li">access-points:</span> sur un appareil
+    <span class="Li">wifis:</span>.</p>
+<p class="Pp">Le bloc <span class="Li">auth</span> prend en charge les propriétés suivantes :</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>key-management</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Les modes de gestion de clé pris en charge sont
+    <span class="Li">none</span> (pas de gestion de clé) ;
+    <span class="Li">psk</span> (WPA avec clé pré-partagée, courant pour le Wi-Fi domestique) ;
+    <span class="Li">psk-sha256</span> (WPA2 avec clé pré-partagée, courant pour le Wi-Fi domestique) ;
+    <span class="Li">eap</span> (WPA avec EAP, courant pour le Wi-Fi d'entreprise) ;
+    <span class="Li">eap-sha256</span> (utilisé avec
+    WPA3-Enterprise) ;
+    <span class="Li">eap-suite-b-192</span> (utilisé avec
+    WPA3-Enterprise) ;
+    <span class="Li">sae</span> (utilisé par WPA3) ; et
+    <span class="Li">802.1x</span> (utilisé principalement pour les connexions Ethernet câblées).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>password</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La chaîne de mot de passe pour EAP, ou la clé pré-partagée pour
+  WPA-PSK.</p>
+</div>
+<p class="Pp">Les propriétés suivantes peuvent être utilisées si
+    <span class="Li">key-management</span> est <span class="Li">eap</span> ou
+    <span class="Li">802.1x</span> :</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>method</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La méthode EAP à utiliser. Les méthodes EAP prises en charge sont
+    <span class="Li">tls</span> (TLS), <span class="Li">peap</span> (Protected
+    EAP), <span class="Li">leap</span> (Lightweight EAP),
+    <span class="Li">pwd</span> (Mot de passe EAP) et <span class="Li">ttls</span>
+    (TLS tunnelisé).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>identity</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">L'identité à utiliser pour EAP.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>anonymous-identity</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">L'identité à transmettre sur le canal non chiffré si la méthode EAP choisie prend en charge la transmission d'une identité tunnelisée différente.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ca-certificate</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant un ou plusieurs certificats d'autorité de certification (AC) de confiance.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>client-certificate</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant le certificat à utiliser par le client lors de l'authentification.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>client-key</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Chemin vers un fichier contenant la clé privée correspondant au
+    <span class="Li">client-certificate</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>client-key-password</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Mot de passe à utiliser pour déchiffrer la clé privée spécifiée dans
+    <span class="Li">client-key</span> si elle est chiffrée.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>phase2-auth</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Mécanisme d'authentification de phase 2.</p>
+</div>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés du type d'appareil <span class="Li">ethernets</span></h2>
+<p class="Pp"><b></b><span class="Li"><b>Status</b></span><b></b>: Facultatif.</p>
+<p class="Pp"><b></b><span class="Li"><b>Purpose</b></span><b></b>: Utilisez la
+    clé <span class="Li">ethernets</span> pour configurer les interfaces Ethernet.</p>
+<p class="Pp"><b></b><span class="Li"><b>Structure</b></span><b></b>: La clé
+    se compose de# Traduction en français du contenu fourni
+
+<section class="Sh">
+<h1 class="Sh" id="Ethernet_devices">Appareils Ethernet</h1>
+<p class="Pp">Un mappage des identifiants d'interface Ethernet. Chaque
+    <span class="Li">ethernet</span> possède un certain nombre d'options de configuration. Vous
+    n'avez pas besoin de définir chaque interface par son nom à l'intérieur du
+    mappage
+    <span class="Li">ethernets</span>. Vous pouvez utiliser n'importe quel identifiant qui décrit
+    l'interface et faire correspondre la carte réseau réelle à l'aide de la clé
+    <span class="Li">match</span>. La structure de configuration générale pour Ethernet est illustrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    device-id<b>:</b>
+      ...
+</pre>
+  </dd>
+</dl>
+<p class="Pp"><span class="Li">device-id</span> est l'identifiant de l'interface. Si
+    vous utilisez le nom de l'interface comme identifiant, Netplan fera correspondre cette interface.</p>
+<p class="Pp">Considérez l'exemple ci-dessous. Dans ce cas, une interface nommée
+    <span class="Li">eth0</span> sera configurée avec DHCP.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth0<b>:</b>
+      dhcp4<b>:</b> true
+</pre>
+  </dd>
+</dl>
+<p class="Pp"><span class="Li">device-id</span> peut être n'importe quel nom descriptif que vous trouvez pertinent. Cependant, s'il ne correspond pas à un nom d'interface réel, vous devez utiliser la propriété
+    <span class="Li">match</span> pour identifier le périphérique que vous souhaitez configurer.</p>
+<p class="Pp">L'exemple ci-dessous définit une connexion Ethernet nommée
+    <span class="Li">isp-interface</span> (supposée être une interface externe connectée au fournisseur d'accès à Internet) et utilise
+    <span class="Li">match</span> pour appliquer la configuration au périphérique physique dont l'adresse MAC est
+    <span class="Li">aa:bb:cc:00:11:22</span>.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    isp-interface<b>:</b>
+      match<b>:</b>
+        macaddress<b>:</b> aa:bb:cc:00:11:22
+      dhcp4<b>:</b> true
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Les définitions de périphériques Ethernet, au-delà des plus courantes décrites ci-dessus, prennent également en charge certaines propriétés supplémentaires qui peuvent être utilisées pour les périphériques SR-IOV.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>link</b></span><b></b> (scalaire) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Périphériques SR-IOV uniquement) La propriété
+    <span class="Li">link</span> déclare le périphérique comme une Fonction Virtuelle du périphérique de Fonction Physique sélectionné, tel qu'identifié par l'ID Netplan donné.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    enp1<b>:</b> <b>{</b>...<b>}</b>
+    enp1s16f1<b>:</b>
+      link<b>:</b> enp1
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>virtual-function-count</b></span><b></b>
+      (scalaire) &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Périphériques SR-IOV uniquement) Dans certains cas spéciaux, les VFs peuvent devoir être configurées en dehors de Netplan. Pour de telles configurations,
+    <span class="Li">virtual-function-count</span> peut être utilisé facultativement pour définir un nombre explicite de Fonctions Virtuelles pour la Fonction Physique donnée. Si non défini, la valeur par défaut est de créer autant de VFs que celles définies dans la configuration Netplan. Ceci ne doit être utilisé que dans des cas spéciaux.</p>
+<p class="Pp"><b>Fonctionnalité requise :
+    </b><span class="Li"><b>sriov</b></span><b></b></p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>embedded-switch-mode</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Périphériques SR-IOV uniquement) Change le mode opérationnel du commutateur intégré d'un périphérique PCI SmartNIC pris en charge (par exemple, Mellanox ConnectX-5).
+    Les valeurs possibles sont <span class="Li">switchdev</span> ou
+    <span class="Li">legacy</span> ; si non spécifié, la configuration par défaut du fournisseur est utilisée.</p>
+<p class="Pp"><b>Fonctionnalité requise :
+    </b><span class="Li"><b>eswitch-mode</b></span><b></b></p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>delay-virtual-functions-rebind</b></span><b></b>
+      (booléen) &#x2013; depuis 0.104</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Périphériques SR-IOV uniquement) Retarde le re-liage des fonctions virtuelles SR-IOV à leur pilote après avoir modifié le paramètre embedded-switch-mode à une étape ultérieure. Peut être activé en cas d'utilisation de bonding/VF LAG. La valeur par défaut est
+    <span class="Li">false</span>.</p>
+<p class="Pp"><b>Fonctionnalité requise :
+    </b><span class="Li"><b>eswitch-mode</b></span><b></b></p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>infiniband-mode</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">(Périphériques InfiniBand uniquement) Change le mode opérationnel d'un périphérique IPoIB. Les valeurs possibles sont <span class="Li">datagram</span> ou
+    <span class="Li">connected</span>. Si non spécifié, la configuration par défaut du noyau est utilisée.</p>
+<p class="Pp"><b>Fonctionnalité requise :
+    </b><span class="Li"><b>infiniband</b></span><b></b></p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Properties_for_device_type_modems">Propriétés pour le type de périphérique <span class="Li">modems</span></h2>
+<p class="Pp"><b>Statut</b> : Optionnel.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé
+    <span class="Li">modems</span> pour configurer les interfaces modem. La configuration des modems GSM/CDMA n'est prise en charge que pour le backend
+    <span class="Li">NetworkManager</span>.
+    <span class="Li">systemd-networkd</span> ne prend pas en charge les modems.</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'un mappage des identifiants de modem. Chaque
+    <span class="Li">modem</span> possède un certain nombre d'options de configuration. La structure de configuration générale pour les modems est illustrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  version<b>:</b> 2
+  renderer<b>:</b> NetworkManager
+  modems<b>:</b>
+    cdc-wdm1<b>:</b>
+      mtu<b>:</b> 1600
+      apn<b>:</b> ISP.CINGULAR
+      username<b>:</b> ISP@CINGULARGPRS.COM
+      password<b>:</b> CINGULAR1
+      number<b>:</b> &quot;*99#&quot;
+      network-id<b>:</b> 24005
+      device-id<b>:</b> da812de91eec16620b06cd0ca5cbc7ea25245222
+      pin<b>:</b> 2345
+      sim-id<b>:</b> 89148000000060671234
+      sim-operator-id<b>:</b> 310260
+</pre>
+  </dd>
+</dl>
+<p class="Pp"><b>Fonctionnalité requise :
+    </b><span class="Li"><b>modems</b></span><b></b></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>apn</b></span><b></b> (scalaire) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'APN (Access Point Name) de l'opérateur. Ceci peut être omis si
+    <span class="Li">auto-config</span> est activé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>auto-config</b></span><b></b> (booléen)
+      &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Indique s'il faut essayer de configurer automatiquement le modem en consultant la base de données des opérateurs mobiles à haut débit. Cela peut ne pas fonctionner pour tous les opérateurs.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>device-id</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'ID du périphérique (tel que fourni par le service de gestion WWAN) du modem à faire correspondre. Ceci peut être trouvé en utilisant
+  <span class="Li">mmcli</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>network-id</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'ID du réseau (format LAI GSM). Si ceci est spécifié, le
+    périphérique n'itinérera pas sur les réseaux.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>number</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le numéro à composer pour établir la connexion au réseau haut débit mobile. (Obsolète pour GSM)</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>password</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le mot de passe utilisé pour s'authentifier auprès du réseau de l'opérateur. Ceci peut être omis si
+    <span class="Li">auto-config</span> est activé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>pin</b></span><b></b> (scalaire) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le code PIN de la carte SIM pour permettre son fonctionnement si un code PIN est défini.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>sim-id</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'identifiant unique de la carte SIM (tel que fourni par le service de gestion WWAN) auquel cette connexion s'applique. Si spécifié, la connexion s'appliquera à tout périphérique également autorisé par
+    <span class="Li">device-id</span> qui contient une carte SIM correspondant à l'identifiant donné.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>sim-operator-id</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie la chaîne MCC/MNC (telle que <span class="Li">310260</span>
+    ou <span class="Li">21601</span>) qui identifie l'opérateur auquel cette connexion doit s'appliquer. Si spécifié, la connexion s'appliquera à tout périphérique également autorisé par
+    <span class="Li">device-id</span> et
+    <span class="Li">sim-id</span> qui contient une carte SIM provisionnée par l'opérateur donné.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>username</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le nom d'utilisateur utilisé pour s'authentifier auprès du réseau de l'opérateur. Ceci peut être omis si
+    <span class="Li">auto-config</span> est activé.</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Properties_for_device_type_wifis">Propriétés pour le type de périphérique <span class="Li">wifis</span></h2>
+<p class="Pp"><b>Statut</b> : Optionnel.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé
+    <span class="Li">wifis</span> pour configurer les points d'accès Wi-Fi.</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'un mappage des identifiants Wi-Fi. Chaque
+    <span class="Li">wifi</span> possède un certain nombre d'options de configuration. La structure de configuration générale pour le Wi-Fi est illustrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  version<b>:</b> 2
+  wifis<b>:</b>
+    wlp0s1<b>:</b>
+      access-points<b>:</b>
+        &quot;network_ssid_name&quot;<b>:</b>
+          password<b>:</b> &quot;**********&quot;
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Notez que <span class="Li">systemd-networkd</span> n'a pas de prise en charge native du Wi-Fi, vous avez donc besoin de wpasupplicant installé si vous laissez le renderer networkd gérer le Wi-Fi.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>access-points</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Ceci fournit des connexions pré-configurées à NetworkManager. Notez que les utilisateurs peuvent bien sûr sélectionner d'autres points d'accès/SSID. Les clés du mappage sont les SSID, et les valeurs sont des mappages avec les propriétés prises en charge suivantes :</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>password</b></span><b></b> (scalaire</dd>
+</dl>
+)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Activez l'authentification WPA/WPA2 et définissez la phrase secrète pour celle-ci. Si ni celle-ci ni un bloc <span class="Li">auth</span> ne sont fournis, le réseau est supposé être ouvert. Le paramètre</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>password<b>:</b> &quot;S3kr1t&quot;
+</pre>
+  </dd>
+</dl>
+<p class="Pp">est équivalent à</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>auth<b>:</b>
+  key-management<b>:</b> psk
+  password<b>:</b> &quot;S3kr1t&quot;
+</pre>
+  </dd>
+</dl>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mode</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Les modes de point d'accès possibles sont <span class="Li">infrastructure</span> (par défaut), <span class="Li">ap</span> (créer un point d'accès auquel d'autres appareils peuvent se connecter) et <span class="Li">adhoc</span> (réseaux pair à pair sans point d'accès central). <span class="Li">ap</span> n'est pris en charge qu'avec NetworkManager.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>bssid</b></span><b></b> (scalaire) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">S'il est spécifié, demande à l'appareil de ne s'associer qu'au point d'accès donné.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>band</b></span><b></b> (scalaire) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Les bandes possibles sont <span class="Li">5GHz</span> (pour 802.11a 5GHz) et <span class="Li">2.4GHz</span> (pour 802.11 2.4GHz), ne restreignez pas la bande de fréquence 802.11 du réseau si non définie (par défaut).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>channel</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Canal sans fil à utiliser pour la connexion Wi-Fi. Comme les numéros de canal se chevauchent entre les bandes, cette propriété ne prend effet que si la propriété <span class="Li">band</span> est également définie.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>hidden</b></span><b></b> (booléen) &#x2013;
+      depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définir sur <span class="Li">true</span> pour modifier la technique d'analyse SSID pour la connexion aux réseaux Wi-Fi masqués. Notez que cela peut entraîner des performances plus lentes par rapport à <span class="Li">false</span> (par défaut) lors de la connexion aux SSID diffusés publiquement.</p>
+</div>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>wakeonwlan</b></span><b></b> (séquence de
+      scalaires) &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Cela active WakeOnWLan sur les appareils pris en charge. Tous les pilotes ne prennent pas en charge toutes les options. Peut être une combinaison de <span class="Li">any</span>, <span class="Li">disconnect</span>, <span class="Li">magic_pkt</span>, <span class="Li">gtk_rekey_failure</span>, <span class="Li">eap_identity_req</span>, <span class="Li">four_way_handshake</span>, <span class="Li">rfkill_release</span> ou <span class="Li">tcp</span> (NetworkManager uniquement). Ou le drapeau exclusif <span class="Li">default</span> (par défaut).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>regulatory-domain</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Cela peut être utilisé pour définir le domaine réglementaire de la radio, afin d'utiliser des canaux Wi-Fi supplémentaires en dehors du &quot;domaine mondial&quot;. Prend un code de pays ISO/IEC 3166 (comme <span class="Li">GB</span>) ou <span class="Li">00</span> pour réinitialiser au &quot;domaine mondial&quot;. Voir <a class="Lk" href="https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git/tree/db.txt">wireless-regdb</a>&#x00A0;pour les valeurs disponibles.</p>
+<p class="Pp"><b>Nécessite une dépendance :
+    </b><span class="Li"><b>iw</b></span><b></b>, si elle doit être utilisée en dehors du backend networkd (wpasupplicant).</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés pour le type d'appareil <span class="Li">bridges</span></h2>
+<p class="Pp"><b>Statut</b> : Facultatif.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé <span class="Li">bridges</span> pour créer des interfaces Bridge.</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'un mappage des noms d'interfaces Bridge. Chaque <span class="Li">bridge</span> a une liste facultative d'interfaces qui seront pontées ensemble. Les interfaces répertoriées dans la clé <span class="Li">interfaces</span> (<span class="Li">enp5s0</span> et <span class="Li">enp5s1</span> ci-dessous) doivent également être définies dans votre configuration Netplan. La structure de configuration générale pour les Bridges est illustrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  bridges<b>:</b>
+    br0<b>:</b>
+      interfaces<b>:</b>
+        <b>-</b> enp5s0
+        <b>-</b> enp5s1
+      dhcp4<b>:</b> true
+      ...
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Lors de l'application, une interface virtuelle de type bridge nommée <span class="Li">br0</span> sera créée dans le système.</p>
+<p class="Pp">Les paramètres spécifiques pour les bridges sont définis ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>interfaces</b></span><b></b> (séquence de
+      scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Tous les appareils correspondant à cette liste d'ID seront ajoutés au bridge. Cela peut être une liste vide, auquel cas le bridge sera mis en ligne sans interfaces membres.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    switchports<b>:</b>
+      match<b>:</b> <b>{</b>name<b>:</b> &quot;enp2*&quot;<b>}</b>
+  <b>[</b>...<b>]</b>
+  bridges<b>:</b>
+    br0<b>:</b>
+      interfaces<b>:</b> <b>[</b>switchports<b>]</b>
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>parameters</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Paramètres de personnalisation pour les options de pontage spéciales. Les intervalles de temps peuvent devoir être exprimés en nombre de secondes ou de millisecondes : le type de valeur par défaut est spécifié ci-dessous. Si nécessaire, les intervalles de temps peuvent être qualifiés à l'aide d'un suffixe temporel (tel que <span class="Li">s</span> pour secondes, <span class="Li">ms</span> pour millisecondes) pour permettre un meilleur contrôle de son comportement.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ageing-time</b></span><b></b>,
+      <b></b><span class="Li"><b>aging-time</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit la période pendant laquelle une adresse MAC est conservée dans la base de données de transfert après la réception d'un paquet. Ceci correspond à la propriété <span class="Li">AgeingTimeSec=</span> lorsque le renderer networkd est utilisé. Si aucun suffixe temporel n'est spécifié, la valeur sera interprétée en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>priority</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit la valeur de priorité pour le bridge. Cette valeur doit être un nombre compris entre <span class="Li">0</span> et <span class="Li">65535</span>. Des valeurs plus basses signifient une priorité plus élevée. Le bridge avec la priorité la plus élevée sera élu comme bridge racine.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>port-priority</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit la priorité du port par interface. La valeur de priorité est un nombre compris entre <span class="Li">0</span> et <span class="Li">63</span>. Cette métrique est utilisée dans les algorithmes de sélection des ports désignés et des ports racine.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth0<b>:</b>
+      dhcp4<b>:</b> false
+    eth1<b>:</b>
+      dhcp4<b>:</b> false
+  bridges<b>:</b>
+    br0<b>:</b>
+      interfaces<b>:</b> <b>[</b>eth0<b>,</b> eth1<b>]</b>
+      parameters<b>:</b>
+        port-priority<b>:</b>
+          eth0<b>:</b> 10
+          eth1<b>:</b> 20
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>forward-delay</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie la période pendant laquelle le bridge restera dans les états Listening et Learning avant d'atteindre l'état Forwarding. Ce champ correspond à la propriété <span class="Li">ForwardDelaySec=</span> pour le renderer networkd. Si aucun suffixe temporel n'est spécifié, la valeur sera interprétée en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>hello-time</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'intervalle entre deux paquets de salutation envoyés par les bridges racine et désignés. Les paquets de salutation communiquent des informations sur la topologie du réseau. Lorsque le renderer networkd est utilisé, cela correspond à la propriété <span class="Li">HelloTimeSec=</span>. Si aucun suffixe temporel n'est spécifié, la valeur sera interprétée en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>max-age</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'âge maximum d'un paquet de salutation. Si le dernier paquet de salutation est plus ancien que cette valeur, le bridge tentera de devenir le bridge racine. Ceci correspond à la propriété <span class="Li">MaxAgeSec=</span> lorsque le renderer networkd est utilisé. Si aucun suffixe temporel n'est spécifié, la valeur sera interprétée en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>path-cost</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le coût par interface d'un chemin sur le bridge. Les interfaces plus rapides devraient avoir un coût inférieur. Cela permet un contrôle plus fin de la topologie du réseau afin que les chemins les plus rapides soient disponibles chaque fois que possible.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eth0<b>:</b>
+      dhcp4<b>:</b> false
+    eth1<b>:</b>
+      dhcp4<b>:</b> false
+  bridges<b>:</b>
+    br0<b>:</b>
+      interfaces<b>:</b> <b>[</b>eth0<b>,</b> eth1<b>]</b>
+      parameters<b>:</b>
+        path-cost<b>:</b>
+          eth0<b>:</b> 100
+          eth1<b>:</b> 200
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>stp</b></span><b></b> (booléen)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit si le bridge doit utiliser le protocole Spanning Tree. La valeur par défaut est <span class="Li">true</span>, ce qui signifie que Spanning Tree doit être utilisé.</p>
+</div>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés pour le type d'appareil
+  <span class="Li">dummy-devices</span></h2>
+<p class="Pp"><b>Statut</b> : Facultatif.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé <span class="Li">dummy-devices</span> pour créer des interfaces virtuelles.</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'un mappage des noms d'interface. Du</p>mmy devices sont des périphériques virtuels qui peuvent être utilisés pour router des paquets
+    sans les transmettre réellement.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  dummy-devices<b>:</b>
+    dm0<b>:</b>
+      addresses<b>:</b>
+        <b>-</b> 192.168.0.123/24
+      ...
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Lors de l'application, une interface virtuelle nommée
+    <span class="Li">dm0</span> sera créée dans le système.</p>
+<p class="Pp">Voir la section "Propriétés pour tous les types d'appareils" pour
+    la liste des propriétés qui peuvent être utilisées avec ce type d'interface.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés pour le type d'appareil <span class="Li">bonds</span></h2>
+<p class="Pp"><b>Statut</b> : Facultatif.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé <span class="Li">bonds</span> pour
+    créer des interfaces Bond (Agrégation de liens).</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'une correspondance de noms d'interfaces Bond. Chaque
+    <span class="Li">bond</span> a une liste facultative d'interfaces qui feront partie de l'agrégation. Les interfaces listées dans la
+    clé <span class="Li">interfaces</span> doivent également être définies dans votre configuration Netplan. La structure générale de configuration pour les Bonds est montrée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  bonds<b>:</b>
+    bond0<b>:</b>
+      interfaces<b>:</b>
+        <b>-</b> enp5s0
+        <b>-</b> enp5s1
+        <b>-</b> enp5s2
+      parameters<b>:</b>
+        mode<b>:</b> active-backup
+      ...
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Lors de l'application, une interface virtuelle de type bond nommée
+    <span class="Li">bond0</span> sera créée dans le système.</p>
+<p class="Pp">Les paramètres spécifiques pour les bonds sont définis ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>interfaces</b></span><b></b> (séquence de
+      scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Tous les périphériques correspondant à cette liste d'identifiants seront ajoutés au bond.</p>
+</div>
+<p class="Pp">Exemple :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    switchports<b>:</b>
+      match<b>:</b> <b>{</b>name<b>:</b> &quot;enp2*&quot;<b>}</b>
+  <b>[</b>...<b>]</b>
+  bonds<b>:</b>
+    bond0<b>:</b>
+      interfaces<b>:</b> <b>[</b>switchports<b>]</b>
+</pre>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>parameters</b></span><b></b> (mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Paramètres de personnalisation pour les options de bonding spéciales. Les intervalles de temps peuvent devoir être exprimés en secondes ou en millisecondes : la valeur par défaut est spécifiée ci-dessous. Si nécessaire, les intervalles de temps peuvent être qualifiés à l'aide d'un suffixe de temps (tel que <span class="Li">s</span> pour secondes, <span class="Li">ms</span> pour millisecondes) pour permettre un meilleur contrôle de son comportement.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mode</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le mode de bonding utilisé pour les interfaces. La valeur par défaut est
+    <span class="Li">balance-rr</span> (round robin). Les valeurs possibles sont
+    <span class="Li">balance-rr</span>, <span class="Li">active-backup</span>,
+    <span class="Li">balance-xor</span>, <span class="Li">broadcast</span>,
+    <span class="Li">802.3ad</span>, <span class="Li">balance-tlb</span> et
+    <span class="Li">balance-alb</span>. Pour Open vSwitch
+    <span class="Li">active-backup</span> et les modes supplémentaires
+    <span class="Li">balance-tcp</span> et <span class="Li">balance-slb</span>
+    sont pris en charge.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>lacp-rate</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit la fréquence à laquelle les LACPDU sont transmis. Ceci n'est utile qu'en mode 802.3ad. Les valeurs possibles sont <span class="Li">slow</span> (30 secondes, par défaut) et <span class="Li">fast</span> (chaque seconde).</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mii-monitor-interval</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'intervalle de surveillance MII (vérification si une
+    interface du bond a un signal). La valeur par défaut est
+    <span class="Li">0</span>, ce qui désactive la surveillance MII. Ceci est équivalent au
+    champ <span class="Li">MIIMonitorSec=</span> pour le backend networkd. Si aucun suffixe de temps n'est spécifié, la valeur sera interprétée en millisecondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>min-links</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Le nombre minimum de liens actifs dans un bond pour que l'interface bond soit considérée comme active.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>transmit-hash-policy</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie la politique de hachage de transmission pour la sélection des ports.
+    Ceci n'est utile qu'en modes <span class="Li">balance-xor</span>,
+    <span class="Li">802.3ad</span> et <span class="Li">balance-tlb</span>. Les valeurs possibles sont <span class="Li">layer2</span>,
+    <span class="Li">layer3+4</span>, <span class="Li">layer2+3</span>,
+    <span class="Li">encap2+3</span> et <span class="Li">encap3+4</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ad-select</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le mode de sélection de l'agrégation. Les valeurs possibles sont
+    <span class="Li">stable</span>, <span class="Li">bandwidth</span> et
+    <span class="Li">count</span>. Cette option n'est utilisée qu'en mode 802.3ad.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>all-members-active</b></span><b></b> (booléen)
+      &#x2013; depuis 0.106</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Si le bond doit ignorer les trames dupliquées reçues sur des ports inactifs, définissez cette option sur <span class="Li">false</span>. Si elles doivent être livrées, définissez cette option sur <span class="Li">true</span>. La valeur par défaut est false et est le comportement souhaitable dans la plupart des situations.</p>
+<p class="Pp">Alias :
+    <b></b><span class="Li"><b>all-slaves-active</b></span><b></b></p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>arp-interval</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'intervalle de temps pour la surveillance des liens ARP (à quelle fréquence la surveillance des liens ARP doit avoir lieu). La valeur par défaut est <span class="Li">0</span>, ce qui désactive la surveillance ARP. Pour le backend networkd, cela correspond à la propriété <span class="Li">ARPIntervalSec=</span>. Si aucun suffixe de temps n'est spécifié, la valeur sera interprétée en millisecondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>arp-ip-targets</b></span><b></b> (séquence de
+      scalaires)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Adresses IP d'autres hôtes sur le lien auxquels des requêtes ARP doivent être envoyées pour valider qu'un port est actif. Cette option n'est utilisée que lorsque <span class="Li">arp-interval</span> est défini sur une valeur autre que <span class="Li">0</span>. Au moins une adresse IP doit être fournie pour que la surveillance des liens ARP fonctionne. Seules les adresses IPv4 sont prises en charge. Vous pouvez spécifier jusqu'à 16 adresses IP. La valeur par défaut est une liste vide.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>arp-validate</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure la manière dont les réponses ARP doivent être validées lors de l'utilisation de la surveillance des liens ARP. Les valeurs possibles sont <span class="Li">none</span>, <span class="Li">active</span>, <span class="Li">backup</span> et <span class="Li">all</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>arp-all-targets</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie si un quelconque objectif IP ARP actif est suffisant pour qu'un port soit considéré comme actif ; ou si tous les objectifs doivent être actifs. Ceci n'est utilisé qu'en mode <span class="Li">active-backup</span> lorsque <span class="Li">arp-validate</span> est activé. Les valeurs possibles sont <span class="Li">any</span> et <span class="Li">all</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>up-delay</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le délai avant d'activer un lien une fois que le lien est physiquement actif. La valeur par défaut est <span class="Li">0</span>. Ceci correspond à la propriété <span class="Li">UpDelaySec=</span> pour le rendu networkd. Cette option n'est valide que pour le moniteur de lien miimon. Si aucun suffixe de temps n'est spécifié, la valeur sera interprétée en millisecondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>down-delay</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le délai avant de désactiver un lien une fois que le lien a été perdu. La valeur par défaut est <span class="Li">0</span>. Ceci correspond à la propriété <span class="Li">DownDelaySec=</span> pour le rendu networkd. Cette option n'est valide que pour le moniteur de lien miimon. Si aucun suffixe de temps n'est spécifié, la valeur sera interprétée en millisecondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>fail-over-mac-policy</b></span><b></b>
+    (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit si tous les ports doivent avoir la même adresse MAC lors de leur ajout au bond, ou comment le système doit gérer les adresses MAC. Les valeurs possibles sont <span class="Li">none</span>,
+    <span class="Li">active</span> et <span class="Li">follow</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>gratuitous-arp</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le nombre de paquets ARP à envoyer après un basculement. Une fois qu'un lien est actif sur un nouveau port, une notification est envoyée et éventuellement répétée si cette valeur est supérieure à <span class="Li">1</span>. La valeur par défaut est <span class="Li">1</span> et les valeurs valides sont comprises entre <span class="Li">1</span> et <span class="Li">255</span>. Ceci n'affecte que le mode <span class="Li">active-backup</span>.</p>
+<p class="Pp">Pour des raisons historiques, la faute d'orthographe
+    <span class="Li">gratuitious-arp</span> est également acceptée et a la même fonction.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>packets-per-member</b></span><b></b> (scalaire)
+      &#x2013; depuis 0.106</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">En mode <span class="Li">balance-rr</span>, spécifie le nombre de paquets à transmettre sur un port avant de passer au suivant. Lorsque cette valeur est définie sur <span class="Li">0</span>, les ports sont choisis au hasard. Les valeurs autorisées sont comprises entre <span class="Li">0</span> et <span class="Li">65535</span>. La valeur par défaut est <span class="Li">1</span>. Ce paramètre n'est utilisé qu'en mode <span class="Li">balance-rr</span>.</p>
+<p class="Pp">Alias :
+    <b></b><span class="Li"><b>packets-per-slave</b></span><b></b></p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>primary-reselect-policy</b></span><b></b>
+      (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit la politique de re-sélection pour le port primaire. En cas de défaillance du port actif, le système utilise cette politique pour décider comment le nouveau port actif sera choisi et comment la récupération sera gérée. Les valeurs possibles sont <span class="Li">always</span>, <span class="Li">better</span> et <span class="Li">failure</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>resend-igmp</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Dans les modes <span class="Li">balance-rr</span>, <span class="Li">active-backup</span>, <span class="Li">balance-tlb</span> et <span class="Li">balance-alb</span>, un basculement peut transférer le trafic IGMP d'un port à un autre.</p>
+<p class="Pp">Ce paramètre spécifie le nombre de rapports d'appartenance IGMP émis lors d'un événement de basculement. Les valeurs vont de 0 à 255. 0 désactive l'envoi des rapports d'appartenance. Sinon, le premier rapport d'appartenance est envoyé lors du basculement et les rapports suivants sont envoyés à intervalles de 200 ms.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>learn-packet-interval</b></span><b></b>
+      (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie l'intervalle entre l'envoi des paquets d'apprentissage à chaque port. La plage de valeurs est comprise entre <span class="Li">1</span> et <span class="Li">0x7fffffff</span>. La valeur par défaut est <span class="Li">1</span>. Cette option n'affecte que les modes <span class="Li">balance-tlb</span> et <span class="Li">balance-alb</span>. En utilisant le renderer networkd, ce champ est mappé à la propriété <span class="Li">LearnPacketIntervalSec=</span>. Si aucun suffixe de temps n'est spécifié, la valeur sera interprétée en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>primary</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie un périphérique à utiliser comme port primaire, ou le périphérique préféré à utiliser comme port pour la liaison (c'est-à-dire le périphérique préféré pour envoyer des données), tant qu'il est disponible. Ceci n'affecte que les modes <span class="Li">active-backup</span>, <span class="Li">balance-alb</span> et <span class="Li">balance-tlb</span>.</p>
+</div>
+</div>
+</div>
+<p class="Pp">(yaml-tunnels)= ## Propriétés pour le type d'interface
+    <span class="Li">tunnels</span></p>
+<p class="Pp"><b>Statut</b>: Facultatif.</p>
+<p class="Pp"><b>Objectif</b>: Utiliser la clé <span class="Li">tunnels</span> pour
+    créer des interfaces de tunnel virtuelles.</p>
+<p class="Pp"><b>Structure</b>: La clé se compose d'un mappage des noms d'interfaces de tunnel. Chaque <span class="Li">tunnel</span> nécessite l'identification du mode de tunnel (voir la section
+    <span class="Li">mode</span> ci-dessous pour la liste des modes pris en charge). La structure générale de configuration pour les tunnels est présentée ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    tunnel0<b>:</b>
+      mode<b>:</b> SCALAR
+      ...
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Lors de l'application, une interface virtuelle appelée
+    <span class="Li">tunnel0</span> sera créée dans le système. Son mode de fonctionnement est défini par la propriété <span class="Li">mode</span>.</p>
+<p class="Pp">Les tunnels permettent au trafic de passer comme s'il était entre des systèmes sur le même réseau local, bien que les systèmes puissent être éloignés les uns des autres mais accessibles via Internet. Ils peuvent être utilisés pour prendre en charge le trafic IPv6 sur un réseau où le FAI ne fournit pas le service, ou pour étendre et "connecter" des réseaux locaux distincts. Voir
+    <a class="Lk" href="https://fr.wikipedia.org/wiki/Protocole_de_tunnelisation">Tunneling_protocol</a>&#x00A0;pour
+    plus d'informations générales sur les tunnels.</p>
+<p class="Pp">Les paramètres spécifiques pour les tunnels sont définis ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mode</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le mode du tunnel. Les options valides sont
+    <span class="Li">sit</span>, <span class="Li">gre</span>,
+    <span class="Li">ip6gre</span>, <span class="Li">ipip</span>,
+    <span class="Li">ipip6</span>, <span class="Li">ip6ip6</span>,
+    <span class="Li">vti</span>, <span class="Li">vti6</span>,
+    <span class="Li">wireguard</span>, <span class="Li">vxlan</span>,
+    <span class="Li">gretap</span> et <span class="Li">ip6gretap</span>.
+    De plus, le backend <span class="Li">NetworkManager</span> prend en charge
+    les tunnels <span class="Li">isatap</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>local</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'adresse du point d'extrémité local du tunnel. (Pour
+    VXLAN) Cela doit correspondre à l'une des adresses IP du parent ou utiliser les
+    valeurs spéciales de networkd.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>remote</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'adresse du point d'extrémité distant du tunnel ou
+    l'adresse IP du groupe multicast pour VXLAN.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>ttl</b></span><b></b> (scalaire) &#x2013; depuis
+      0.103</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le Time To Live (TTL) du tunnel. Prend un nombre dans la plage
+    <span class="Li">1..255</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>key</b></span><b></b> (scalaire ou mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit les clés à utiliser pour le tunnel. La clé peut être un nombre ou un quad dotted (une adresse IPv4). Pour <span class="Li">wireguard</span>, il peut s'agir d'une clé privée encodée en base64 ou (à partir de networkd v242+) d'un chemin absolu vers un fichier contenant la clé privée (depuis 0.100). Elle est utilisée pour l'identification des transformations IP. Ceci n'est requis que pour
+    <span class="Li">vti</span> et <span class="Li">vti6</span> lors de l'utilisation du backend networkd.</p>
+<p class="Pp">Ce champ peut être utilisé comme un scalaire (signifiant qu'une seule clé est spécifiée et sera utilisée pour l'entrée, la sortie et la clé privée), ou comme un
+    mappage, où vous pouvez spécifier davantage
+    <span class="Li">input</span>/<span class="Li">output</span>/<span class="Li">private</span>.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>input</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La clé d'entrée pour le tunnel</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>output</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La clé de sortie pour le tunnel</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>private</b></span><b></b> (scalaire) &#x2013;
+      depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une clé privée encodée en base64 requise pour les tunnels WireGuard. Lorsque le backend <span class="Li">systemd-networkd</span> (v242+) est utilisé, cela peut également être un chemin absolu vers un fichier contenant la clé privée.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>private-key-flags</b></span><b></b> (séquence
+      de scalaires) &#x2013; depuis 0.107</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Indicateurs de clé privée utilisés par NetworkManager. Les valeurs possibles sont :
+    <span class="Li">agent-owned</span>, <span class="Li">not-saved</span> et
+    <span class="Li">not-required</span>.</p>
+<p class="Pp"><span class="Li">agent-owned</span>: un agent secret de session utilisateur est responsable de la fourniture et du stockage de ce secret.</p>
+<p class="Pp"><span class="Li">not-saved</span>: ce secret ne doit pas être enregistré mais doit être demandé à l'utilisateur chaque fois qu'il est nécessaire.</p>
+<p class="Pp"><span class="Li">not-required</span>: cet indicateur suggère que le
+    secret n'est pas requis et ne doit pas être demandé à l'utilisateur.</p>
+</div>
+<p class="Pp">Exemple:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  renderer<b>:</b> NetworkManager
+  tunnels<b>:</b>
+    wg0<b>:</b>
+      mode<b>:</b> wireguard
+      port<b>:</b> 5182
+      key<b>:</b>
+        private-key-flags<b>:</b>
+          <b>-</b> agent-owned
+      peers<b>:</b>
+        <b>-</b> keys<b>:</b>
+            public<b>:</b> rlbInAj0qV69CysWPQY7KEBnKxpYCpaWqOs/dLevdWc=
+          allowed-ips<b>:</b> <b>[</b>0.0.0.0/0<b>,</b> &quot;2001:fe:ad:de:ad:be:ef:1/24&quot;<b>]</b>
+          keepalive<b>:</b> 23
+          endpoint<b>:</b> 1.2.3.4:5
+</pre>
+  </dd>
+</dl>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>keys</b></span><b></b> (scalaire ou mappage)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Nom alternatif pour le champ <span class="Li">key</span>. Voir
+    ci-dessus.</p>
+</div>
+<p class="Pp">Exemples:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    tun0<b>:</b>
+      mode<b>:</b> gre
+      local<b>:</b> ...
+      remote<b>:</b> ...
+      keys<b>:</b>
+        input<b>:</b> 1234
+        output<b>:</b> 5678
+</pre>
+  </dd>
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    tun0<b>:</b>
+      mode<b>:</b> vti6
+      local<b>:</b> ...
+      remote<b>:</b> ...
+      key<b>:</b> 59568549
+</pre>
+  </dd>
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    wg0<b>:</b>
+      mode<b>:</b> wireguard
+      addresses<b>:</b> <b>[</b>...<b>]</b>
+      peers<b>:</b>
+        <b>-</b> keys<b>:</b>
+            public<b>:</b> rlbInAj0qV69CysWPQY7KEBnKxpYCpaWqOs/dLevdWc=
+            shared<b>:</b> /path/to/shared.key
+          ...
+      key<b>:</b> mNb7OIIXTdgW4khM7OFlzJ+UPs7lmcWHV7xjPgakMkQ=
+</pre>
+  </dd>
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    wg0<b>:</b>
+      mode<b>:</b> wireguard
+      addresses<b>:</b> <b>[</b>...<b>]</b>
+      peers<b>:</b>
+        <b>-</b> keys<b>:</b>
+            public<b>:</b> rlbInAj0qV69CysWPQY7KEBnKxpYCpaWqOs/dLevdWc=
+          ...
+      keys<b>:</b>
+        private<b>:</b> /path/to/priv.key
+</pre>
+  </dd>
+</dl>
+</div>
+<p class="Pp">Clés spécifiques à WireGuard:</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>mark</b></span><b></b> (scalaire) &#x2013; depuis
+      0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Marque de pare-feu pour les paquets WireGuard sortants de cette interface, facultatif.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>port</b></span><b></b> (scalaire) &#x2013; depuis
+      0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Port UDP sur lequel écouter ou <span class="Li">auto</span>. Facultatif, par défaut <span class="Li">auto</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>peers</b></span><b></b> (séquence de mappages)
+      &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une liste de pairs, chacun ayant des clés documentées ci-dessous.</p>
+</div>
+<p class="Pp">Exemple:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  tunnels<b>:</b>
+    wg0<b>:</b>
+      </pre>
+  </dd>
+</dl>
+</div>
+mode: wireguard
+  key: /chemin/vers/private.key
+  mark: 42
+  port: 5182
+  peers:
+    - keys:
+        public: rlbInAj0qV69CysWPQY7KEBnKxpYCpaWqOs/dLevdWc=
+      allowed-ips: [0.0.0.0/0, "2001:fe:ad:de:ad:be:ef:1/24"]
+      keepalive: 23
+      endpoint: 1.2.3.4:5
+    - keys:
+        public: M9nt4YujIOmNrRmpIRTmYSfMdrpvE7u6WkG8FY8WjG4=
+          shared: /chemin/vers/shared.key
+      allowed-ips: [10.10.10.20/24]
+      keepalive: 22
+      endpoint: 5.4.3.2:1
+```
+</dd>
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>endpoint</b></span><b></b> (scalaire) &#x2013;
+depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Adresse IP (v4 ou v6) distante ou nom d'hôte, suivi de deux-points et d'un numéro de port.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>allowed-ips</b></span><b></b> (séquence de
+scalaires) &#x2013; depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une liste d'adresses IP (v4 ou v6) avec masques CIDR à partir desquelles ce
+pair est autorisé à envoyer du trafic entrant et vers lesquelles le trafic sortant pour
+ce pair est dirigé. L'astérisque 0.0.0.0/0 peut être spécifié pour correspondre à toutes les adresses IPv4, et ::/0 pour correspondre à toutes les adresses IPv6.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>keepalive</b></span><b></b> (scalaire) &#x2013;
+depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Un intervalle en secondes, compris entre 1 et 65535, indiquant à quelle fréquence envoyer un paquet vide authentifié au pair dans le but de maintenir une table d'état de pare-feu ou un mappage NAT valide de manière persistante. Optionnel.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>keys</b></span><b></b> (mapping) &#x2013; depuis
+0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définir les clés à utiliser pour les pairs WireGuard.</p>
+<p class="Pp">Ce champ peut être utilisé comme un mapping, où vous pouvez spécifier davantage les
+clés <span class="Li">public</span> et <span class="Li">shared</span>.</p>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>public</b></span><b></b> (scalaire) &#x2013;
+depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une clé publique encodée en base64, requise pour les pairs WireGuard.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>shared</b></span><b></b> (scalaire) &#x2013;
+depuis 0.100</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Une clé pré-partagée encodée en base64. Optionnel pour les pairs WireGuard.
+Lorsque le backend <span class="Li">systemd-networkd</span> (v242+) est utilisé,
+ce peut également être un chemin absolu vers un fichier contenant la clé
+pré-partagée.</p>
+</div>
+</div>
+</div>
+</div>
+<p class="Pp">Clés spécifiques à VXLAN :</p>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>id</b></span><b></b> (scalaire) &#x2013; depuis
+0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">L'identifiant de réseau VXLAN (VNI ou identifiant de segment VXLAN). Prend un
+nombre dans la plage <span class="Li">1..16777215</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>link</b></span><b></b> (scalaire) &#x2013; depuis
+0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">ID Netplan de la définition du périphérique parent auquel ce VXLAN
+est connecté.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>type-of-service</b></span><b></b> (scalaire)
+&#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La valeur de l'octet Type Of Service pour une interface VXLAN.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>mac-learning</b></span><b></b> (scalaire)
+&#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Lorsque <span class="Li">true</span>, active
+l'apprentissage dynamique des adresses MAC pour découvrir les adresses MAC distantes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>ageing</b></span><b></b>,
+<b></b><span class="Li"><b>aging</b></span><b></b> (scalaire) &#x2013; depuis
+0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">La durée de vie d'une entrée de la base de données de transfert (FDB) apprise par le noyau, en secondes.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>limit</b></span><b></b> (scalaire) &#x2013; depuis
+0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure le nombre maximum d'entrées FDB.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>arp-proxy</b></span><b></b> (scalaire) &#x2013;
+depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Lorsque <span class="Li">true</span>,
+le point d'extrémité du tunnel VXLAN connecté au pont répond aux requêtes ARP des clients Distribués Overlay Virtual Ethernet (DOVE) locaux. La valeur par défaut est <span class="Li">false</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>notifications</b></span><b></b> (séquence de
+scalaires) &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend les indicateurs <span class="Li">l2-miss</span> et
+<span class="Li">l3-miss</span> pour activer les notifications netlink LLADDR et/ou netlink IP
+d'absence d'adresse.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>short-circuit</b></span><b></b> (scalaire)
+&#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend une valeur booléenne. Lorsque <span class="Li">true</span>, le court-circuitage des routes est activé.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>checksums</b></span><b></b> (séquence de
+scalaires) &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend les indicateurs <span class="Li">udp</span>,
+<span class="Li">zero-udp6-tx</span>, <span class="Li">zero-udp6-rx</span>,
+<span class="Li">remote-tx</span> et <span class="Li">remote-rx</span> pour
+activer la transmission des sommes de contrôle UDP dans VXLAN/IPv4, l'envoi/la réception de sommes de contrôle nulles
+dans VXLAN/IPv6, et l'activation de l'envoi/la réception de la décharge de sommes de contrôle dans VXLAN.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>extensions</b></span><b></b> (séquence de
+scalaires) &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Prend les indicateurs <span class="Li">group-policy</span> et
+<span class="Li">generic-protocol</span> pour activer les extensions VXLAN « Group
+Policy » et/ou « Generic Protocol ».</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>port</b></span><b></b> (scalaire) &#x2013; depuis
+0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure le port UDP de destination par défaut. Si le port de destination n'est pas spécifié, le comportement par défaut du noyau Linux sera utilisé. Réglez sur
+<span class="Li">4789</span> pour obtenir la valeur assignée par l'IANA.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>port-range</b></span><b></b> (séquence de
+scalaires) &#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure la plage de ports source pour le VXLAN. Le noyau attribue
+le port UDP source en fonction du flux pour aider le récepteur à équilibrer la charge. Lorsque cette option n'est pas définie, la plage normale des ports UDP locaux est utilisée. Utilise la forme <span class="Li">[LOWER, UPPER]</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>flow-label</b></span><b></b> (scalaire) &#x2013;
+depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Spécifie le label de flux à utiliser dans les paquets sortants. La plage valide est
+<span class="Li">0-1048575</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>do-not-fragment</b></span><b></b> (scalaire)
+&#x2013; depuis 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Permet de définir le bit IPv4 Ne Pas Fragmenter (DF) dans les paquets sortants.
+Prend une valeur booléenne. Lorsqu'il n'est pas défini, le comportement par défaut du noyau sera utilisé.</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés pour le type de périphérique
+<span class="Li">virtual-ethernets</span></h2>
+<p class="Pp"><b>Statut</b> : Optionnel.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé <span class="Li">virtual-ethernets</span>
+pour créer des interfaces Ethernet virtuelles.</p>
+<p class="Pp"><b>Structure</b> : La clé se compose d'un mapping de noms d'interfaces
+<span class="Li">veth</span>. Chaque
+<span class="Li">veth</span> nécessite un <span class="Li">peer</span>. Pour avoir une paire
+<span class="Li">veth</span> entièrement fonctionnelle, les deux périphériques doivent être définis, c'est-à-dire que la simple définition de la clé <span class="Li">peer</span> avec le nom du pair n'est pas suffisante, l'interface pair doit également être définie et doit spécifier le premier comme son pair. La structure de configuration générale pour Ethernet virtuel est illustrée ci-dessous.</p>
+<dl class="Bl-tag">
+<dt></dt>
+<dd>
+<pre>network:
+  virtual-ethernets:
+    veth0:
+      peer: veth1
+    veth1:
+      peer: veth0
+</pre>
+</dd>
+</dl>
+<p class="Pp">Lorsqu'elle est appliquée, deux interfaces virtuelles nommées
+<span class="Li">veth0</span> et <span class="Li">veth1</span> seront créées dans le système.</p>
+<p class="Pp">Les périphériques Ethernet virtuels agissent comme des tunnels transférant le trafic d'une interface à l'autre. Ils peuvent être utilisés pour connecter deux réseaux virtuels distincts tels que des espaces de noms réseau et des ponts. Il n'est pas possible de déplacer des <span class="Li">virtual-ethernets</span> vers différents espaces de noms via Netplan actuellement.</p>
+<p class="Pp">Les paramètres spécifiques pour les
+<span class="Li">virtual-ethernets</span> sont définis ci-dessous.</p>
+<dl class="Bl-tag">
+<dt>&#x2022;</dt>
+<dd><b></b><span class="Li"><b>peer</b></span><b></b> (scalaire)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le pair <span class="Li">virtual-ethernet</span>. Le
+périphérique pair doit également être un périphérique
+<span class="Li">virtual-ethernet</span>.</p>
+</div>
+</div>
+<p class="Pp">Ci-dessous un exemple complet utilisant une paire de périphériques Ethernet virtuels pour créer une liaison entre deux ponts :</p>
+<dl class="Bl-tag">
+<dt></dt>
+<dd>
+<pre>network:
+  version: 2
+  renderer: networkd
+  virtual-ethernets:
+    veth0-peer1:
+      peer: veth0-peer2
+    veth0-peer2:
+      peer: veth0-peer1
+  bridges:
+    br0:
+      interfaces:
+        - veth0-peer1
+    br1:
+      interfaces:
+        - veth0-peer2
+</pre>
+</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss">Propriétés pour le type de périphérique <span class="Li">vlans</span></h2>
+<p class="Pp"><b>Statut</b> : Optionnel.</p>
+<p class="Pp"><b>Objectif</b> : Utiliser la clé <span class="Li">vlans</span>
+pour créer des interfaces VLAN.</p>
+<p class="Pp"><b>Structure</b> :</p>
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Pp">netplan - YAML network configuration abstraction</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SYNOPSIS"><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><b>netplan</b> [OPTIONS] SUBCOMMAND</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="COMMANDS"><a class='permalink' href='#COMMANDS'>COMMANDS</a></h1>
+<p class="Pp">Available subcommands: <b>generate</b>, <b>apply</b>, <b>try</b>,
+    <b>get</b>, <b>set</b>, <b>info</b>, <b>ip</b>, <b>rebind</b>, <b>status</b>,
+    <b>dbus</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Netplan is an Ubuntu utility to configure network interfaces using
+    YAML files. It generates configuration for an arbitrary backend (networkd
+    or NetworkManager) from a frontend YAML description. The configuration files
+    are located in {@code /etc/netplan/*.yaml}.</p>
+<p class="Pp">The generated configuration files are placed in
+    {@code /run/systemd/network/} for networkd or managed by NetworkManager
+    respectively.</p>
+<p class="Pp">The primary use of Netplan is to abstract the network configuration
+    away from the user and to ensure that network configurations are portable
+    across different systems, and across different network backends.</p>
+<p class="Pp">Netplan will fall back to {@code /etc/netplan/01-network-manager-all.yaml}
+    if {@code /etc/netplan/networkd-all.yaml} does not exist and the configuration
+    is intended for networkd.</p>
+<section class="Ss">
+<h2 class="Ss" id="YAML_configuration"><a class='permalink' href='#YAML_configuration'>YAML configuration</a></h2>
+<p class="Pp">Netplan configurations are stored in YAML files located in
+    {@code /etc/netplan/}. Files are processed in lexicographical order. The
+    first file found to specify a particular configuration key will be used.
+    Ensure that your configuration files end with {@code .yaml}.</p>
+<p class="Pp">Configuration files are typically named like
+    {@code 01-network-manager-all.yaml}, {@code 00-installer-config.yaml}, etc.</p>
+<p class="Pp">The following structure is common to all configurations:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  version<b>:</b> 2
+  ethernets<b>:</b> <b>{</b> ... <b>}</b>
+  wifis<b>:</b> <b>{</b> ... <b>}</b>
+  vlans<b>:</b> <b>{</b> ... <b>}</b>
+  tunnels<b>:</b> <b>{</b> ... <b>}</b>
+  bridges<b>:</b> <b>{</b> ... <b>}</b>
+  bonds<b>:</b> <b>{</b> ... <b>}</b>
+  lookup<b>:</b> <b>{</b> ... <b>}</b>
+  renderer<b>:</b> <b>[</b>networkd | NetworkManager]
+</pre>
+  </dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>version</b></span><b></b> (scalar)</dt>
+  <dd>Required. Must be {@code 2}.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>renderer</b></span><b></b> (scalar)</dt>
+  <dd>Optional. Specifies which backend to use: {@code networkd} or
+      {@code NetworkManager}. If not specified, Netplan will try to detect
+      which renderer is most appropriate.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>ethernets</b></span><b></b> (mapping)</dt>
+  <dd>Defines static network interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>wifis</b></span><b></b> (mapping)</dt>
+  <dd>Defines WiFi network interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>vlans</b></span><b></b> (mapping)</dt>
+  <dd>Defines VLAN interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>tunnels</b></span><b></b> (mapping)</dt>
+  <dd>Defines tunnel interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>bridges</b></span><b></b> (mapping)</dt>
+  <dd>Defines bridge interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>bonds</b></span><b></b> (mapping)</dt>
+  <dd>Defines bond interfaces.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt><b></b><span class="Li"><b>lookup</b></span><b></b> (mapping)</dt>
+  <dd>Defines DNS configuration.</dd>
+</dl>
+<section class="Ss">
+<h2 class="Ss">Properties for device type <span class="Li">vlans</span></h2>
+<p class="Pp"><b>Status</b>: Optional.</p>
+<p class="Pp"><b>Purpose</b>: Use the <span class="Li">vlans</span> key to define
+    VLAN interfaces.</p>
+<p class="Pp"><b>Structure</b>: The key consists of a mapping of VLAN interface
+    names. The interface used in the <span class="Li">link</span> option
+    (<span class="Li">enp5s0</span> in the example below) must also be defined
+    in the Netplan configuration. The general configuration structure for VLANs
+    is shown below.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  vlans<b>:</b>
+    vlan123<b>:</b>
+      id<b>:</b> 123
+      link<b>:</b> enp5s0
+      dhcp4<b>:</b> yes
+</pre>
+  </dd>
+</dl>
+<p class="Pp">The specific settings for VLANs are defined below.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>id</b></span><b></b> (scalar)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">VLAN ID, a number between <span class="Li">0</span> and
+    <span class="Li">4094</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>link</b></span><b></b> (scalar)</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Netplan ID of the underlying device definition on which this VLAN
+    gets created.</p>
+</div>
+</div>
+<p class="Pp">Example:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  ethernets<b>:</b>
+    eno1<b>:</b> <b>{</b>...<b>}</b>
+  vlans<b>:</b>
+    en-intra<b>:</b>
+      id<b>:</b> 1
+      link<b>:</b> eno1
+      dhcp4<b>:</b> yes
+    en-vpn<b>:</b>
+      id<b>:</b> 2
+      link<b>:</b> eno1
+      addresses<b>:</b> <b>[</b>...<b>]</b>
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss">Properties for device type <span class="Li">vrfs</span></h2>
+<p class="Pp"><b>Status</b>: Optional.</p>
+<p class="Pp"><b>Purpose</b>: Use the <span class="Li">vrfs</span> key to create
+    Virtual Routing and Forwarding (VRF) interfaces.</p>
+<p class="Pp"><b>Structure</b>: The key consists of a mapping of VRF interface
+    names. The interface used in the <span class="Li">link</span> option
+    (<span class="Li">enp5s0</span> in the example below) must also be defined
+    in the Netplan configuration. The general configuration structure for VRFs
+    is shown below.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  renderer<b>:</b> networkd
+  vrfs<b>:</b>
+    vrf1<b>:</b>
+      table<b>:</b> 1
+      interfaces<b>:</b>
+        <b>-</b> enp5s0
+      routes<b>:</b>
+        <b>-</b> to<b>:</b> default
+          via<b>:</b> 10.10.10.4
+      routing-policy<b>:</b>
+        <b>-</b> from<b>:</b> 10.10.10.42
+</pre>
+  </dd>
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>table</b></span><b></b> (scalar) &#x2013; since
+      0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">The numeric routing table identifier. This setting is
+  compulsory.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>interfaces</b></span><b></b> (sequence of
+      scalars) &#x2013; since 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">All devices matching this ID list will be added to the VRF. This
+    may be an empty list, in which case the VRF will be brought online with no
+    member interfaces.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>routes</b></span><b></b> (sequence of mappings)
+      &#x2013; since 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure static routing for the device; see the
+    <span class="Li">Routing</span> section. The <span class="Li">table</span>
+    value is implicitly set to the VRF <span class="Li">table</span>.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>routing-policy</b></span><b></b> (sequence of
+      mappings) &#x2013; since 0.105</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Configure policy routing for the device; see the
+    <span class="Li">Routing</span> section. The <span class="Li">table</span>
+    value is implicitly set to the VRF <span class="Li">table</span>.</p>
+</div>
+</div>
+<p class="Pp">Example:</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  vrfs<b>:</b>
+    vrf20<b>:</b>
+      table<b>:</b> 20
+      interfaces<b>:</b> <b>[</b> br0 <b>]</b>
+      routes<b>:</b>
+        <b>-</b> to<b>:</b> default
+          via<b>:</b> 10.10.10.3
+      routing-policy<b>:</b>
+        <b>-</b> from<b>:</b> 10.10.10.42
+    <b>[</b>...<b>]</b>
+  bridges<b>:</b>
+    br0<b>:</b>
+      interfaces<b>:</b> <b>[]</b>
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss">Properties for device type
+  <span class="Li">nm-devices</span></h2>
+<p class="Pp"><b>Status</b>: Optional. Its use is not recommended.</p>
+<p class="Pp"><b>Purpose</b>: Use the <span class="Li">nm-devices</span> key to
+    configure device types that are not supported by Netplan. This is
+    NetworkManager specific configuration.</p>
+<p class="Pp"><b>Structure</b>: The key consists of a mapping of NetworkManager
+    connections. The <span class="Li">nm-devices</span> device type is for
+    internal use only and should not be used in normal configuration files. It
+    enables a fallback mode for unsupported settings, using the
+    <span class="Li">passthrough</span> mapping. The general configuration
+    structure for NM connections is shown below.</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>network<b>:</b>
+  version<b>:</b> 2
+  nm-devices<b>:</b>
+    NM-db5f0f67-1f4c-4d59-8ab8-3d278389cf87<b>:</b>
+      renderer<b>:</b> NetworkManager
+      networkmanager<b>:</b>
+        uuid<b>:</b> &quot;db5f0f67-1f4c-4d59-8ab8-3d278389cf87&quot;
+        name<b>:</b> &quot;myvpnconnection&quot;
+        passthrough<b>:</b>
+          connection.type<b>:</b> &quot;vpn&quot;
+          vpn.ca<b>:</b> &quot;path to ca.crt&quot;
+          vpn.cert<b>:</b> &quot;path to client.crt&quot;
+          vpn.cipher<b>:</b> &quot;AES-256-GCM&quot;
+          vpn.connection-type<b>:</b> &quot;tls&quot;
+          vpn.dev<b>:</b> &quot;tun&quot;
+          vpn.key<b>:</b> &quot;path to client.key&quot;
+          vpn.remote<b>:</b> &quot;1.2.3.4:1194&quot;
+          vpn.service-type<b>:</b> &quot;org.freedesktop.NetworkManager.openvpn&quot;
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Back_end-specific_configuration_parameters'><a class='permalink' href='#Back_end-specific_configuration_parameters'>Paramètres de configuration spécifiques au back-end</a></h2>
+<p class="Pp">En plus des autres champs disponibles pour configurer les interfaces,
+    certains back-ends peuvent nécessiter d'enregistrer certains de leurs propres
+    paramètres dans Netplan, en particulier si les définitions Netplan sont générées
+    automatiquement par le consommateur de ce back-end. Actuellement, cela n'est
+    utilisé qu'avec <span class="Li">NetworkManager</span>.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>networkmanager</b></span><b></b> (mapping)
+      &#x2013; depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Conserve les paramètres de configuration spécifiques à NetworkManager
+    utilisés par le démon pour reconnaître les connexions.</p>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>name</b></span><b></b> (scalar) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le nom d'affichage de la connexion.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>uuid</b></span><b></b> (scalar) &#x2013; depuis
+      0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'UUID (identifiant unique) de cette connexion, tel que
+    généré par NetworkManager lui-même.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>stable-id</b></span><b></b> (scalar) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit l'ID stable (une forme différente d'un nom de connexion)
+    utilisé par NetworkManager au cas où le nom de la connexion pourrait
+    changer, par exemple lors du partage de connexions entre utilisateurs.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>device</b></span><b></b> (scalar) &#x2013;
+      depuis 0.99</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Définit le nom de l'interface à laquelle cette connexion s'applique.</p>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><b></b><span class="Li"><b>passthrough</b></span><b></b> (mapping)
+      &#x2013; depuis 0.102</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<p class="Pp">Peut être utilisé comme mécanisme de secours pour les paramètres
+    manquants du fichier de clé.</p>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR AUSSI</a></h1>
+<p class="Pp"><b></b><span class="Li"><b>netplan-generate</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-apply</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-try</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-get</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-set</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-info</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-ip</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-rebind</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-status</b></span><b></b>(8),
+    <b></b><span class="Li"><b>netplan-dbus</b></span><b></b>(8),
+    <b></b><span class="Li"><b>systemd-networkd</b></span><b></b>(8),
+    <b></b><span class="Li"><b>NetworkManager</b></span><b></b>(8)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTEURS</a></h1>
+<p class="Pp">Mathieu Trudel-Lapierre
+    (<a class="Mt" href="mailto:cyphermox@ubuntu.com">cyphermox@ubuntu.com</a>);
+    Martin Pitt
+    (<a class="Mt" href="mailto:martin.pitt@ubuntu.com">martin.pitt@ubuntu.com</a>);
+    Lukas M&#x00E4;rdian
+    (<a class="Mt" href="mailto:slyon@ubuntu.com">slyon@ubuntu.com</a>).</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/netplan/">extra/netplan</a></dd>
+        <dt>Version :</dt>
+        <dd>1.1.2-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://github.com/canonical/netplan">https://github.com/canonical/netplan</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-3.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/netplan/">/listing/extra/netplan/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#COMMANDS">COMMANDES</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#YAML_configuration">configuration YAML</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTHORS">AUTEURS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

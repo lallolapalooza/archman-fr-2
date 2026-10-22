@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>sudoers_timestamp(5) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">sudoers_timestamp(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/sudo/">sudo</a></p>
+<p class="lic">Licences: custom</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SUDOERS_TIMESTAMP(5)</td>
+    <td class="head-vol">Manuel des formats de fichiers</td>
+    <td class="head-rtitle">SUDOERS_TIMESTAMP(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><code class="Nm">sudoers_timestamp</code> &#x2014;
+    <span class="Nd">Format des horodatages Sudoers</span></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Le plugin <code class="Nm">sudoers</code> utilise des fichiers d'horodatage par ID utilisateur pour la mise en cache des identifiants. Une fois qu'un utilisateur a été authentifié, il peut utiliser <code class="Nm">sudo</code> sans mot de passe pendant une courte période de temps (<a class="permalink" href="#5"><i class="Em" id="5">5</i></a> minutes sauf indication contraire de l'option <i class="Em">timestamp_timeout</i>). Par défaut, <code class="Nm">sudoers</code> utilise un enregistrement séparé pour chaque terminal, ce qui signifie que les sessions de connexion de l'utilisateur sont authentifiées séparément. L'option <a class="permalink" href="#timestamp_type"><i class="Em" id="timestamp_type">timestamp_type</i></a> peut être utilisée pour sélectionner le type d'enregistrement d'horodatage que <code class="Nm">sudoers</code> utilisera.</p>
+<p class="Pp">Un format de fichier d'horodatage multi-enregistrements a été introduit dans <code class="Nm">sudo</code> 1.8.10, qui utilise un seul fichier par utilisateur. Auparavant, un fichier séparé était utilisé pour chaque combinaison utilisateur et terminal, sauf si les horodatages basés sur tty étaient désactivés. Le nouveau format est extensible et des enregistrements de plusieurs types et versions peuvent coexister dans le même fichier.</p>
+<p class="Pp">Tous les enregistrements, quel que soit leur type ou leur version, commencent par un numéro de version de 16 bits et une taille d'enregistrement de 16 bits.</p>
+<p class="Pp">Les enregistrements d'horodatage ont la structure suivante :</p>
+<div class="Bd Pp Li">
+<pre>/* Types d'entrées d'horodatage */
+#define TS_GLOBAL               0x01U   /* non restreint par tty ou ppid */
+#define TS_TTY                  0x02U   /* restreint par tty */
+#define TS_PPID                 0x03U   /* restreint par ppid */
+#define TS_LOCKEXCL             0x04U   /* enregistrement de verrouillage spécial */
+
+/* Indicateurs d'horodatage */
+#define TS_DISABLED             0x01U   /* entrée désactivée */
+#define TS_ANYUID               0x02U   /* ignorer uid, valide uniquement dans la clé */
+
+struct timestamp_entry {
+    unsigned short version;     /* numéro de version */
+    unsigned short size;        /* taille de l'enregistrement */
+    unsigned short type;        /* TS_GLOBAL, TS_TTY, TS_PPID */
+    unsigned short flags;       /* TS_DISABLED, TS_ANYUID */
+    uid_t auth_uid;             /* uid à authentifier en tant que */
+    pid_t sid;                  /* identifiant de session associé à tty/ppid */
+    struct timespec start_time; /* démarrage de la session/ppid */
+    struct timespec ts;         /* horodatage (CLOCK_MONOTONIC) */
+    union {
+        dev_t ttydev;           /* numéro de périphérique tty */
+        pid_t ppid;             /* pid parent */
+    } u;
+};</pre>
+</div>
+<p class="Pp">Les champs de la structure timestamp_entry sont les suivants :</p>
+<dl class="Bl-tag">
+  <dt>version</dt>
+  <dd>Le numéro de version de la structure timestamp_entry. De nouvelles entrées sont créées avec le numéro de version 2. Les enregistrements avec des numéros de version différents peuvent coexister dans le même fichier mais ne sont pas interopérables.</dd>
+  <dt>size</dt>
+  <dd>La taille de l'enregistrement en octets.</dd>
+  <dt>type</dt>
+  <dd>Le type d'enregistrement, actuellement <code class="Dv">TS_GLOBAL</code>,
+      <code class="Dv">TS_TTY</code>, ou <code class="Dv">TS_PPID</code>.</dd>
+  <dt>flags</dt>
+  <dd>Zéro ou plusieurs indicateurs d'enregistrement qui peuvent être combinés par un OU bit à bit. Les indicateurs pris en charge sont <code class="Dv">TS_DISABLED</code>, pour les enregistrements désactivés via <code class="Nm">sudo</code> <code class="Fl">-k</code> et <code class="Dv">TS_ANYUID</code>, qui est utilisé uniquement lors de la comparaison des enregistrements.</dd>
+  <dt id="rootpw">auth_uid</dt>
+  <dd>L'identifiant utilisateur qui a été utilisé pour l'authentification. Selon la valeur des options <a class="permalink" href="#rootpw"><i class="Em">rootpw</i></a>, <a class="permalink" href="#runaspw"><i class="Em" id="runaspw">runaspw</i></a> et <i class="Em">targetpw</i>, l'identifiant utilisateur peut être celui de l'utilisateur appelant, de l'utilisateur root, de l'utilisateur runas par défaut ou de l'utilisateur cible.</dd>
+  <dt>sid</dt>
+  <dd>L'identifiant de la session du terminal de l'utilisateur, le cas échéant. L'identifiant de session n'est utilisé que lors de la comparaison des enregistrements de type <code class="Dv">TS_TTY</code>.</dd>
+  <dt>start_time</dt>
+  <dd>L'heure de début du leader de session pour les enregistrements de type
+      <code class="Dv">TS_TTY</code> ou du processus parent pour les enregistrements de type <code class="Dv">TS_PPID</code>. Le champ <i class="Em">start_time</i> est utilisé pour aider à prévenir la réutilisation d'un enregistrement d'horodatage après la déconnexion d'un utilisateur. Tous les systèmes ne prennent pas en charge une méthode pour récupérer facilement l'heure de début d'un processus. Le champ <i class="Em">start_time</i> a été ajouté dans la version <code class="Nm">sudoers</code> 1.8.22 pour la deuxième révision de la structure timestamp_entry.</dd>
+  <dt>ts</dt>
+  <dd>L'horodatage réel. Une source de temps monotone (qui ne recule pas) est utilisée si le système la prend en charge. Dans la mesure du possible, <code class="Nm">sudoers</code> utilise un minuteur monotone qui s'incrémente même lorsque le système est suspendu. La valeur de <i class="Em">ts</i> est mise à jour chaque fois qu'une commande est exécutée via <code class="Nm">sudo</code>. Si la différence entre <i class="Em">ts</i> et l'heure actuelle est inférieure à la valeur de l'option <i class="Em">timestamp_timeout</i>, aucun mot de passe n'est requis.</dd>
+  <dt>u.ttydev</dt>
+  <dd>Le numéro de périphérique du terminal associé à la session pour les enregistrements de type <code class="Dv">TS_TTY</code>.</dd>
+  <dt>u.ppid</dt>
+  <dd>L'identifiant du processus parent pour les enregistrements de type
+      <code class="Dv">TS_PPID</code>.</dd>
+</dl>
+<p class="Pp" id="sudoers">L'utilitaire <code class="Nm">tsdump</code>, inclus dans la distribution source de sudo, peut être utilisé pour afficher le contenu d'un fichier d'horodatage <a class="permalink" href="#sudoers"><i class="Em">sudoers</i></a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERROUILLAGE'><a class='permalink' href='#VERROUILLAGE'>VERROUILLAGE</a></h1>
+<p class="Pp">Dans les versions de <code class="Nm">sudoers</code> 1.8.10 à 1.8.14, l'ensemble du fichier d'horodatage était verrouillé pour un accès exclusif lors de la lecture ou de l'écriture dans le fichier. À partir de <code class="Nm">sudoers</code> 1.8.15, les enregistrements individuels sont verrouillés dans le fichier d'horodatage au lieu du fichier entier, et le verrou est maintenu pendant une période plus longue. Ce système est décrit ci-dessous.</p>
+<p class="Pp" id="lock">Le premier enregistrement dans le fichier d'horodatage est de type <code class="Dv">TS_LOCKEXCL</code> et est utilisé comme enregistrement de <a class="permalink" href="#lock"><i class="Em">verrouillage</i></a> pour empêcher plus d'un processus <code class="Nm">sudo</code> d'ajouter un nouvel enregistrement en même temps. Une fois l'enregistrement d'horodatage souhaité trouvé ou créé (et verrouillé), l'enregistrement <code class="Dv">TS_LOCKEXCL</code> est déverrouillé. Le verrou sur l'enregistrement d'horodatage individuel, cependant, est maintenu jusqu'à ce que l'authentification soit terminée. Cela permet à <code class="Nm">sudoers</code> d'éviter de demander un mot de passe plusieurs fois lorsqu'il est utilisé plus d'une fois dans un pipeline.</p>
+<p class="Pp">Les enregistrements de type <code class="Dv">TS_GLOBAL</code> ne peuvent pas être verrouillés pendant une longue période, car cela interférerait avec d'autres processus <code class="Nm">sudo</code>. Au lieu de cela, un enregistrement de verrouillage distinct est utilisé pour empêcher plusieurs processus <code class="Nm">sudo</code> utilisant le même terminal (ou le même ID de processus parent) de demander un mot de passe en même temps.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a class="Xr" href="/man/sudoers.5.fr">sudoers(5)</a>,
+    <a class="Xr" href="/man/sudo.8.fr">sudo(8)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTORIQUE'><a class='permalink' href='#HISTORIQUE'>HISTORIQUE</a></h1>
+<p class="Pp">À l'origine, <code class="Nm">sudo</code> utilisait un seul fichier de longueur nulle par utilisateur et l'heure de modification du fichier servait d'horodatage. Les versions ultérieures de <code class="Nm">sudo</code> ont ajouté des restrictions sur la propriété des fichiers d'horodatage et du répertoire, ainsi que des vérifications sur la validité de l'horodatage lui-même. Des modifications notables ont été introduites dans les versions suivantes de <code class="Nm">sudo</code> :</p>
+<dl class="Bl-tag">
+  <dt>1.4.0</dt>
+  <dd>La prise en charge des fichiers d'horodatage basés sur tty a été ajoutée en ajoutant le nom du terminal au nom du fichier d'horodatage.</dd>
+  <dt>1.6.2</dt>
+  <dd>Le fichier d'horodatage a été remplacé par un répertoire par utilisateur qui contenait tous les fichiers d'horodatage basés sur tty.</dd>
+  <dt>1.6.3p2</dt>
+  <dd>Le nom de l'utilisateur cible a été ajouté au nom du fichier d'horodatage lorsque l'option <i class="Em">targetpw</i> était définie.</dd>
+  <dt>1.7.3</dt>
+  <dd>Des informations sur le périphérique du terminal ont été stockées dans les fichiers d'horodatage basés sur tty pour des vérifications de validité. Cela incluait les numéros de périphérique du terminal, le numéro d'inode et, sur les systèmes où il n'était pas mis à jour lors de l'écriture sur le périphérique, l'heure de modification de l'inode. Cela a contribué à empêcher la réutilisation du fichier d'horodatage après la déconnexion.</dd>
+  <dt>1.8.6p7</dt>
+  <dd>L'identifiant de session du terminal a été ajouté aux fichiers d'horodatage basés sur tty pour empêcher la réutilisation de l'horodatage par le même utilisateur dans une session de terminal différente. Cela a également contribué à empêcher la réutilisation du fichier d'horodatage sur les systèmes où l'heure de modification du périphérique de terminal était mise à jour par écriture.</dd>
+  <dt>1.8.10</dt>
+  <dd>Un nouveau format de fichier d'horodatage multi-enregistrements a été introduit, qui utilise un seul fichier par utilisateur. L'heure de modification du périphérique de terminal n'a pas été incluse car la plupart des systèmes mettent maintenant à jour l'heure de modification</dd>
+</dl>
+</section>
+</div>
+</section>
+
+            </article>
+            <aside id="content-right">
+                
+            </aside>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="generator" content="mandoc 1.30.7">
+        <title>sudoers_timestamp(5) — sudo</title>
+        <link rel="stylesheet" href="/css/style.css">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Nm">sudoers_timestamp — sudo timestamp file format</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">The <code class="Nm">sudo</code> utility uses a timestamp file to
+    allow users to run multiple commands with privileges without having to
+    re-enter their password. This file is a text file containing a list of
+    privileged command usage time stamps. The format of the timestamp file is
+    detailed below.</p>
+<p class="Pp">The timestamp file is usually located in <code class="Pc">/var/run/sudo/ts/</code>,
+    but this can be overridden by the <code class="Fl">--timestampdir</code> option
+    when compiling <code class="Nm">sudo</code>, or by setting the <code class="Ev">SUDO_TIMESTAMPDIR</code>
+    environment variable.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LOCKING'><a class='permalink' href='#LOCKING'>LOCKING</a></h1>
+<p class="Pp">The timestamp file is protected by a lock file, typically
+    <code class="Pc">/var/run/sudo/ts/ts.lock</code>. This lock file is used to
+    prevent race conditions when multiple <code class="Nm">sudo</code> processes
+    access the same timestamp file.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE ALSO</a></h1>
+<p class="Pp">sudoers(5), sudo.conf(5), sudo(8)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTORY'><a class='permalink' href='#HISTORY'>HISTORY</a></h1>
+<dl class="Bl-tag">
+      <dt>1.8.10</dt>
+      <dd>The timestamp file is created with <code class="Nm">0600</code> mode
+          after a write is performed
+          as required by POSIX.</dd>
+      <dt>1.8.15</dt>
+      <dd>Individual records are locked in the time stamp file instead of the entire
+          file and the lock is held until authentication is complete.</dd>
+      <dt>1.8.22</dt>
+      <dd>The start time of the terminal session leader or parent process is now
+          stored in non-global time stamp records. This prevents reuse of the time
+          stamp file after logout in most cases.
+        <p class="Pp">Support was added for the kernel-based tty time stamps
+            available in <span class="Ux">OpenBSD</span> which do not use an on-disk
+            time stamp file.</p>
+      </dd>
+      <dt>1.9.15</dt>
+      <dd>Time stamp file path names are now based on the invoking user-ID instead
+          of the user name. This avoids problems with user names that include a path
+          separator character.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTHORS</a></h1>
+<p class="Pp">Many people have worked on <code class="Nm">sudo</code> over the
+    years; this version consists of code written primarily by:</p>
+<div class="Bd Pp Bd-indent"><span class="An">Todd C. Miller</span></div>
+<p class="Pp">See the Contributors.md file in the <code class="Nm">sudo</code>
+    distribution (<a href='https://www.sudo.ws/about/contributors/'>https://www.sudo.ws/about/contributors/</a>) for an exhaustive
+    list of people who have contributed to <code class="Nm">sudo</code>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BUGS</a></h1>
+<p class="Pp">If you believe you have found a bug in
+    <code class="Nm">sudoers_timestamp</code>, you can either file a bug report
+    in the sudo bug database, <a href='https://bugzilla.sudo.ws/'>https://bugzilla.sudo.ws/</a>, or open an issue at
+    <a href='https://github.com/sudo-project/sudo/issues'>https://github.com/sudo-project/sudo/issues</a>. If you would prefer to use
+    email, messages may be sent to the sudo-workers mailing list,
+    <a href='https://www.sudo.ws/mailman/listinfo/sudo-workers'>https://www.sudo.ws/mailman/listinfo/sudo-workers</a> (public) or
+    &lt;sudo@sudo.ws&gt; (private).</p>
+<p class="Pp">Please do not report security vulnerabilities through public
+    GitHub issues, Bugzilla or mailing lists. Instead, report them via email to
+    &lt;Todd.Miller@sudo.ws&gt;. You may encrypt your message with PGP if you
+    would like, using the key found at <a href='https://www.sudo.ws/dist/PGPKEYS'>https://www.sudo.ws/dist/PGPKEYS</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SUPPORT'><a class='permalink' href='#SUPPORT'>SUPPORT</a></h1>
+<p class="Pp">Limited free support is available via the sudo-users mailing list,
+    see <a href='https://www.sudo.ws/mailman/listinfo/sudo-users'>https://www.sudo.ws/mailman/listinfo/sudo-users</a> to subscribe or search
+    the archives.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DISCLAIMER'><a class='permalink' href='#DISCLAIMER'>DISCLAIMER</a></h1>
+<p class="Pp"><code class="Nm">sudo</code> is provided &#x201C;AS IS&#x201D; and
+    any express or implied warranties, including, but not limited to, the
+    implied warranties of merchantability and fitness for a particular purpose
+    are disclaimed. See the LICENSE.md file distributed with
+    <code class="Nm">sudo</code> or <a href='https://www.sudo.ws/about/license/'>https://www.sudo.ws/about/license/</a> for
+    complete details.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">November 26, 2023</td>
+    <td class="foot-os">Sudo 1.9.17p2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/sudo/">core/sudo</a></dd>
+        <dt>Version:</dt>
+        <dd>1.9.17.p2-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.sudo.ws/sudo/">https://www.sudo.ws/sudo/</a></dd>
+        <dt>Licenses:</dt>
+        <dd>custom</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/core/sudo/">/listing/core/sudo/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#LOCKING">LOCKING</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#HISTORY">HISTORY</a></li>
+        
+            <li><a href="#AUTHORS">AUTHORS</a></li>
+        
+            <li><a href="#BUGS">BUGS</a></li>
+        
+            <li><a href="#SUPPORT">SUPPORT</a></li>
+        
+            <li><a href="#DISCLAIMER">DISCLAIMER</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/sudoers_timestamp.5.en.txt">txt</a>, 
+        
+            <a href="/man/sudoers_timestamp.5.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

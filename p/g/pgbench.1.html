@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pgbench(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pgbench(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/postgresql/">postgresql</a></p>
+<p class="lic">Licences: PostgreSQL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PGBENCH(1)</td>
+    <td class="head-vol">Documentation PostgreSQL 18.1</td>
+    <td class="head-rtitle">PGBENCH(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pgbench - exécute un test de référence sur PostgreSQL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp HP"><b>pgbench</b> <b>-i</b> [<i>option</i>...] [<i>dbname</i>]</p>
+<p class="Pp HP"><b>pgbench</b> [<i>option</i>...] [<i>dbname</i>]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pgbench est un programme simple pour exécuter des tests de référence sur
+    PostgreSQL. Il exécute la même séquence de commandes SQL encore et encore,
+    éventuellement dans plusieurs sessions de base de données concurrentes, puis
+    calcule le taux de transactions moyen (transactions par seconde). Par défaut, pgbench
+    teste un scénario basé vaguement sur TPC-B, impliquant cinq commandes
+    <b>SELECT</b>, <b>UPDATE</b> et <b>INSERT</b> par transaction. Cependant, il est facile de tester d'autres cas en écrivant vos propres fichiers de script de transaction.</p>
+<p class="Pp">Une sortie typique de pgbench ressemble à ceci :</p>
+<div class="Bd-indent">
+<pre>type de transaction : &lt;intégré : TPC-B (en quelque sorte)&gt;
+facteur d'échelle : 10
+mode de requête : simple
+nombre de clients : 10
+nombre de threads : 1
+nombre maximum d'essais : 1
+nombre de transactions par client : 1000
+nombre de transactions réellement traitées : 10000/10000
+nombre de transactions échouées : 0 (0.000%)
+latence moyenne = 11.013 ms
+écart type latence = 7.351 ms
+temps de connexion initial = 45.758 ms
+tps = 896.967014 (sans le temps de connexion initial)</pre>
+</div>
+<p class="Pp">Les sept premières lignes rapportent certains des paramètres les plus importants. La sixième ligne rapporte le nombre maximum d'essais pour les transactions avec des erreurs de sérialisation ou d'interblocage (voir Échecs et Retentatives de sérialisation/interblocage pour plus d'informations). La huitième ligne rapporte le nombre de transactions terminées et prévues (cette dernière étant simplement le produit du nombre de clients et du nombre de transactions par client) ; celles-ci seront égales sauf si l'exécution a échoué avant l'achèvement ou si une ou plusieurs commandes SQL ont échoué. (En mode <b>-T</b>, seul le nombre réel de transactions est imprimé.) La ligne suivante rapporte le nombre de transactions échouées en raison d'erreurs de sérialisation ou d'interblocage (voir Échecs et Retentatives de sérialisation/interblocage pour plus d'informations). La dernière ligne rapporte le nombre de transactions par seconde.</p>
+<p class="Pp">Le test de transaction par défaut de type TPC-B nécessite que des tables spécifiques soient configurées au préalable. pgbench doit être appelé avec l'option <b>-i</b> (initialiser) pour créer et remplir ces tables. (Lorsque vous testez un script personnalisé, vous n'avez pas besoin de cette étape, mais vous devrez plutôt effectuer la configuration nécessaire à votre test.) L'initialisation ressemble à ceci :</p>
+<div class="Bd-indent">
+<pre>pgbench -i [ <i>autres-options</i> ] <i>dbname</i></pre>
+</div>
+<p class="Pp">où <i>dbname</i> est le nom de la base de données déjà créée dans laquelle tester. (Vous pourriez également avoir besoin des options <b>-h</b>, <b>-p</b> et/ou <b>-U</b> pour spécifier comment se connecter au serveur de base de données.)</p>
+<div class="Bd-indent">
+<br/>
+<b>Attention</b>
+<br/>
+<p class="Pp">pgbench -i crée quatre tables pgbench_accounts, pgbench_branches,
+    pgbench_history et pgbench_tellers, détruisant toute table existante portant ces noms. Soyez très prudent pour utiliser une autre base de données si vous avez des tables portant ces noms !</p>
+</div>
+<p class="Pp">Avec le &#x201C;facteur d'échelle&#x201D; par défaut de 1, les tables contiennent initialement ce nombre de lignes :</p>
+<div class="Bd-indent">
+<pre>table                   # de lignes
+---------------------------------
+pgbench_branches        1
+pgbench_tellers         10
+pgbench_accounts        100000
+pgbench_history         0</pre>
+</div>
+<p class="Pp">Vous pouvez (et, pour la plupart des usages, vous devriez probablement) augmenter le nombre de lignes en utilisant l'option <b>-s</b> (facteur d'échelle). L'option <b>-F</b> (fillfactor) peut également être utilisée à ce moment.</p>
+<p class="Pp">Une fois que vous avez effectué la configuration nécessaire, vous pouvez exécuter votre référence avec une commande qui n'inclut pas <b>-i</b>, c'est-à-dire</p>
+<div class="Bd-indent">
+<pre>pgbench [ <i>options</i> ] <i>dbname</i></pre>
+</div>
+<p class="Pp">Dans presque tous les cas, vous aurez besoin de certaines options pour effectuer un test utile. Les options les plus importantes sont <b>-c</b> (nombre de clients),
+    <b>-t</b> (nombre de transactions), <b>-T</b> (limite de temps) et <b>-f</b>
+    (spécifier un fichier script personnalisé). Voir ci-dessous pour une liste complète.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">Ce qui suit est divisé en trois sous-sections. Différentes options sont utilisées pendant l'initialisation de la base de données et lors de l'exécution des tests de référence, mais certaines options sont utiles dans les deux cas.</p>
+<section class="Ss">
+<h2 class="Ss" id='Options_d_initialisation'><a class='permalink' href='#Options_d_initialisation'>Options d'initialisation</a></h2>
+<p class="Pp">pgbench accepte les arguments d'initialisation en ligne de commande suivants :</p>
+<p class="Pp"><b>[-d]</b><b> </b><b></b><i>dbname</i>
+  <br/>
+  <b>[--dbname=]</b><b></b><i>dbname</i></p>
+<div class="Bd-indent">Spécifie le nom de la base de données dans laquelle tester. Si cela n'est pas spécifié, la variable d'environnement <b>PGDATABASE</b> est utilisée. Si celle-ci n'est pas définie, le nom d'utilisateur spécifié pour la connexion est utilisé.</div>
+<p class="Pp"><b>-i</b>
+  <br/>
+  <b>--initialize</b></p>
+<div class="Bd-indent">Requis pour invoquer le mode d'initialisation.</div>
+<p class="Pp"><b>-I </b><b></b><i>init_steps</i>
+  <br/>
+  <b>--init-steps=</b><b></b><i>init_steps</i></p>
+<div class="Bd-indent">Effectue uniquement un ensemble sélectionné des étapes d'initialisation normales. <i>init_steps</i> spécifie les étapes d'initialisation à effectuer, en utilisant un caractère par étape. Chaque étape est invoquée dans l'ordre spécifié. Par défaut, dtgvp. Les étapes disponibles sont :
+<p class="Pp">d (Drop / Supprimer)</p>
+<div class="Bd-indent">Supprime toutes les tables pgbench existantes.</div>
+<p class="Pp">t (create Tables / Créer des tables)</p>
+<div class="Bd-indent">Crée les tables utilisées par le scénario pgbench standard, à savoir pgbench_accounts, pgbench_branches, pgbench_history et
+    pgbench_tellers.</div>
+<p class="Pp">g ou G (Generate data / Générer des données, côté client ou côté serveur)</p>
+<div class="Bd-indent">Génère des données et les charge dans les tables standard, en remplaçant toutes les données déjà présentes.
+<p class="Pp">Avec g (génération de données côté client), les données sont générées dans le client <b>pgbench</b> puis envoyées au serveur. Ceci utilise intensivement la bande passante client/serveur via un <b>COPY</b>. <b>pgbench</b> utilise l'option <b>FREEZE</b> pour charger les données dans des tables ordinaires (non partitionnées) avec les versions 14 ou ultérieures de PostgreSQL afin d'accélérer le <b>VACUUM</b> ultérieur. L'utilisation de g provoque l'impression d'un message par 100 000 lignes lors de la génération de données pour toutes les tables.</p>
+<p class="Pp">Avec G (génération de données côté serveur), seules de petites requêtes sont envoyées depuis le client <b>pgbench</b> et les données sont ensuite effectivement générées dans le serveur. Aucune bande passante significative n'est requise pour cette variante, mais le serveur effectuera plus de travail. L'utilisation de G empêche l'impression de message de progression lors de la génération de données.</p>
+<p class="Pp">Le comportement d'initialisation par défaut utilise la génération de données côté client (équivalent à g).</p>
+</div>
+<p class="Pp">v (Vacuum / Vidage)</p>
+<div class="Bd-indent">Invoque <b>VACUUM</b> sur les tables standard.</div>
+<p class="Pp">p (create Primary keys / Créer des clés primaires)</p>
+<div class="Bd-indent">Crée des index de clé primaire sur les tables standard.</div>
+<p class="Pp">f (create Foreign keys / Créer des clés étrangères)</p>
+<div class="Bd-indent">Crée des contraintes de clé étrangère entre les tables standard. (Notez que cette étape n'est pas effectuée par défaut.)</div>
+</div>
+<p class="Pp"><b>-F</b> <i>fillfactor</i>
+  <br/>
+  <b>--fillfactor=</b><i>fillfactor</i></p>
+<div class="Bd-indent">Crée les tables pgbench_accounts, pgbench_tellers et
+  pgbench_branches avec le fillfactor donné. Par défaut, il est de 100.</div>
+<p class="Pp"><b>-n</b>
+  <br/>
+  <b>--no-vacuum</b></p>
+<div class="Bd-indent">N'effectue aucun vidage lors de l'initialisation. (Cette option supprime l'étape d'initialisation v, même si elle a été spécifiée dans
+    <b>-I</b>.)</div>
+<p class="Pp"><b>-q</b>
+  <br/>
+  <b>--quiet</b></p>
+<div class="Bd-indent">Passe le mode de journalisation en mode silencieux, produisant un seul message de progression toutes les 5 secondes. La journalisation par défaut imprime un message par 100 000 lignes, ce qui produit souvent de nombreuses lignes par seconde (surtout sur du bon matériel).
+<p class="Pp">Ce réglage n'a aucun effet si G est spécifié dans <b>-I</b>.</p>
+</div>
+<p class="Pp"><b>-s</b> <i>scale_factor</i>
+  <br/>
+  <b>--scale=</b><i>scale_factor</i></p>
+<div class="Bd-indent">Multiplie le nombre de lignes générées par le facteur d'échelle. Par exemple, -s 100 créera 10 000 000 de lignes dans la table
+  pgbench_accounts. Par défaut, il est de 1. Lorsque l'échelle est de 20 000 ou plus, les colonnes utilisées pour stocker les identifiants de compte (colonnes aid) passeront à l'utilisation d'entiers plus grands (bigint), afin d'être suffisamment grands pour contenir la plage des identifiants de compte.</div>
+<p class="Pp"><b>--foreign-keys</b></p>
+<div class="Bd-indent">Crée des contraintes de clé étrangère entre les tables standard. (Cette option ajoute l'étape f à la séquence des étapes d'initialisation, si elle n'est pas déjà présente.)</div>
+<p class="Pp"><b>--index-tablespace=</b><b></b><i>index_tablespace</i></p>
+<div class="Bd-indent">Crée des index dans l'espace de table spécifié, plutôt que dans l'espace de table par défaut.</div>
+<p class="Pp"><b>--partition-method=</b><b></b><i>NAME</i></p>
+<div class="Bd-indent">Crée une table pgbench_accounts partitionnée avec la méthode <i>NAME</i>. Les valeurs attendues sont range ou hash. Cette option nécessite que <b>--partitions</b> soit défini sur</div>
+</section>
+</div>
+</section>
+</article>
+        </main>
+    </body>
+</html>
+ non nul. Si non spécifié, la valeur par défaut est
+  plage.</div>
+<p class="Pp"><b>--partitions=</b><b></b><i>NUM</i></p>
+<div class="Bd-indent">Crée une table pgbench_accounts partitionnée avec
+  <i>NUM</i> partitions de taille quasi égale pour le nombre d'éléments mis à l'échelle.
+  La valeur par défaut est 0, ce qui signifie aucune partition.</div>
+<p class="Pp"><b>--tablespace=</b><b></b><i>tablespace</i></p>
+<div class="Bd-indent">Crée les tables dans le tablespace spécifié, plutôt que dans le
+  tablespace par défaut.</div>
+<p class="Pp"><b>--unlogged-tables</b></p>
+<div class="Bd-indent">Crée toutes les tables en tant que tables non enregistrées (unlogged), plutôt que des tables permanentes.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Options_de_benchmarking'><a class='permalink' href='#Options_de_benchmarking'>Options de benchmarking</a></h2>
+<p class="Pp">pgbench accepte les arguments de ligne de commande de benchmarking suivants :</p>
+<p class="Pp"><b>-b</b> <i>nom_script[@poids]</i>
+  <br/>
+  <b>--builtin</b>=<i>nom_script[@poids]</i></p>
+<div class="Bd-indent">Ajoute le script intégré spécifié à la liste des scripts à exécuter. Les scripts intégrés disponibles sont : tpcb-like, simple-update et select-only. Les préfixes non ambigus des noms intégrés sont acceptés. Avec le nom spécial list, affiche la liste des scripts intégrés et quitte immédiatement.
+<p class="Pp">Optionnellement, écrivez un entier de poids après @ pour ajuster la probabilité de sélectionner ce script par rapport aux autres. Le poids par défaut est 1. Voir ci-dessous pour plus de détails.</p>
+</div>
+<p class="Pp"><b>-c</b> <i>clients</i>
+  <br/>
+  <b>--client=</b><i>clients</i></p>
+<div class="Bd-indent">Nombre de clients simulés, c'est-à-dire le nombre de sessions de base de données concurrentes. La valeur par défaut est 1.</div>
+<p class="Pp"><b>-C</b>
+  <br/>
+  <b>--connect</b></p>
+<div class="Bd-indent">Établit une nouvelle connexion pour chaque transaction, plutôt que de le faire une seule fois par session client. Ceci est utile pour mesurer la surcharge de connexion.</div>
+<p class="Pp"><b>-D</b> <i>varname</i>=<i>valeur</i>
+  <br/>
+  <b>--define=</b><i>varname</i>=<i>valeur</i></p>
+<div class="Bd-indent">Définit une variable à utiliser par un script personnalisé (voir ci-dessous). Plusieurs options <b>-D</b> sont autorisées.</div>
+<p class="Pp"><b>-f</b> <i>nom_fichier[@poids]</i>
+  <br/>
+  <b>--file=</b><i>nom_fichier[@poids]</i></p>
+<div class="Bd-indent">Ajoute un script de transaction lu depuis <i>nom_fichier</i> à la liste des scripts à exécuter.
+<p class=" Pp">Optionnellement, écrivez un entier de poids après @ pour ajuster la probabilité de sélectionner ce script par rapport aux autres. Le poids par défaut est 1. (Pour utiliser un nom de fichier de script incluant un caractère @, ajoutez un poids afin qu'il n'y ait aucune ambiguïté, par exemple filen@me@1.) Voir ci-dessous pour plus de détails.</p>
+</div>
+<p class="Pp"><b>-j</b> <i>threads</i>
+  <br/>
+  <b>--jobs=</b><i>threads</i></p>
+<div class="Bd-indent">Nombre de threads de travail dans pgbench. L'utilisation de plus d'un thread peut être utile sur les machines multi-CPU. Les clients sont distribués aussi uniformément que possible entre les threads disponibles. La valeur par défaut est 1.</div>
+<p class="Pp"><b>-l</b>
+  <br/>
+  <b>--log</b></p>
+<div class="Bd-indent">Écrit des informations sur chaque transaction dans un fichier journal. Voir ci-dessous pour plus de détails.</div>
+<p class="Pp"><b>-L</b> <i>limite</i>
+  <br/>
+  <b>--latency-limit=</b><i>limite</i></p>
+<div class="Bd-indent">Les transactions qui durent plus de <i>limite</i> millisecondes sont comptées et signalées séparément, comme étant en retard.
+<p class="Pp">Lorsqu'une limitation est utilisée (<b>--rate=...</b>), les transactions qui prennent du retard par rapport à la planification de plus de <i>limite</i> ms, et qui n'ont donc aucun espoir d'atteindre la limite de latence, ne sont pas envoyées au serveur. Elles sont comptées et signalées séparément comme ignorées.</p>
+<p class="Pp">Lorsque l'option <b>--max-tries</b> est utilisée, une transaction qui échoue en raison d'une anomalie de sérialisation ou d'un interblocage ne sera pas retentée si le temps total de toutes ses tentatives est supérieur à <i>limite</i> ms. Pour limiter uniquement le temps des tentatives et non leur nombre, utilisez --max-tries=0. Par défaut, l'option <b>--max-tries</b> est définie sur 1 et les transactions avec des erreurs de sérialisation/interblocage ne sont pas retentées. Voir Échecs et Réessais de sérialisation/interblocage pour plus d'informations sur la réessai de telles transactions.</p>
+</div>
+<p class="Pp"><b>-M</b> <i>mode_requete</i>
+  <br/>
+  <b>--protocol=</b><i>mode_requete</i></p>
+<div class="Bd-indent">Protocole à utiliser pour soumettre les requêtes au serveur :
+<div class="Bd-indent">&#x2022;simple : utilise le protocole de requête simple.</div>
+<div class="Bd-indent">&#x2022;extended : utilise le protocole de requête étendu.</div>
+<div class="Bd-indent">&#x2022;prepared : utilise le protocole de requête étendu avec des instructions préparées.</div>
+<p class="Pp">En mode préparé, pgbench réutilise le résultat de l'analyse syntaxique à partir de la deuxième itération de requête, donc pgbench s'exécute plus rapidement que dans les autres modes.</p>
+<p class="Pp">La valeur par défaut est le protocole de requête simple. (Voir Chapitre 54 pour plus d'informations.)</p>
+</div>
+<p class="Pp"><b>-n</b>
+  <br/>
+  <b>--no-vacuum</b></p>
+<div class="Bd-indent">Ne pas effectuer de vacuum avant d'exécuter le test. Cette option est *nécessaire* si vous exécutez un scénario de test personnalisé qui n'inclut pas les tables standard pgbench_accounts, pgbench_branches, pgbench_history et pgbench_tellers.</div>
+<p class="Pp"><b>-N</b>
+  <br/>
+  <b>--skip-some-updates</b></p>
+<div class="Bd-indent">Exécute le script intégré simple-update. Raccourci pour <b>-b simple-update</b>.</div>
+<p class="Pp"><b>-P</b> <i>sec</i>
+  <br/>
+  <b>--progress=</b><i>sec</i></p>
+<div class="Bd-indent">Affiche le rapport de progression toutes les <i>sec</i> secondes. Le rapport comprend le temps écoulé depuis le début de l'exécution, le TPS depuis le dernier rapport, et la latence moyenne des transactions, l'écart type, et le nombre de transactions échouées depuis le dernier rapport. Sous limitation (<b>-R</b>), la latence est calculée par rapport à l'heure de début prévue de la transaction, et non à l'heure de début réelle de la transaction, elle inclut donc également le temps de décalage moyen de la planification. Lorsque <b>--max-tries</b> est utilisé pour activer les réessais de transactions après des erreurs de sérialisation/interblocage, le rapport inclut le nombre de transactions retentées et la somme de tous les réessais.</div>
+<p class="Pp"><b>-r</b>
+  <br/>
+  <b>--report-per-command</b></p>
+<div class="Bd-indent">Rapporte les statistiques suivantes pour chaque commande après la fin du benchmark : la latence moyenne par instruction (temps d'exécution du point de vue du client), le nombre d'échecs, et le nombre de réessais après des erreurs de sérialisation ou d'interblocage pour cette commande. Le rapport affiche les statistiques de réessai uniquement si l'option <b>--max-tries</b> n'est pas égale à 1.</div>
+<p class="Pp"><b>-R</b> <i>taux</i>
+  <br/>
+  <b>--rate=</b><i>taux</i></p>
+<div class="Bd-indent">Exécute les transactions en visant le taux spécifié au lieu de s'exécuter aussi vite que possible (par défaut). Le taux est donné en transactions par seconde. Si le taux cible est supérieur au taux maximum possible, la limite de taux n'aura pas d'impact sur les résultats.
+<p class="Pp">Le taux est ciblé en démarrant les transactions le long d'une ligne de temps de planification distribuée selon Poisson. L'heure de début prévue avance en fonction du moment où le client a commencé pour la première fois, et non du moment où la transaction précédente s'est terminée. Cette approche signifie que lorsque les transactions dépassent leur heure de fin initialement prévue, il est possible que des transactions ultérieures les rattrapent à nouveau.</p>
+<p class="Pp">Lorsque la limitation est active, la latence de transaction signalée à la fin de l'exécution est calculée à partir des heures de début prévues, elle inclut donc le temps que chaque transaction a dû attendre que la transaction précédente se termine. Le temps d'attente est appelé temps de décalage de planification, et sa moyenne et son maximum sont également signalés séparément. La latence de transaction par rapport à l'heure de début réelle de la transaction, c'est-à-dire le temps passé à exécuter la transaction dans la base de données, peut être calculée en soustrayant le temps de décalage de planification de la latence signalée.</p>
+<p class="Pp">Si <b>--latency-limit</b> est utilisé avec <b>--rate</b>, une transaction peut prendre tellement de retard qu'elle dépasse déjà la limite de latence à la fin de la transaction précédente, car la latence est calculée à partir des heures de début prévues. De telles transactions ne sont pas envoyées au serveur, mais sont complètement ignorées et comptées séparément.</p>
+<p class="Pp">Un temps de décalage de planification élevé indique que le système ne peut pas traiter les transactions au taux spécifié, avec le nombre de clients et de threads choisi. Lorsque le temps d'exécution moyen des transactions est plus long que l'intervalle prévu entre chaque transaction, chaque transaction successive prendra de plus en plus de retard, et le temps de décalage de planification augmentera de plus en plus pendant l'exécution du test. Lorsque cela se produit, vous devrez réduire le taux de transaction spécifié.</p>
+</div>
+<p class="Pp"><b>-s</b> <i>facteur_echelle</i>
+  <br/>
+  <b>--scale=</b><i>facteur_echelle</i></p>
+<div class="Bd-indent">Rapporte le facteur d'échelle spécifié dans la sortie de pgbench. Avec les tests intégrés, cela n'est pas nécessaire ; le facteur d'échelle correct sera détecté en comptant le nombre de lignes dans la table pgbench_branches. Cependant, lors du test uniquement des benchmarks personnalisés (option <b>-f</b>), le facteur d'échelle sera rapporté comme 1 sauf si cette option est utilisée.</div>
+<p class="Pp"><b>-S</b>
+  <br/>
+  <b>--select-only</b></p>
+<div class="Bd-indent">Exécute le script intégré select-only. Raccourci pour <b>-b select-only</b>.</div>
+<p class="Pp"><b>-t</b> <i>transactions</i>
+  <br/>
+  <b>--transactions=</b><i>transactions</i></p>
+<div class="Bd-indent">Nombre de transactions que chaque client exécute. La valeur par défaut est 10.</div>
+<p class="Pp"><b>-T</b> <i>secondes</i>
+  <br/>
+  <b>--time=</b><i>secondes</i></p>
+<div class="Bd-indent">Exécute le test pendant ce nombre de secondes, plutôt qu'un nombre fixe de transactions par client. <b>-t</b> et <b>-T</b> sont mutuellement exclusifs.</div>
+<p class="Pp"><b>-v</b>
+  <br/>
+  <b>--vacuum-all</b></p>
+<div class="Bd-indent">Applique un vacuum sur les quatre tables standard avant d'exécuter le test. Sans <b>-n</b> ni <b>-v</b>, pgbench appliquera un vacuum sur les tables pgbench_tellers et pgbench_branches, et tronquera pgbench_history.</div>
+<p class="Pp"><b>--aggregate-interval=</b><b></b><i>secondes</i></p>
+<div class="Bd-indent">Durée de l'intervalle d'agrégation (en secondes). Peut être utilisé uniquement avec l'option <b>-l</b>. Avec cette option, le journal contient des données récapitulatives par intervalle, comme décrit ci-dessous.</div>
+<p class="Pp"><b>--exit-on-abort</b></p>
+<div class="Bd-indent">Quitte immédiatement lorsqu'un client est avorté en raison d'une erreur. Sans cette option, même lorsqu'un client est avorté, d'autres clients peuvent continuer leur exécution comme spécifié par l'option <b>-t</b> ou <b>-T</b>, et pgbench affichera dans ce cas des résultats incomplets.
+<p class="Pp">Notez que les échecs de sérialisation ou d'interblocage n'avortent pas le client, ils ne sont donc pas affectés par cette option. Voir Échecs et Réessais de sérialisation/interblocage pour plus d'informations.</p>
+</div>
+<p class="Pp"><b>--failures-detailed</b></p>
+<div class="Bd-indent">Rapporte les échecs dans les journaux par transaction et agrégés, ainsi que dans les rapports principaux et par script, regroupés par les types suivants :
+<div class="Bd-indent">&#x2022;échecs de sérialisation ;</div>
+<div class="Bd-indent">&#x2022;échecs d'interblocage ;</div>
+<p class="Pp">Voir Échecs et Réessais de sérialisation/interblocage pour plus d'informations.</p>
+</div>
+<p class="Pp"><b>--log-prefix=</b><b></b><i>préfixe</i></p>
+<div class="Bd-indent">Définit le préfixe du nom de fichier pour les journaux créés par <b>--log</b>. La valeur par défaut est pgbench_log.</div>
+<p class="Pp"><b>--max-tries=</b><b></b><i>nombre_de_tentatives</i></p>
+<div class="Bd-indent">Active les réessais pour les transactions avec des erreurs de sérialisation/interblocage et définit le nombre maximum de ces tentatives. Cette option peut être combinée avec l'option <b>--latency-limit</b> qui limite le temps total de toutes les tentatives de transaction ; de plus, vous ne pouvez pas utiliser une valeur illimitée</div>
+d
+  nombre d'essais (--max-tries=0) sans <b>--latency-limit</b> ou
+  <b>--time</b>. La valeur par défaut est 1 et les transactions avec
+  des erreurs de sérialisation/interblocage ne sont pas retentées. Voir Échecs et
+  Réessais de sérialisation/interblocage pour plus d'informations sur le retentissement de ces
+  transactions.</div>
+<p class="Pp"><b>--progress-timestamp</b></p>
+<div class="Bd-indent">Lors de l'affichage de la progression (option <b>-P</b>), utiliser un horodatage
+  (époque Unix) au lieu du nombre de secondes depuis le début de l'exécution.
+  L'unité est en secondes, avec une précision milliseconde après le point. Ceci aide à comparer les journaux générés par divers outils.</div>
+<p class="Pp"><b>--random-seed=</b><i>graine</i></p>
+<div class="Bd-indent">Définir la graine du générateur aléatoire. Ensemence le générateur de nombres aléatoires du système, qui produit ensuite une séquence d'états générateurs initiaux, un pour chaque thread. Les valeurs pour <i>graine</i> peuvent être : time (la valeur par défaut, la graine est basée sur l'heure actuelle), rand (utiliser une source aléatoire forte, échouant si aucune n'est disponible), ou une valeur entière décimale non signée. Le générateur aléatoire est invoqué explicitement depuis un script pgbench (fonctions random...) ou implicitement (par exemple, l'option <b>--rate</b> l'utilise pour planifier les transactions). Lorsqu'elle est explicitement définie, la valeur utilisée pour l'ensemencement est affichée sur le terminal. Toute valeur autorisée pour <i>graine</i> peut également être fournie via la variable d'environnement PGBENCH_RANDOM_SEED. Pour s'assurer que la graine fournie impacte toutes les utilisations possibles, placez cette option en premier ou utilisez la variable d'environnement.
+<p class="Pp">Définir explicitement la graine permet de reproduire une exécution <b>pgbench</b> exactement, en ce qui concerne les nombres aléatoires. Comme l'état aléatoire est géré par thread, cela signifie que la même exécution <b>pgbench</b> pour une invocation identique si il y a un client par thread et qu'il n'y a pas de dépendances externes ou de données. D'un point de vue statistique, reproduire les exécutions exactement est une mauvaise idée car cela peut masquer la variabilité des performances ou améliorer indûment les performances, par exemple, en accédant aux mêmes pages qu'une exécution précédente. Cependant, cela peut aussi être d'une grande aide pour le débogage, par exemple, en rejouant un cas délicat qui conduit à une erreur. À utiliser judicieusement.</p>
+</div>
+<p class="Pp"><b>--sampling-rate=</b><b></b><i>taux</i></p>
+<div class="Bd-indent">Taux d'échantillonnage, utilisé lors de l'écriture des données dans le journal, pour réduire la quantité de journal générée. Si cette option est donnée, seule la fraction spécifiée de transactions est enregistrée. 1.0 signifie que toutes les transactions seront enregistrées, 0.05 signifie que seulement 5% des transactions seront enregistrées.
+<p class="Pp">N'oubliez pas de prendre en compte le taux d'échantillonnage lors du traitement du fichier journal. Par exemple, lors du calcul des valeurs TPS, vous devez multiplier les nombres en conséquence (par exemple, avec un taux d'échantillonnage de 0.01, vous n'obtiendrez que 1/100 des TPS réels).</p>
+</div>
+<p class="Pp"><b>--show-script=</b><i>nomscript</i></p>
+<div class="Bd-indent">Afficher le code réel du script intégré <i>nomscript</i> sur stderr, et quitter immédiatement.</div>
+<p class="Pp"><b>--verbose-errors</b></p>
+<div class="Bd-indent">Imprimer des messages sur toutes les erreurs et tous les échecs (erreurs sans retentissement) y compris quelle limite de retentissement a été dépassée et de combien elle a été dépassée pour les échecs de sérialisation/interblocage. (Notez que dans ce cas, la sortie peut être considérablement augmentée.) Voir Échecs et Réessais de sérialisation/interblocage pour plus d'informations.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Options_Communes'><a class='permalink' href='#Options_Communes'>Options   Communes</a></h2>
+<p class="Pp">pgbench accepte également les arguments de ligne de commande courants suivants pour les paramètres de connexion et autres réglages courants :</p>
+<p class="Pp"><b>--debug</b></p>
+<div class="Bd-indent">Imprimer la sortie de débogage.</div>
+<p class="Pp"><b>-h</b> <i>nomhote</i>
+  <br/>
+  <b>--host=</b><i>nomhote</i></p>
+<div class="Bd-indent">Le nom d'hôte du serveur de base de données</div>
+<p class="Pp"><b>-p</b> <i>port</i>
+  <br/>
+  <b>--port=</b><i>port</i></p>
+<div class="Bd-indent">Le numéro de port du serveur de base de données</div>
+<p class="Pp"><b>-U</b> <i>login</i>
+  <br/>
+  <b>--username=</b><i>login</i></p>
+<div class="Bd-indent">Le nom d'utilisateur pour se connecter</div>
+<p class="Pp"><b>-V</b>
+  <br/>
+  <b>--version</b></p>
+<div class="Bd-indent">Imprimer la version de pgbench et quitter.</div>
+<p class="Pp"><b>-?</b>
+  <br/>
+  <b>--help</b></p>
+<div class="Bd-indent">Afficher l'aide sur les arguments de la ligne de commande de pgbench, et quitter.</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='STATUT_DE_SORTIE'><a class='permalink' href='#STATUT_DE_SORTIE'>Statut   de Sortie</a></h1>
+<p class="Pp">Une exécution réussie se terminera avec le statut 0. Le statut de sortie 1 indique des problèmes statiques tels que des options de ligne de commande invalides ou des erreurs internes qui sont censées ne jamais se produire. Les erreurs précoces qui surviennent au démarrage du benchmark, comme les échecs de connexion initiaux, se terminent également avec le statut 1. Les erreurs pendant l'exécution, comme les erreurs de base de données ou les problèmes dans le script, entraîneront le statut de sortie 2. Dans ce dernier cas, pgbench affichera des résultats partiels si l'option <b>--exit-on-abort</b> n'est pas spécifiée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONNEMENT'><a class='permalink' href='#ENVIRONNEMENT'>Environnement</a></h1>
+<p class="Pp"><b>PGDATABASE</b>
+  <br/>
+  <b>PGHOST</b>
+  <br/>
+  <b>PGPORT</b>
+  <br/>
+  <b>PGUSER</b></p>
+<div class="Bd-indent">Paramètres de connexion par défaut.</div>
+<p class="Pp">Cet utilitaire, comme la plupart des autres utilitaires PostgreSQL, utilise les variables d'environnement prises en charge par libpq (voir Section&#x00A0;32.15).</p>
+<p class="Pp">La variable d'environnement <b>PG_COLOR</b> spécifie si faut utiliser la couleur dans les messages diagnostiques. Les valeurs possibles sont always, auto et
+  never.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>Notes</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Quelle_est_la_&#x201C;Transaction&#x201D;_réellement_effectuée_dans_pgbench_?'><a class='permalink' href='#Quelle_est_la_&#x201C;Transaction&#x201D;_réellement_effectuée_dans_pgbench_?'>Quelle   est la &#x201C;Transaction&#x201D; réellement effectuée dans pgbench ?</a></h2>
+<p class="Pp">pgbench exécute des scripts de test choisis aléatoirement parmi une liste spécifiée. Les scripts peuvent inclure des scripts intégrés spécifiés avec <b>-b</b> et des scripts fournis par l'utilisateur spécifiés avec <b>-f</b>. Chaque script peut se voir attribuer un poids relatif spécifié après un @ afin de modifier sa probabilité de sélection. Le poids par défaut est 1. Les scripts avec un poids de 0 sont ignorés.</p>
+<p class="Pp">Le script de transaction intégré par défaut (également appelé avec <b>-b tpcb-like</b>) émet sept commandes par transaction sur des aid, tid, bid et delta choisis aléatoirement. Le scénario est inspiré du benchmark TPC-B, mais n'est pas réellement TPC-B, d'où son nom.</p>
+<div class="Bd-indent"> 1.BEGIN;</div>
+<div class="Bd-indent"> 2.UPDATE pgbench_accounts SET abalance = abalance +
+  :delta WHERE aid = :aid;</div>
+<div class="Bd-indent"> 3.SELECT abalance FROM pgbench_accounts WHERE aid =
+  :aid;</div>
+<div class="Bd-indent"> 4.UPDATE pgbench_tellers SET tbalance = tbalance +
+  :delta WHERE tid = :tid;</div>
+<div class="Bd-indent"> 5.UPDATE pgbench_branches SET bbalance = bbalance +
+  :delta WHERE bid = :bid;</div>
+<div class="Bd-indent"> 6.INSERT INTO pgbench_history (tid, bid, aid, delta,
+  mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);</div>
+<div class="Bd-indent"> 7.END;</div>
+<p class="Pp">Si vous sélectionnez le script simple-update intégré (également <b>-N</b>), les étapes 4 et 5 ne sont pas incluses dans la transaction. Cela évitera la contention de mise à jour sur ces tables, mais cela rend le cas de test encore moins similaire à TPC-B.</p>
+<p class="Pp">Si vous sélectionnez le script select-only intégré (également <b>-S</b>), seul le <b>SELECT</b> est émis.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Scripts_Personnalisés'><a class='permalink' href='#Scripts_Personnalisés'>Scripts   Personnalisés</a></h2>
+<p class="Pp">pgbench prend en charge l'exécution de scénarios de benchmark personnalisés en remplaçant le script de transaction par défaut (décrit ci-dessus) par un script de transaction lu à partir d'un fichier (option <b>-f</b>). Dans ce cas, une &#x201C;transaction&#x201D; compte comme une exécution d'un fichier script.</p>
+<p class="Pp">Un fichier script contient une ou plusieurs commandes SQL terminées par des points-virgules. Les lignes vides et les lignes commençant par -- sont ignorées. Les fichiers script peuvent également contenir des &#x201C;méta-commandes&#x201D;, qui sont interprétées par pgbench lui-même, comme décrit ci-dessous.</p>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<br/>
+<p class="Pp">Avant PostgreSQL 9.6, les commandes SQL dans les fichiers script étaient terminées par des sauts de ligne, et ne pouvaient donc pas être poursuivies sur plusieurs lignes. Désormais, un point-virgule est <i>requis</i> pour séparer les commandes SQL consécutives (bien qu'une commande SQL n'en ait pas besoin si elle est suivie d'une méta-commande). Si vous devez créer un fichier script qui fonctionne avec les anciennes et les nouvelles versions de pgbench, assurez-vous d'écrire chaque commande SQL sur une seule ligne se terminant par un point-virgule.</p>
+<p class="Pp">On suppose que les scripts pgbench ne contiennent pas de blocs incomplets de transactions SQL. Si au moment de l'exécution le client atteint la fin du script sans avoir complété le dernier bloc de transaction, il sera avorté.</p>
+</div>
+<p class="Pp">Il existe une installation simple de substitution de variables pour les fichiers script. Les noms de variables doivent être composés de lettres (y compris des lettres non latines), de chiffres et de traits de soulignement, le premier caractère n'étant pas un chiffre. Les variables peuvent être définies par l'option de ligne de commande <b>-D</b>, expliquée ci-dessus, ou par les méta-commandes expliquées ci-dessous. En plus des variables prédéfinies par les options de ligne de commande <b>-D</b>, il existe quelques variables qui sont prédéfinies automatiquement, listées dans le Tableau&#x00A0;301. Une valeur spécifiée pour ces variables à l'aide de <b>-D</b> l'emporte sur les prédéfinitions automatiques. Une fois définie, la valeur d'une variable peut être insérée dans une commande SQL en écrivant :<i>nomvariable</i>. Lors de l'exécution de plus d'une session client, chaque session a son propre ensemble de variables. pgbench prend en charge jusqu'à 255 utilisations de variables dans une seule instruction.</p>
+<p class="Pp"><b>Tableau&#x00A0;301.&#x00A0;Variables automatiques pgbench</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td><b>Variable</b></td>
+    <td><b>Description</b></td>
+  </tr>
+  <tr>
+    <td>client_id</td>
+    <td>identifiant unique de la session client (commence à zéro)</td>
+  </tr>
+  <tr>
+    <td>default_seed</td>
+    <td>graine utilisée par défaut dans les fonctions de hachage et de permutation pseudo-aléatoire</td>
+  </tr>
+  <tr>
+    <td>random_seed</td>
+    <td>graine du générateur aléatoire (sauf si remplacée avec <b>-D</b>)</td>
+  </tr>
+  <tr>
+    <td>scale</td>
+    <td>facteur d'échelle actuel</td>
+  </tr>
+</table>
+<p class="Pp">Les méta-commandes des fichiers script commencent par une barre oblique inverse (\) et s'étendent normalement jusqu'à la fin de la ligne, bien qu'elles puissent être étendues à des lignes supplémentaires en écrivant barre oblique inverse-retour. Les arguments d'une méta-commande sont séparés par des espaces blancs. Ces méta-commandes sont prises en charge :
+  <br/>
+</p>
+<p class="Pp">\gset [<i>préfixe</i>] \aset [<i>préfixe</i>]</p>
+<div class="Bd-indent">Ces commandes peuvent être utilisées pour terminer les requêtes SQL, prenant la place du point-virgule de terminaison (;).
+<p class="Pp">Lorsque la commande \gset est utilisée, la requête SQL précédente est censée retourner une ligne, dont les colonnes sont stockées dans des variables nommées d'après les noms de colonnes, et préfixées par <i>préfixe</i> si fourni.</p>
+<p class="Pp">Lorsque la commande \aset est utilisée, toutes les requêtes SQL combinées (séparées par \;) ont leurs colonnes stockées dans des variables nommées d'après les noms de colonnes, et préfixées par <i>préfixe</i> si fourni. Si une requête ne retourne aucune ligne, aucune assignation n'est faite et la variable peut être testée pour son existence afin de la détecter. Si une requête retourne plus d'une ligne, la dernière valeur est conservée.</p>
+<p class="Pp">\gset et \aset ne peuvent pas être utilisés en mode pipeline, si</p>
+nce la requête
+    les résultats ne sont pas encore disponibles au moment où les commandes en auraient besoin.</p>
+<p class="Pp">L'exemple suivant place le solde final du compte de
+    la première requête dans la variable <i>abalance</i>, et remplit les variables <i>p_two</i>
+    et <i>p_three</i> avec des entiers de la troisième requête. Le résultat de la deuxième requête est ignoré. Le résultat des deux dernières requêtes combinées est stocké dans les variables <i>four</i> et <i>five</i>.</p>
+<div class="Bd-indent">
+<pre>UPDATE pgbench_accounts
+  SET abalance = abalance + :delta
+  WHERE aid = :aid
+  RETURNING abalance \gset
+-- composé de deux requêtes
+SELECT 1 \;
+SELECT 2 AS two, 3 AS three \gset p_
+SELECT 4 AS four \; SELECT 5 AS five \aset</pre>
+</div>
+</div>
+<p class="Pp">\if <i>expression</i>
+  <br/>
+  \elif <i>expression</i>
+  <br/>
+  \else
+  <br/>
+  \endif</p>
+<div class="Bd-indent">Ce groupe de commandes implémente des blocs conditionnels imbriqués, de manière similaire à \if <i>expression</i> de psql. Les expressions conditionnelles sont identiques à celles de \set, avec des valeurs non nulles interprétées comme vraies.</div>
+<p class="Pp">\set <i>nom_variable</i> <i>expression</i></p>
+<div class="Bd-indent">Définit la variable <i>nom_variable</i> à une valeur calculée à partir de l'<i>expression</i>. L'expression peut contenir la constante NULL, les constantes booléennes TRUE et FALSE, les constantes entières telles que 5432, les constantes doubles telles que 3.14159, les références aux variables :<i>nom_variable</i>, les opérateurs avec leur précédence et associativité SQL habituelles, les appels de fonction, les expressions conditionnelles génériques SQL CASE et les parenthèses.
+<p class="Pp">Les fonctions et la plupart des opérateurs retournent NULL en cas d'entrée NULL.</p>
+<p class="Pp">À des fins conditionnelles, les valeurs numériques non nulles sont VRAIES, les valeurs numériques nulles et NULL sont FAUSSES.</p>
+<p class="Pp">Les constantes entières et doubles trop grandes ou trop petites, ainsi que les opérateurs arithmétiques sur entiers (+, -, * et /) lèvent des erreurs en cas de dépassement.</p>
+<p class="Pp">Lorsqu'aucune clause ELSE finale n'est fournie à un CASE, la valeur par défaut est NULL.</p>
+<p class="Pp">Exemples :</p>
+<div class="Bd-indent">
+<pre>\set ntellers 10 * :scale
+\set aid (1021 * random(1, 100000 * :scale)) % \
+           (100000 * :scale) + 1
+\set divx CASE WHEN :x &lt;&gt; 0 THEN :y/:x ELSE NULL END</pre>
+</div>
+</div>
+<p class="Pp">\sleep <i>nombre</i> [ us | ms | s ]</p>
+<div class="Bd-indent">Provoque une pause de l'exécution du script pendant la durée spécifiée en microsecondes (us), millisecondes (ms) ou secondes (s). Si l'unité est omise, les secondes sont utilisées par défaut. <i>nombre</i> peut être une constante entière ou une référence :<i>nom_variable</i> à une variable ayant une valeur entière.
+<p class="Pp">Exemple :</p>
+<div class="Bd-indent">
+<pre>\sleep 10 ms</pre>
+</div>
+</div>
+<p class="Pp">\setshell <i>nom_variable</i> <i>commande</i> [ <i>argument</i> ... ]</p>
+<div class="Bd-indent">Définit la variable <i>nom_variable</i> au résultat de la commande shell <i>commande</i> avec les <i>argument</i>s donnés. La commande doit retourner une valeur entière via sa sortie standard.
+<p class="Pp"><i>commande</i> et chaque <i>argument</i> peuvent être soit une constante textuelle, soit une référence :<i>nom_variable</i> à une variable. Si vous souhaitez utiliser un <i>argument</i> commençant par deux-points, écrivez un deux-points supplémentaire au début de l'<i>argument</i>.</p>
+<p class="Pp">Exemple :</p>
+<div class="Bd-indent">
+<pre>\setshell variable_a_assigner commande argument_litteral :variable ::litteral_commencant_par_deux_points</pre>
+</div>
+</div>
+<p class="Pp">\shell <i>commande</i> [ <i>argument</i> ... ]</p>
+<div class="Bd-indent">Identique à \setshell, mais le résultat de la commande est ignoré.
+<p class="Pp">Exemple :</p>
+<div class="Bd-indent">
+<pre>\shell commande argument_litteral :variable ::litteral_commencant_par_deux_points</pre>
+</div>
+</div>
+<p class="Pp">\startpipeline
+  <br/>
+  \syncpipeline
+  <br/>
+  \endpipeline</p>
+<div class="Bd-indent">Ce groupe de commandes implémente le pipelining des instructions SQL. Un pipeline doit commencer par <b>\startpipeline</b> et se terminer par <b>\endpipeline</b>. Entre les deux, il peut y avoir un nombre quelconque de commandes <b>\syncpipeline</b>, qui envoient un message de synchronisation sans terminer le pipeline en cours et en vidant le tampon d'envoi. En mode pipeline, les instructions sont envoyées au serveur sans attendre les résultats des instructions précédentes. Voir la section 32.5 pour plus de détails. Le mode pipeline nécessite l'utilisation du protocole de requête étendu.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Opérateurs intégrés</h2>
+<p class="Pp">Les opérateurs arithmétiques, binaires, de comparaison et logiques listés dans le Tableau 302 sont intégrés à pgbench et peuvent être utilisés dans les expressions apparaissant dans \set. Les opérateurs sont listés par ordre croissant de précédence. Sauf indication contraire, les opérateurs prenant deux entrées numériques produiront une valeur double si l'une des entrées est double, sinon ils produiront un résultat entier.</p>
+<p class="Pp"><b>Tableau 302. Opérateurs pgbench</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td><b> Opérateur .PP Description .PP Exemple(s)</b></td>
+  </tr>
+  <tr>
+    <td> <i>booléen</i> OU <i>booléen</i> &#x2192; <i>booléen</i> .PP OU logique .PP 5 ou 0 &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>booléen</i> ET <i>booléen</i> &#x2192; <i>booléen</i> .PP ET logique .PP 3 et 0 &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> NON <i>booléen</i> &#x2192; <i>booléen</i> .PP NON logique .PP not
+      faux &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>booléen</i> EST [PAS] (NULL|VRAI|FAUX) &#x2192; <i>booléen</i> .PP Tests de valeur booléenne .PP 1 est null &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> <i>valeur</i> ISNULL|NOTNULL &#x2192; <i>booléen</i> .PP Tests de nullité .PP 1 notnull &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> = <i>nombre</i> &#x2192; <i>booléen</i> .PP Égal .PP 5 =
+      4 &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> &lt;&gt; <i>nombre</i> &#x2192; <i>booléen</i> .PP Différent .PP 5 &lt;&gt; 4 &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> != <i>nombre</i> &#x2192; <i>booléen</i> .PP Différent .PP 5 != 5 &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> &lt; <i>nombre</i> &#x2192; <i>booléen</i> .PP Inférieur à .PP 5 &lt; 4 &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> &lt;= <i>nombre</i> &#x2192; <i>booléen</i> .PP Inférieur ou égal à .PP 5 &lt;= 4 &#x2192; FAUX</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> &gt; <i>nombre</i> &#x2192; <i>booléen</i> .PP Supérieur à .PP 5 &gt; 4 &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> &gt;= <i>nombre</i> &#x2192; <i>booléen</i> .PP Supérieur ou égal à .PP 5 &gt;= 4 &#x2192; VRAI</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> | <i>entier</i> &#x2192; <i>entier</i> .PP OU binaire .PP 1 | 2 &#x2192; 3</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> # <i>entier</i> &#x2192; <i>entier</i> .PP XOR binaire .PP 1 # 3 &#x2192; 2</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> &amp; <i>entier</i> &#x2192; <i>entier</i> .PP ET binaire .PP 1 &amp; 3 &#x2192; 1</td>
+  </tr>
+  <tr>
+    <td> ~ <i>entier</i> &#x2192; <i>entier</i> .PP NON binaire .PP ~ 1
+      &#x2192; -2</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> &lt;&lt; <i>entier</i> &#x2192; <i>entier</i> .PP Décalage à gauche binaire .PP 1 &lt;&lt; 2 &#x2192; 4</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> &gt;&gt; <i>entier</i> &#x2192; <i>entier</i> .PP Décalage à droite binaire .PP 8 &gt;&gt; 2 &#x2192; 2</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> + <i>nombre</i> &#x2192; <i>nombre</i> .PP Addition .PP 5
+      + 4 &#x2192; 9</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> - <i>nombre</i> &#x2192; <i>nombre</i> .PP Soustraction .PP 3 - 2.0 &#x2192; 1.0</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> * <i>nombre</i> &#x2192; <i>nombre</i> .PP Multiplication .PP 5 * 4 &#x2192; 20</td>
+  </tr>
+  <tr>
+    <td> <i>nombre</i> / <i>nombre</i> &#x2192; <i>nombre</i> .PP Division
+      (tronque le résultat vers zéro si les deux entrées sont des entiers) .PP 5 / 3
+      &#x2192; 1</td>
+  </tr>
+  <tr>
+    <td> <i>entier</i> % <i>entier</i> &#x2192; <i>entier</i> .PP Modulo
+      (reste) .PP 3 % 2 &#x2192; 1</td>
+  </tr>
+  <tr>
+    <td> - <i>nombre</i> &#x2192; <i>nombre</i> .PP Négation .PP - 2.0 &#x2192;
+      -2.0</td>
+  </tr>
+</table>
+</section>
+<section class="Ss">
+<h2 class="Ss">Fonctions intégrées</h2>
+<p class="Pp">Les fonctions listées dans le
+  <br/>
+  Tableau 303 sont intégrées à pgbench et peuvent être utilisées dans les expressions
+    apparaissant dans \set.</p>
+<p class="Pp"><b>Tableau 303. Fonctions pgbench</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td><b> Fonction .PP Description .PP Exemple(s)</b></td>
+  </tr>
+  <tr>
+    <td> <b>abs</b> ( <i>nombre</i> ) &#x2192; même type que l'entrée .PP Valeur absolue .PP abs(-17) &#x2192; 17</td>
+  </tr>
+  <tr>
+    <td> <b>debug</b> ( <i>nombre</i> ) &#x2192; même type que l'entrée .PP Affiche l'argument sur stderr et retourne l'argument. .PP debug(5432.1)
+      &#x2192; 5432.1</td>
+  </tr>
+  <tr>
+    <td> <b>double</b> ( <i>nombre</i> ) &#x2192; double .PP Convertit en double.
+      .PP double(5432) &#x2192; 5432.0</td>
+  </tr>
+  <tr>
+    <td> <b>exp</b> ( <i>nombre</i> ) &#x2192; double .PP Exponentielle (e élevé à la puissance donnée) .PP exp(1.0) &#x2192; 2.718281828459045</td>
+  </tr>
+  <tr>
+    <td> <b>greatest</b> ( <i>nombre</i> [, ... ] ) &#x2192; double si un argument est double, sinon entier .PP Sélectionne la plus grande valeur parmi les arguments. .PP greatest(5, 4, 3, 2) &#x2192; 5</td>
+  </tr>
+  <tr>
+    <td> <b>hash</b> ( <i>valeur</i> [, <i>graine</i> ] ) &#x2192; entier .PP C'est un alias pour <b>hash_murmur2</b>. .PP hash(10, 5432) &#x2192;
+      -5817877081768721676</td>
+  </tr>
+  <tr>
+    <td> <b>hash_fnv1a</b> ( <i>valeur</i> [, <i>graine</i> ] ) &#x2192; entier
+      .PP Calcule le <b>hash FNV-1a</b>. .PP hash_fnv1a(10, 5432) &#x2192;
+      -7793829335365542153</td>
+  </tr>
+  <tr>
+    <td> <b>hash_murmur2</b> ( <i>valeur</i> [, <i>graine</i> ] ) &#x2192; entier
+      .PP Calcule le <b>hash MurmurHash2</b>. .PP hash_murmur2(10, 5432) &#x2192;
+      -5817877081768721676</td>
+  </tr>
+  <tr>
+    <td> <b>int</b> ( <i>nombre</i> ) &#x2192; entier .PP Convertit en entier. .PP
+      int(5.4 + 3.8) &#x2192; 9</td>
+  </tr>
+  <tr>
+    <td> <b>least</b> ( <i>nombre</i> [, ... ] ) &#x2192; double si un argument
+      est double, sinon entier .PP Sélectionne la plus petite valeur parmi les
+      arguments. .PP least(5, 4, 3, 2.1) &#x2192; 2.1</td>
+  </tr>
+  <tr>
+    <td> <b>ln</b> ( <i>nombre</i> ) &#x2192; double .PP Logarithme naturel .PP
+      ln(2.718281828459045) &#x2192; 1.0</td>
+  </tr>
+  <tr>
+    <td> <b>mod</b> ( <i>entier</i>, <i>entier</i> ) &#x2192; entier .PP
+      Modulo (reste) .PP mod(54, 32) &#x2192; 22</td>
+  </tr>
+  <tr>
+    <td> <b>permute</b> ( <i>i</i>, <i>taille</i> [, <i>graine</i> ] ) &#x2192;
+      entier .PP Valeur permutée de <i>i</i>, dans l'intervalle [0, taille). C'est la nouvelle position de <i>i</i> (modulo <i>taille</i>) dans une permutation pseudo-aléatoire des entiers 0...taille-1, paramétrée par <i>graine</i>, voir ci-dessous. .PP permute(0, 4) &#x2192; un entier compris entre 0 et 3</td>
+  </tr>
+  <tr>
+    <td> <b>pi</b> () &#x2192; double .PP Valeur approximative de &#x03C0; .PP pi()
+      &#x2192; 3.14159265358979323846</td>
+  </tr>
+  <tr>
+    <td> <b>pow</b> ( <i>x</i>, <i>y</i> ) &#x2192; double .PP <b>power</b> (
+      <i>x</i>, <i>y</i> ) &#x2192; double .PP <i>x</i> élevé à la puissance <i>y</i> .PP pow(2.0, 10) &#x2192; 1024.0</td>
+  </tr>
+  <tr>
+    <td> <b>random</b> ( <i>lb</i>, <i>ub</i> ) &#x2192; entier .PP Calcule un entier uniformément distribué dans [lb, ub]. .PP random(1, 10)
+      &#x2192; un entier entre 1 et 10</td>
+  </tr>
+  <tr>
+    <td> <b>random_exponential</b> ( <i>lb</i>, <i>ub</i>, <i>parametre</i> )
+      &#x2192; entier
+.PP Calcule un entier aléatoire de distribution exponentielle
+      en [lb, ub], voir ci-dessous. .PP random_exponential(1, 10, 3.0) &#x2192; un
+      entier entre 1 et 10</td>
+  </tr>
+  <tr>
+    <td> <b>random_gaussian</b> ( <i>lb</i>, <i>ub</i>, <i>parameter</i> )
+      &#x2192; entier .PP Calcule un entier aléatoire de distribution Gaussienne en
+      [lb, ub], voir ci-dessous. .PP random_gaussian(1, 10, 2.5) &#x2192; un entier
+      entre 1 et 10</td>
+  </tr>
+  <tr>
+    <td> <b>random_zipfian</b> ( <i>lb</i>, <i>ub</i>, <i>parameter</i> )
+      &#x2192; entier .PP Calcule un entier aléatoire de distribution de Zipf en [lb,
+      ub], voir ci-dessous. .PP random_zipfian(1, 10, 1.5) &#x2192; un entier entre
+      1 et 10</td>
+  </tr>
+  <tr>
+    <td> <b>sqrt</b> ( <i>nombre</i> ) &#x2192; double .PP Racine carrée .PP
+      sqrt(2.0) &#x2192; 1.414213562</td>
+  </tr>
+</table>
+<p class="Pp">La
+  <br/>
+  fonction random génère des valeurs en utilisant une distribution uniforme, c'est-à-dire que toutes les valeurs sont tirées dans la plage spécifiée avec une probabilité égale. Les fonctions random_exponential, random_gaussian et random_zipfian nécessitent un paramètre double supplémentaire qui détermine la forme précise de la distribution.</p>
+<div class="Bd-indent">&#x2022;Pour une distribution exponentielle, <i>parameter</i>
+  contrôle la distribution en tronquant une distribution exponentielle qui décroît rapidement à <i>parameter</i>, puis en projetant sur des entiers entre les bornes. Pour être précis, avec
+<div class="Bd-indent">
+<pre>f(x) = exp(-parameter * (x - min) / (max - min + 1)) / (1 - exp(-parameter))</pre>
+</div>
+<p class="Pp">Alors la valeur <i>i</i> entre <i>min</i> et <i>max</i> inclus est tirée avec la probabilité : f(i) - f(i + 1).</p>
+<p class="Pp">Intuitivement, plus le <i>parameter</i> est élevé, plus fréquemment les valeurs proches de <i>min</i> sont accédées, et moins fréquemment les valeurs proches de <i>max</i> sont accédées. Plus le <i>parameter</i> est proche de 0, plus la distribution d'accès est plate (plus uniforme). Une approximation grossière de la distribution est que les 1% de valeurs les plus fréquentes dans la plage, proches de <i>min</i>, sont tirées <i>parameter</i>% du temps. La valeur <i>parameter</i> doit être strictement positive.</p>
+</div>
+<div class="Bd-indent">&#x2022;Pour une distribution Gaussienne, l'intervalle
+  est mappé sur une distribution normale standard (la courbe Gaussienne classique en forme de cloche) tronquée à -parameter à gauche et +parameter à droite. Les valeurs au milieu de l'intervalle sont plus susceptibles d'être tirées. Pour être précis, si PHI(x) est la fonction de distribution cumulative de la distribution normale standard, avec la moyenne mu définie comme (max + min) / 2.0, avec
+<div class="Bd-indent">
+<pre>f(x) = PHI(2.0 * parameter * (x - mu) / (max - min + 1)) /
+       (2.0 * PHI(parameter) - 1)</pre>
+</div>
+<p class="Pp">alors la valeur <i>i</i> entre <i>min</i> et <i>max</i> inclus est tirée avec la probabilité : f(i + 0.5) - f(i - 0.5). Intuitivement, plus le <i>parameter</i> est élevé, plus fréquemment les valeurs proches du milieu de l'intervalle sont tirées, et moins fréquemment les valeurs proches des bornes <i>min</i> et <i>max</i> sont tirées. Environ 67% des valeurs sont tirées à partir du 1.0 / <i>parameter</i> du milieu, c'est-à-dire une portion relative de 0.5 / <i>parameter</i> autour de la moyenne, et 95% à partir du 2.0 / <i>parameter</i> du milieu, c'est-à-dire une portion relative de 1.0 / <i>parameter</i> autour de la moyenne ; par exemple, si <i>parameter</i> est de 4.0, 67% des valeurs sont tirées à partir du quart central (1.0 / 4.0) de l'intervalle (c'est-à-dire de 3.0 / 8.0 à 5.0 / 8.0) et 95% à partir de la moitié centrale (2.0 / 4.0) de l'intervalle (deuxième et troisième quartiles). La valeur minimale autorisée pour <i>parameter</i> est de 2.0.</p>
+</div>
+<div class="Bd-indent">&#x2022;random_zipfian génère une distribution de Zipf bornée.
+  <i>parameter</i> définit à quel point la distribution est asymétrique. Plus le <i>parameter</i> est élevé, plus fréquemment les valeurs proches du début de l'intervalle sont tirées. La distribution est telle que, en supposant que la plage commence à 1, le rapport de la probabilité de tirer <i>k</i> versus tirer <i>k+1</i> est ((<i>k</i>+1)/<i>k</i>)**<i>parameter</i>. Par exemple, random_zipfian(1, ..., 2.5) produit la valeur 1 environ 5,66 fois plus fréquemment que 2, qui lui-même est produit 2,76 fois plus fréquemment que 3, et ainsi de suite.
+<p class="Pp">L'implémentation de pgbench est basée sur "Non-Uniform Random Variate Generation", Luc Devroye, p. 550-551, Springer 1986. En raison des limitations de cet algorithme, la valeur <i>parameter</i> est limitée à la plage [1.001, 1000].</p>
+</div>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<br/>
+<p class="Pp">Lors de la conception d'un benchmark qui sélectionne des lignes de manière non uniforme, soyez conscient que les lignes choisies peuvent être corrélées avec d'autres données telles que des ID d'une séquence ou l'ordre physique des lignes, ce qui peut fausser les mesures de performance.</p>
+<p class="Pp">Pour éviter cela, vous pourriez souhaiter utiliser la fonction <b>permute</b>, ou une autre étape supplémentaire avec un effet similaire, pour mélanger les lignes sélectionnées et supprimer de telles corrélations.</p>
+</div>
+<p class="Pp">Les fonctions de hachage hash, hash_murmur2 et hash_fnv1a acceptent une valeur d'entrée et un paramètre de graine optionnel. Si la graine n'est pas fournie, la valeur de :default_seed est utilisée, qui est initialisée aléatoirement sauf si elle est définie par l'option -D de la ligne de commande.</p>
+<p class="Pp">permute accepte une valeur d'entrée, une taille et un paramètre de graine optionnel. Elle génère une permutation pseudo-aléatoire d'entiers dans la plage [0, size), et retourne l'indice de la valeur d'entrée dans les valeurs permutées. La permutation choisie est paramétrée par la graine, qui est par défaut :default_seed, si elle n'est pas spécifiée. Contrairement aux fonctions de hachage, permute garantit qu'il n'y a pas de collisions ou de trous dans les valeurs de sortie. Les valeurs d'entrée en dehors de l'intervalle sont interprétées modulo la taille. La fonction lève une erreur si la taille n'est pas positive. <b>permute</b> peut être utilisée pour disperser la distribution des fonctions aléatoires non uniformes telles que random_zipfian ou random_exponential afin que les valeurs tirées plus souvent ne soient pas trivialement corrélées. Par exemple, le script pgbench suivant simule une charge de travail réaliste typique des plateformes de médias sociaux et de blogs où quelques comptes génèrent une charge excessive :</p>
+<div class="Bd-indent">
+<pre>\set size 1000000
+\set r random_zipfian(1, :size, 1.07)
+\set k 1 + permute(:r, :size)</pre>
+</div>
+<p class="Pp">Dans certains cas, plusieurs distributions distinctes sont nécessaires qui ne sont pas corrélées entre elles, et c'est là que le paramètre de graine optionnel est utile :</p>
+<div class="Bd-indent">
+<pre>\set k1 1 + permute(:r, :size, :default_seed + 123)
+\set k2 1 + permute(:r, :size, :default_seed + 321)</pre>
+</div>
+<p class="Pp">Un comportement similaire peut également être approximé avec <b>hash</b> :</p>
+<div class="Bd-indent">
+<pre>\set size 1000000
+\set r random_zipfian(1, 100 * :size, 1.07)
+\set k 1 + abs(hash(:r)) % :size</pre>
+</div>
+<p class="Pp">Cependant, comme <b>hash</b> génère des collisions, certaines valeurs ne seront pas accessibles et d'autres seront plus fréquentes que prévu à partir de la distribution d'origine.</p>
+<p class="Pp">À titre d'exemple, la définition complète de la transaction intégrée de type TPC-B est :</p>
+<div class="Bd-indent">
+<pre>\set aid random(1, 100000 * :scale)
+\set bid random(1, 1 * :scale)
+\set tid random(1, 10 * :scale)
+\set delta random(-5000, 5000)
+BEGIN;
+UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+END;</pre>
+</div>
+<p class="Pp">Ce script permet à chaque itération de la transaction de référencer des lignes différentes, choisies aléatoirement. (Cet exemple montre également pourquoi il est important que chaque session client ait ses propres variables – sinon elles ne toucheraient pas indépendamment différentes lignes.)</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Journalisation par transaction</h2>
+<p class="Pp">Avec l'option <b>-l</b> (mais sans l'option
+    <b>--aggregate-interval</b>), pgbench écrit des informations sur chaque
+    transaction dans un fichier journal. Le fichier journal sera nommé
+    <i>prefix</i>.<i>nnn</i>, où <i>prefix</i> est par défaut pgbench_log, et
+    <i>nnn</i> est le PID du processus pgbench. Le préfixe peut être modifié en
+    utilisant l'option <b>--log-prefix</b>. Si l'option <b>-j</b> est 2 ou
+    supérieure, donc qu'il y a plusieurs threads de travail, chacun aura son
+    propre fichier journal. Le premier travailleur utilisera le même nom pour son
+    fichier journal que dans le cas standard à un seul travailleur. Les fichiers
+    journaux supplémentaires pour les autres travailleurs seront nommés
+    <i>prefix</i>.<i>nnn</i>.<i>mmm</i>, où <i>mmm</i> est un numéro séquentiel
+    pour chaque travailleur commençant par 1.</p>
+<p class="Pp">Chaque ligne d'un fichier journal décrit une transaction. Elle
+    contient les champs suivants séparés par des espaces :</p>
+<p class="Pp"><i>client_id</i></p>
+<div class="Bd-indent">identifie la session client qui a exécuté la
+  transaction</div>
+<p class="Pp"><i>transaction_no</i></p>
+<div class="Bd-indent">compte le nombre de transactions exécutées par cette
+  session</div>
+<p class="Pp"><i>time</i></p>
+<div class="Bd-indent">temps écoulé de la transaction, en microsecondes</div>
+<p class="Pp"><i>script_no</i></p>
+<div class="Bd-indent">identifie le fichier script utilisé pour la transaction
+  (utile lorsque plusieurs scripts sont spécifiés avec <b>-f</b> ou
+  <b>-b</b>)</div>
+<p class="Pp"><i>time_epoch</i></p>
+<div class="Bd-indent">heure d'achèvement de la transaction, sous forme d'horodatage
+  Unix-epoch</div>
+<p class="Pp"><i>time_us</i></p>
+<div class="Bd-indent">partie fractionnaire de seconde de l'heure d'achèvement de la
+  transaction, en microsecondes</div>
+<p class="Pp"><i>schedule_lag</i></p>
+<div class="Bd-indent">délai de début de transaction, c'est-à-dire la différence entre
+  l'heure de début prévue de la transaction et l'heure à laquelle elle a
+  effectivement commencé, en microsecondes (présent seulement si
+  <b>--rate</b> est spécifié)</div>
+<p class="Pp"><i>retries</i></p>
+<div class="Bd-indent">nombre de réessais après des erreurs de sérialisation ou de
+  verrouillage mort pendant la transaction (présent seulement si
+  <b>--max-tries</b> n'est pas égal à un)</div>
+<p class="Pp">Lorsque <b>--rate</b> et <b>--latency-limit</b> sont tous deux utilisés,
+    le <i>time</i> d'une transaction ignorée sera rapporté comme ignoré. Si la
+    transaction se termine par un échec, son <i>time</i> sera rapporté comme
+    échec. Si vous utilisez l'option <b>--failures-detailed</b>, le <i>time</i>
+    de la transaction échouée sera rapporté comme sérialisation ou verrouillage
+    mort en fonction du type d'échec (voir Échecs et Réessais de Sérialisation/Verrouillage Mort pour plus d'informations).</p>
+<p class="Pp">Voici un extrait d'un fichier journal généré lors d'une exécution à
+    client unique :</p>
+<div class="Bd-indent">
+<pre>0 199 2241 0 1175850568 995598
+0 200 2465 0 1175850568 998079
+0 201 2513 0 1175850569 608
+0 202 2038 0 1175850569 2663</pre>
+</div>
+<p class="Pp">Un autre exemple avec --rate=100 et --latency-limit=5 (notez la colonne
+    supplémentaire <i>schedule_lag</i>) :</p>
+<div class="Bd-indent">
+<pre>0 81 4621 0 1412881037 912698 3005
+0 82 6173 0 1412881037 914578 4304
+0 83 skipped 0 1412881037 914578 5217
+0 83 skipped 0 1412881037 914578 5099
+0 83 4722 0 1412881037 916203 3108
+0 84 4142 0 1412881037 918023 2333
+0 85 2465 0 1412881037 919759 740</pre>
+</div>
+<p class="Pp">Dans cet exemple, la transaction 82 était en retard, car sa latence
+    (6,173 ms) dépassait la limite de 5 ms. Les deux transactions suivantes ont
+    été ignorées, car elles étaient déjà en retard avant même d'avoir commencé.</p>
+<p class="Pp">L'exemple suivant montre un extrait d'un fichier journal avec des
+    échecs et des réessais, avec le nombre maximum de tentatives défini à 10 (pas</p><section class="Sh">
+<h1 class="Sh" id="LOGGING"><a class="permalink" href="#LOGGING">LOGGING</a></h1>
+<p class="Pp">The <b>--log</b> option enables logging of individual
+    transactions. By default, the log output is written to standard output. It
+    contains the following space-separated fields:</p>
+<p class="Pp"><i>client_id</i></p>
+<div class="Bd-indent">the client identifier</div>
+<p class="Pp"><i>transaction_id</i></p>
+<div class="Bd-indent">the transaction identifier</div>
+<p class="Pp"><i>script_id</i></p>
+<div class="Bd-indent">the script identifier (only if multiple scripts are
+  used)</div>
+<p class="Pp"><i>statement_id</i></p>
+<div class="Bd-indent">the statement identifier (only if the statement
+  statistics are enabled by <b>-r</b>)</div>
+<p class="Pp"><i>time</i></p>
+<div class="Bd-indent">the time stamp when the transaction finished</div>
+<p class="Pp"><i>latency</i></p>
+<div class="Bd-indent">the transaction latency</div>
+<p class="Pp"><i>status</i></p>
+<div class="Bd-indent">the status of the transaction (see below)</div>
+<p class="Pp"><i>retries</i></p>
+<div class="Bd-indent">the number of retries (see below)</div>
+<p class="Pp">The <i>status</i> field is the number of transactions that
+    failed in this transaction. If the
+    <b>--failures-detailed</b> option is not used, the specific failure
+    type is not reported, and it is shown as
+    <code>failed</code>. In this case, the output looks like this (note the
+    additional
+    <i>retries</i> column):</p>
+<div class="Bd-indent">
+<pre>3 0 47423 0 1499414498 34501 3
+3 1 8333 0 1499414498 42848 0
+3 2 8358 0 1499414498 51219 0
+4 0 72345 0 1499414498 59433 6
+1 3 41718 0 1499414498 67879 4
+1 4 8416 0 1499414498 76311 0
+3 3 33235 0 1499414498 84469 3
+0 0 failed 0 1499414498 84905 9
+2 0 failed 0 1499414498 86248 9
+3 4 8307 0 1499414498 92788 0</pre>
+</div>
+<p class="Pp">If the <b>--failures-detailed</b> option is used, the type of
+    failure is reported in the <i>time</i> like this:</p>
+<div class="Bd-indent">
+<pre>3 0 47423 0 1499414498 34501 3
+3 1 8333 0 1499414498 42848 0
+3 2 8358 0 1499414498 51219 0
+4 0 72345 0 1499414498 59433 6
+1 3 41718 0 1499414498 67879 4
+1 4 8416 0 1499414498 76311 0
+3 3 33235 0 1499414498 84469 3
+0 0 serialization 0 1499414498 84905 9
+2 0 serialization 0 1499414498 86248 9
+3 4 8307 0 1499414498 92788 0</pre>
+</div>
+<p class="Pp">When running a long test on hardware that can handle a lot of
+    transactions, the log files can become very large. The
+    <b>--sampling-rate</b> option can be used to log only a random sample of
+    transactions.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Aggregated_Logging'><a class='permalink' href='#Aggregated_Logging'>Aggregated   Logging</a></h2>
+<p class="Pp">With the <b>--aggregate-interval</b> option, a different format is
+    used for the log files. Each log line describes one aggregation interval. It
+    contains the following space-separated fields:</p>
+<p class="Pp"><i>interval_start</i></p>
+<div class="Bd-indent">start time of the interval, as a Unix-epoch time
+  stamp</div>
+<p class="Pp"><i>num_transactions</i></p>
+<div class="Bd-indent">number of transactions within the interval</div>
+<p class="Pp"><i>sum_latency</i></p>
+<div class="Bd-indent">sum of transaction latencies</div>
+<p class="Pp"><i>sum_latency_2</i></p>
+<div class="Bd-indent">sum of squares of transaction latencies</div>
+<p class="Pp"><i>min_latency</i></p>
+<div class="Bd-indent">minimum transaction latency</div>
+<p class="Pp"><i>max_latency</i></p>
+<div class="Bd-indent">maximum transaction latency</div>
+<p class="Pp"><i>sum_lag</i></p>
+<div class="Bd-indent">sum of transaction start delays (zero unless
+  <b>--rate</b> is specified)</div>
+<p class="Pp"><i>sum_lag_2</i></p>
+<div class="Bd-indent">sum of squares of transaction start delays (zero unless
+  <b>--rate</b> is specified)</div>
+<p class="Pp"><i>min_lag</i></p>
+<div class="Bd-indent">minimum transaction start delay (zero unless
+  <b>--rate</b> is specified)</div>
+<p class="Pp"><i>max_lag</i></p>
+<div class="Bd-indent">maximum transaction start delay (zero unless
+  <b>--rate</b> is specified)</div>
+<p class="Pp"><i>skipped</i></p>
+<div class="Bd-indent">number of transactions skipped because they would have
+  started too late (zero unless <b>--rate</b> and <b>--latency-limit</b> are
+  specified)</div>
+<p class="Pp"><i>retried</i></p>
+<div class="Bd-indent">number of retried transactions (zero unless
+  <b>--max-tries</b> is not equal to one)</div>
+<p class="Pp"><i>retries</i></p>
+<div class="Bd-indent">number of retries after serialization or deadlock errors
+  (zero unless <b>--max-tries</b> is not equal to one)</div>
+<p class="Pp"><i>serialization_failures</i></p>
+<div class="Bd-indent">number of transactions that got a serialization error and
+  were not retried afterwards (zero unless <b>--failures-detailed</b> is
+  specified)</div>
+<p class="Pp"><i>deadlock_failures</i></p>
+<div class="Bd-indent">number of transactions that got a deadlock error and were
+  not retried afterwards (zero unless <b>--failures-detailed</b> is
+  specified)</div>
+<p class="Pp">Here is some example output generated with this option:</p>
+<div class="Bd-indent">
+<pre><b>pgbench --aggregate-interval=10 --time=20 --client=10 --log --rate=1000 --latency-limit=10 --failures-detailed --max-tries=10 test</b>
+1650260552 5178 26171317 177284491527 1136 44462 2647617 7321113867 0 9866 64 7564 28340 4148 0
+1650260562 4808 25573984 220121792172 1171 62083 3037380 9666800914 0 9998 598 7392 26621 4527 0</pre>
+</div>
+<p class="Pp">Notice that while the plain (unaggregated) log format shows which
+    script was used for each transaction, the aggregated format does not.
+    Therefore if you need per-script data, you need to aggregate the data on
+    your own.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Per-Statement Report</h2>
+<p class="Pp">With the <b>-r</b> option, pgbench collects the following
+    statistics for each statement:</p>
+<div class="Bd-indent">&#x2022;latency &#x2014; elapsed transaction time for
+  each statement. pgbench reports an average value of all successful runs of the
+  statement.</div>
+<div class="Bd-indent">&#x2022;The number of failures in this statement. See
+  Failures and Serialization/Deadlock Retries for more information.</div>
+<div class="Bd-indent">&#x2022;The number of retries after a serialization or a
+  deadlock error in this statement. See Failures and Serialization/Deadlock
+  Retries for more information.</div>
+<p class="Pp">The report displays retry statistics only if the
+    <b>--max-tries</b> option is not equal to 1.</p>
+<p class="Pp">All values are computed for each statement executed by every
+    client and are reported after the benchmark has finished.</p>
+<p class="Pp">For the default script, the output will look similar to this:</p>
+<div class="Bd-indent">
+<pre>starting vacuum...end.
+transaction type: &lt;builtin: TPC-B (sort of)&gt;
+scaling factor: 1
+query mode: simple
+number of clients: 10
+number of threads: 1
+maximum number of tries: 1
+number of transactions per client: 1000
+number of transactions actually processed: 10000/10000
+number of failed transactions: 0 (0.000%)
+number of transactions above the 50.0 ms latency limit: 1311/10000 (13.110 %)
+latency average = 28.488 ms
+latency stddev = 21.009 ms
+initial connection time = 69.068 ms
+tps = 346.224794 (without initial connection time)
+statement latencies in milliseconds and failures:
+   0.012  0  \set aid random(1, 100000 * :scale)
+   0.002  0  \set bid random(1, 1 * :scale)
+   0.002  0  \set tid random(1, 10 * :scale)
+   0.002  0  \set delta random(-5000, 5000)
+   0.319  0  BEGIN;
+   0.834  0  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+   0.641  0  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+  11.126  0  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+  12.961  0  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+   0.634  0  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+   1.957  0  END;</pre>
+</div>
+<p class="Pp">Another example of output for the default script using
+    serializable default transaction isolation level (<b>PGOPTIONS='-c
+    default_transaction_isolation=serializable' pgbench ...</b>):</p>
+<div class="Bd-indent">
+<pre>starting vacuum...end.
+transaction type: &lt;builtin: TPC-B (sort of)&gt;
+scaling factor: 1
+query mode: simple
+number of clients: 10
+number of threads: 1
+maximum number of tries: 10
+number of transactions per client: 1000
+number of transactions actually processed: 6317/10000
+number of failed transactions: 3683 (36.830%)
+number of transactions retried: 7667 (76.670%)
+total number of retries: 45339
+number of transactions above the 50.0 ms latency limit: 106/6317 (1.678 %)
+latency average = 17.016 ms
+latency stddev = 13.283 ms
+initial connection time = 45.017 ms
+tps = 186.792667 (without initial connection time)
+statement latencies in milliseconds, failures and retries:
+  0.006     0      0  \set aid random(1, 100000 * :scale)
+  0.001     0      0  \set bid random(1, 1 * :scale)
+  0.001     0      0  \set tid random(1, 10 * :scale)
+  0.001     0      0  \set delta random(-5000, 5000)
+  0.385     0      0  BEGIN;
+  0.773     0      1  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+  0.624     0      0  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+  1.098   320   3762  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+  0.582  3363  41576  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+  0.465     0      0  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+  1.933     0      0  END;</pre>
+</div>
+<p class="Pp">If multiple script files are specified, all statistics are
+    reported separately for each script file.</p>
+<p class="Pp">Note that collecting the additional timing information needed for
+    per-statement latency computation adds some overhead. This will slow average
+    execution speed and lower the computed TPS. The amount of slowdown varies
+    significantly depending on platform and hardware. Comparing average TPS
+    values with and without latency reporting enabled is a good way to measure
+    if the timing overhead is significant.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Failures_and_Serialization/Deadlock_Retries'><a class='permalink' href='#Failures_and_Serialization/Deadlock_Retries'>Failures   and Serialization/Deadlock Retries</a></h2>
+<p class="Pp">When executing pgbench, there are three main types of errors:</p>
+<div class="Bd-indent">&#x2022;Errors of the main program. They are the most
+  serious and always result in an immediate exit from pgbench with the
+  corresponding error message. They include:
+<div class="Bd-indent">&#x2022;errors at the beginning of pgbench (e.g. an
+  invalid option value);</div>
+<div class="Bd-indent">&#x2022;errors in the initialization mode (e.g. the query
+  to create tables for built-in scripts fails);</div>
+<div class="Bd-indent">&#x2022;errors before starting threads (e.g. could not
+  connect to the database server, syntax error in the meta command, thread
+  creation failure);</div>
+<div class="Bd-indent">&#x2022;internal pgbench errors (which are supposed to
+  never occur...).</div>
+</div>
+<div class="Bd-indent">&#x2022;Errors when the thread manages its clients (e.g.
+  the client could not start a connection to the database server / the socket
+  for connecting the client to the database server has become invalid). In such
+  cases all clients of this thread stop while other threads continue to work.
+  However, <b>--exit-on-abort</b> is specified, all of the threads stop
+  immediately in this case.</div>
+<div class="Bd-indent">&#x2022;Direct client errors. They lead to immediate exit
+  from pgbench with the corresponding error message in the case of an internal
+  pgbench error (which are supposed to never occur...) or when
+  <b>--exit-on-abort</b> is specified. Otherwise in the worst case they only
+  lead to the abortion of the failed client while other clients continue their
+  run (but some client errors are handled without an abortion of the client and
+  reported separately, see below). Later in this section it is assumed that the
+  discussed errors are only the direct client errors and they are not internal
+  pgbench errors.</div>
+<p class="Pp">A client's run is aborted in case of a serious error; for example,
+    the connection with the database server was lost or the end of script was
+    reached without completing the last transaction. In addition, if execution
+    of an SQL or meta command fails for reasons other than serialization or
+    deadlock errors, the client is aborted. Otherwise, if an SQL command fails
+    with serialization or deadlock errors, the client is not aborted. In such
+    cases, the current transaction is rolled back, which also includes setting
+    the client variables as they were before the run of this transaction (it is
+    assumed that one transaction script contains only one transaction; see What
+    Is the &quot;Transaction&quot; Actually Performed in pgbench? for more
+    information). Transactions with serialization or deadlock errors are
+    repeated after rollbacks until they complete successfully or reach the
+    maximum number of tries (specified by the <b>--max-tries</b> option) /</p>
+</section>
+la
+    durée maximale des nouvelles tentatives (spécifiée par l'option <b>--latency-limit</b>) /
+    la fin du benchmark (spécifiée par l'option <b>--time</b>). Si la dernière
+    tentative échoue, cette transaction sera signalée comme échouée mais le client
+    ne sera pas interrompu et continuera à fonctionner.</p>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<br/>
+<p class="Pp">Sans spécifier l'option <b>--max-tries</b>, une transaction
+    ne sera jamais rejouée après une erreur de sérialisation ou d'interblocage car sa
+    valeur par défaut est 1. Utilisez un nombre illimité de tentatives (--max-tries=0) et
+    l'option <b>--latency-limit</b> pour limiter uniquement la durée maximale des tentatives. Vous
+    pouvez également utiliser l'option <b>--time</b> pour limiter la durée du benchmark sous
+    un nombre illimité de tentatives.</p>
+<p class="Pp">Soyez prudent lors de la répétition de scripts contenant plusieurs
+    transactions : le script est toujours rejoué dans son intégralité, ainsi les transactions réussies
+    peuvent être exécutées plusieurs fois.</p>
+<p class="Pp">Soyez prudent lors de la répétition de transactions avec des commandes shell. Contrairement
+    aux résultats des commandes SQL, les résultats des commandes shell ne sont pas annulés,
+    sauf pour la valeur de la variable de la commande <b>\setshell</b>.</p>
+</div>
+<p class="Pp">La latence d'une transaction réussie inclut toute la durée de l'exécution de la transaction
+    avec les annulations et les nouvelles tentatives. La latence est mesurée
+    uniquement pour les transactions et les commandes réussies, mais pas pour les transactions
+    ou commandes échouées.</p>
+<p class="Pp">Le rapport principal contient le nombre de transactions échouées. Si l'option
+    <b>--max-tries</b> n'est pas égale à 1, le rapport principal contient également des statistiques
+    relatives aux nouvelles tentatives : le nombre total de transactions rejouées et
+    le nombre total de nouvelles tentatives. Le rapport par script hérite de tous ces champs
+    du rapport principal. Le rapport par instruction affiche les statistiques de nouvelles tentatives
+    uniquement si l'option <b>--max-tries</b> n'est pas égale à 1.</p>
+<p class="Pp">Si vous souhaitez regrouper les échecs par types de base dans les journaux transactionnels
+    et d'agrégation, ainsi que dans les rapports principaux et par script, utilisez
+    l'option <b>--failures-detailed</b>. Si vous souhaitez également distinguer toutes les
+    erreurs et échecs (erreurs sans nouvelles tentatives) par type, y compris la limite
+    pour les nouvelles tentatives qui a été dépassée et de combien elle a été dépassée pour les
+    échecs de sérialisation/interblocage, utilisez l'option <b>--verbose-errors</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Table_Access_Methods'><a class='permalink' href='#Table_Access_Methods'>Méthodes d'accès aux tables</a></h2>
+<p class="Pp">Vous pouvez spécifier la méthode d'accès aux tables pour les tables pgbench.
+    La variable d'environnement <b>PGOPTIONS</b> spécifie les options de configuration de la base de données
+    qui sont transmises à PostgreSQL via la ligne de commande (voir la Section&#x00A0;19.1.4). Par exemple, une méthode d'accès aux tables hypothétique par défaut
+    pour les tables créées par pgbench, nommée wuzza, peut être spécifiée avec :</p>
+<div class="Bd-indent">
+<pre>PGOPTIONS='-c default_table_access_method=wuzza'</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Good_Practices'><a class='permalink' href='#Good_Practices'>Bonnes pratiques</a></h2>
+<p class="Pp">Il est très facile d'utiliser pgbench pour produire des chiffres complètement dénués de sens.
+    Voici quelques directives pour vous aider à obtenir des résultats utiles.</p>
+<p class="Pp">Tout d'abord, ne croyez <i>jamais</i> aucun test qui ne dure que quelques secondes.
+    Utilisez l'option <b>-t</b> ou <b>-T</b> pour que l'exécution dure au moins quelques minutes, afin de moyenner le bruit. Dans certains cas, vous pourriez avoir besoin de plusieurs heures pour obtenir des chiffres reproductibles. Il est bon d'essayer d'exécuter le test plusieurs fois pour savoir si vos chiffres sont reproductibles ou non.</p>
+<p class="Pp">Pour le scénario de test par défaut similaire à TPC-B, le facteur d'échelle d'initialisation (<b>-s</b>) doit être au moins égal au plus grand nombre de clients que vous avez l'intention de tester (<b>-c</b>) ; sinon, vous mesurerez principalement la contention des mises à jour. Il n'y a que <b>-s</b> lignes dans la table pgbench_branches, et chaque transaction veut en mettre à jour une, donc des valeurs de <b>-c</b> supérieures à <b>-s</b> entraîneront sans aucun doute de nombreuses transactions bloquées en attente d'autres transactions.</p>
+<p class="Pp">Le scénario de test par défaut est également très sensible à la durée écoulée depuis l'initialisation des tables : l'accumulation de lignes mortes et d'espace mort dans les tables modifie les résultats. Pour comprendre les résultats, vous devez suivre le nombre total de mises à jour et quand les opérations de vacuum se produisent. Si autovacuum est activé, cela peut entraîner des changements imprévisibles dans les performances mesurées.</p>
+<p class="Pp">Une limitation de pgbench est qu'il peut lui-même devenir le goulot d'étranglement lors de la tentative de test d'un grand nombre de sessions client. Cela peut être atténué en exécutant pgbench sur une machine différente de celle du serveur de base de données, bien qu'une faible latence réseau sera essentielle. Il peut même être utile d'exécuter plusieurs instances pgbench simultanément, sur plusieurs machines clientes, contre le même serveur de base de données.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Security'><a class='permalink' href='#Security'>Sécurité</a></h2>
+<p class="Pp">Si des utilisateurs non fiables ont accès à une base de données qui n'a pas adopté un schéma d'utilisation sécurisé, n'exécutez pas pgbench dans cette base de données. pgbench utilise des noms non qualifiés et ne manipule pas le chemin de recherche.</p>
+</section>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025</td>
+    <td class="foot-os">PostgreSQL 18.1</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/postgresql/">extra/postgresql</a></dd>
+        <dt>Version :</dt>
+        <dd>18.1-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.postgresql.org/">https://www.postgresql.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>PostgreSQL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/postgresql/">/listing/extra/postgresql/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#EXIT_STATUS">STATUT DE SORTIE</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONNEMENT</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pgbench.1.fr.txt">txt</a>, 
+        
+            <a href="/man/pgbench.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

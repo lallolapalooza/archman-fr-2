@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gitformat-chunk(5) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">gitformat-chunk(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/git/">git</a></p>
+<p class="lic">Licences: GPL-2.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">GITFORMAT-CHUNK(5)</td>
+    <td class="head-vol">Manuel Git</td>
+    <td class="head-rtitle">GITFORMAT-CHUNK(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">gitformat-chunk - Formats de fichiers basés sur des blocs</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPIS'><a class='permalink' href='#SYNOPIS'>SYNOPIS</a></h1>
+<p class="Pp">Utilisé par <a href='/man/gitformat-commit-graph.5.en'>gitformat-commit-graph(5)</a> et le format « MIDX » (voir la documentation du format de paquet dans <a href='/man/gitformat-pack.5.en'>gitformat-pack(5)</a>).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Certains formats de fichiers dans Git utilisent un concept commun de
+    « blocs » (chunks) pour décrire des sections du fichier. Cela permet un accès
+    structuré à un grand fichier en analysant une petite « table des matières » pour
+    les données restantes. Ce format commun est utilisé par les fichiers
+    <b>commit-graph</b> et <b>multi-pack-index</b>. Voir le format
+    <b>multi-pack-index</b> dans <a href='/man/gitformat-pack.5.en'>gitformat-pack(5)</a> et le format
+    <b>commit-graph</b> dans <a href='/man/gitformat-commit-graph.5.en'>gitformat-commit-graph(5)</a> pour savoir comment ils utilisent les blocs pour décrire des données structurées.</p>
+<p class="Pp">Un format de fichier basé sur des blocs commence par des informations
+    d'en-tête spécifiques à ce format. Cet en-tête doit contenir suffisamment
+    d'informations pour identifier le type de fichier, la version du format et le
+    nombre de blocs dans le fichier. À partir de ces informations, le fichier peut
+    déterminer le début de la région basée sur des blocs.</p>
+<p class="Pp">La région basée sur des blocs commence par une table des matières décrivant
+    où chaque bloc commence et se termine. Elle se compose de (C+1) lignes de 12
+    octets chacune, où C est le nombre de blocs. Considérez le tableau suivant :</p>
+<div class="Bd-indent">
+<pre>| ID du bloc (4 octets) | Décalage du bloc (8 octets) |
+|---------------------|-----------------------------|
+| ID[0]               | OFFSET[0]                   |
+| ...                 | ...                         |
+| ID[C]               | OFFSET[C]                   |
+| 0x0000              | OFFSET[C+1]                 |</pre>
+</div>
+<p class="Pp">Chaque ligne se compose d'un identifiant de bloc (ID) de 4 octets et
+    d'un décalage de 8 octets. Chaque entier est stocké en ordre d'octet réseau.</p>
+<p class="Pp">L'identifiant de bloc <b>ID</b>[<b>i</b>] est une étiquette pour les données
+    stockées dans ce fichier de <b>OFFSET</b>[<b>i</b>] (inclus) à
+    <b>OFFSET</b>[<b>i+1</b>] (exclus). Ainsi, la taille du <b>i</b>-ème
+    <b>bloc</b> <b>est</b> <b>égale</b> <b>à</b> <b>la</b> <b>différence</b>
+    <b>entre</b> `OFFSET[<b>i+1</b>] et <b>OFFSET</b>[<b>i</b>]. Cela
+    nécessite que les données des blocs apparaissent de manière contiguë dans le même
+    ordre que la table des matières.</p>
+<p class="Pp">La dernière entrée de la table des matières doit être quatre octets nuls.
+    Cela confirme que la table des matières se termine et fournit le décalage de la fin
+    des données basées sur des blocs.</p>
+<p class="Pp">Note : Le format basé sur des blocs s'attend à ce que le fichier contienne
+    <i>au moins</i> un hash final après <b>OFFSET</b>[<b>C+1</b>].</p>
+<p class="Pp">Les fonctions de manipulation des formats de fichiers basés sur des blocs
+    sont déclarées dans <b>chunk-format.h</b>. L'utilisation de ces méthodes
+    fournit des vérifications supplémentaires qui aident les développeurs lors de la
+    création de nouveaux formats de fichiers.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ECRITURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS'><a class='permalink' href='#ECRITURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS'>ÉCRITURE   DES FORMATS DE FICHIER BASÉS SUR DES BLOCS</a></h1>
+<p class="Pp">Pour écrire un format de fichier basé sur des blocs, créez un
+    <b>struct</b> <b>chunkfile</b> en appelant <b>init_chunkfile</b>() et passez un pointeur
+    vers un <b>struct</b> <b>hashfile</b>. L'appelant est responsable de l'ouverture
+    du <b>hashfile</b> et de l'écriture des informations d'en-tête afin que le format
+    du fichier soit identifiable avant le début du format basé sur des blocs.</p>
+<p class="Pp">Ensuite, appelez <b>add_chunk</b>() pour chaque bloc destiné à
+    l'écriture. Cela remplit le <b>chunkfile</b> avec des informations sur l'ordre et
+    la taille de chaque bloc à écrire. Fournissez un pointeur de fonction
+    <b>chunk_write_fn</b> pour effectuer l'écriture des données du bloc sur
+    demande.</p>
+<p class="Pp">Appelez <b>write_chunkfile</b>() pour écrire la table des matières dans le
+    <b>hashfile</b>, suivie de chaque bloc. Cela vérifiera que chaque bloc a écrit la quantité
+    de données attendue afin que la table des matières soit correcte.</p>
+<p class="Pp">Enfin, appelez <b>free_chunkfile</b>() pour libérer les données du
+    <b>struct</b> <b>chunkfile</b>. L'appelant est responsable de la finalisation du
+    <b>hashfile</b> en écrivant le hash final et en fermant le fichier.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LECTURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS'><a class='permalink' href='#LECTURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS'>LECTURE   DES FORMATS DE FICHIER BASÉS SUR DES BLOCS</a></h1>
+<p class="Pp">Pour lire un format de fichier basé sur des blocs, le fichier doit être
+    ouvert en tant que région mappée en mémoire. L'API de format de bloc s'attend à ce que
+    l'intégralité du fichier soit mappée en tant que région mémoire contiguë.</p>
+<p class="Pp">Initialisez un pointeur vers un <b>struct</b> <b>chunkfile</b> avec
+    <b>init_chunkfile</b>(<b>NULL</b>).</p>
+<p class="Pp">Après avoir lu les informations d'en-tête depuis le début du fichier,
+    y compris le nombre de blocs, appelez <b>read_table_of_contents</b>() pour remplir le
+    <b>struct</b> <b>chunkfile</b> avec la liste des blocs, leurs décalages et leurs
+    tailles.</p>
+<p class="Pp">Extrayez les informations des données pour chaque bloc en utilisant
+    <b>pair_chunk</b>() ou <b>read_chunk</b>():</p>
+<div class="Bd-indent">&#x2022;<b>pair_chunk</b>() assigne à un pointeur donné
+  l'emplacement à l'intérieur du fichier mappé en mémoire correspondant au décalage de ce
+  bloc. Si le bloc n'existe pas, le pointeur n'est pas modifié.</div>
+<div class="Bd-indent">&#x2022;<b>read_chunk</b>() prend un pointeur de fonction
+  <b>chunk_read_fn</b> et l'appelle avec le pointeur initial et les informations de taille
+  appropriés. La fonction n'est pas appelée si le bloc n'existe pas. Utilisez cette
+  méthode pour lire les blocs si vous avez besoin d'effectuer une analyse immédiate ou si
+  vous avez besoin d'exécuter une logique basée sur la taille du bloc.</div>
+<p class="Pp">Après avoir appelé ces méthodes, appelez <b>free_chunkfile</b>() pour libérer
+    les données du <b>struct</b> <b>chunkfile</b>. Cela ne fermera pas la région mappée en
+    mémoire. Les appelants sont censés conserver la propriété de ces données pendant la
+    période pendant laquelle les pointeurs dans la région sont nécessaires.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Ces formats de fichiers utilisent l'API de format de bloc et peuvent servir
+    d'exemples pour de futurs formats :</p>
+<div class="Bd-indent">&#x2022;<b>commit-graph :</b> voir
+  <b>write_commit_graph_file</b>() et <b>parse_commit_graph</b>() dans
+  <b>commit-graph.c</b> pour savoir comment l'API de format de bloc est utilisée pour
+  écrire et analyser le format de fichier commit-graph documenté dans le format de
+  fichier commit-graph de <a href='/man/gitformat-commit-graph.5.en'>gitformat-commit-graph(5)</a>.</div>
+<div class="Bd-indent">&#x2022;<b>multi-pack-index :</b> voir
+  <b>write_midx_internal</b>() et <b>load_multi_pack_index</b>() dans
+  <b>midx.c</b> pour savoir comment l'API de format de bloc est utilisée pour écrire et
+  analyser le format de fichier multi-pack-index documenté dans la section du format de
+  fichier multi-pack-index de <a href='/man/gitformat-pack.5.en'>gitformat-pack(5)</a>.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='GIT'><a class='permalink' href='#GIT'>GIT</a></h1>
+<p class="Pp">Fait partie de la suite <a href='/man/git.1.en'>git(1)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-11-17</td>
+    <td class="foot-os">Git 2.52.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/git/">extra/git</a></dd>
+        <dt>Version :</dt>
+        <dd>2.52.0-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://git-scm.com/">https://git-scm.com/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/git/">/listing/extra/git/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNOPIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#ECRITURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS">ÉCRITURE DES FORMATS DE FICHIER BASÉS SUR DES BLOCS</a></li>
+        
+            <li><a href="#LECTURE_DES_FORMATS_DE_FICHIER_BASES_SUR_DES_BLOCS">LECTURE DES FORMATS DE FICHIER BASÉS SUR DES BLOCS</a></li>
+        
+            <li><a href="#EXEMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#GIT">GIT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/gitformat-chunk.5.en.txt">txt</a>, 
+        
+            <a href="/man/gitformat-chunk.5.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.o
+rg/licences/gpl-3.0.en.html"&gt;Licen</a>ce GPL-3.0
+               sauf po</p>ur le contenu des pages de manuel</footer>, qui possèdent leur propre licenc</body>e
+               spécifiée dans le</html> paquet Arch Linux correspondant.

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libunwind-ia64(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">libunwind-ia64(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libunwind/">libunwind</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBUNWIND-IA64(3libunwind)</td>
+    <td class="head-vol">Bibliothèque de programmation </td>
+    <td class="head-rtitle">LIBUNWIND-IA64(3libunwind)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">libunwind-ia64 -- Support spécifique à IA-64 dans libunwind</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTRODUCTION'><a class='permalink' href='#INTRODUCTION'>INTRODUCTION</a></h1>
+<p class="Pp">La version IA-64 de libunwind utilise une chaîne de plateforme nommée
+    ia64 et, du moins en théorie, devrait être capable de supporter tous les
+    systèmes d'exploitation adhérant à l'ABI spécifique au processeur définie pour
+    l'Itanium Processor Family. Cela inclut Linux en little-endian et HP-UX en
+    big-endian. De plus, pour permettre à une seule bibliothèque de dérouler des
+    cibles 32 et 64 bits, le type unw_word_t est toujours défini comme étant de 64
+    bits de large (indépendamment de la taille naturelle du mot de l'hôte).
+    Ceci dit, l'implémentation actuelle n'a été testée qu'avec IA-64 Linux.</p>
+<p class="Pp">Lorsqu'on cible IA-64, le fichier d'en-tête libunwind définit le
+    macro UNW_TARGET_IA64 comme 1 et le macro UNW_TARGET comme ``ia64'' (sans les
+    guillemets). Le premier permet au code de déroulement dépendant de la
+    plateforme d'utiliser la compilation conditionnelle pour sélectionner une
+    implémentation appropriée. Le second est utile à des fins de chaînage et pour
+    construire des symboles spécifiques à la plateforme cible.</p>
+<p class="Pp">Une caractéristique spéciale de IA-64 est l'utilisation des bits
+    NaT pour supporter l'exécution spéculative. Souvent, les bits NaT sont pensés
+    comme le ``65ème bit'' d'un registre général. Cependant, pour tout faire
+    rentrer dans des valeurs unw_word_t de 64 bits, libunwind traite les bits NaT
+    comme des registres booléens séparés, dont la valeur de 64 bits est soit VRAI
+    (non nul) soit FAUX (nul).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ETAT-MACHINE'><a class='permalink' href='#ETAT-MACHINE'>ÉTAT MACHINE</a></h1>
+<p class="Pp">L'état machine (ensemble de registres) accessible via libunwind
+    dépend du type de cadre de pile auquel un curseur pointe. Pour les cadres
+    normaux, tous les registres « préservés » (sauvegardés par l'appelé) sont
+    accessibles. Pour les cadres de trampoline de signal, tous les registres
+    (y compris les registres « scratch » (sauvegardés par l'appelant)) sont
+    accessibles. La plupart des applications n'ont pas à s'inquiéter à
+    l'avance des registres accessibles à un moment donné. En cas de doute, il est
+    toujours sûr d'essayer d'accéder à un registre (via unw_get_reg() ou
+    unw_get_fpreg()) et si le registre n'est pas accessible, l'appel échouera
+    avec une valeur de retour de -UNW_EBADREG.</p>
+<p class="Pp">Une exception spéciale à la règle générale ci-dessus est que les
+    registres scratch r15-r18 sont toujours accessibles, même dans les cadres
+    normaux. Cela permet de passer des arguments, par exemple, aux gestionnaires
+    d'exception.</p>
+<p class="Pp">Pour une description détaillée de la convention d'utilisation des
+    registres IA-64, veuillez consulter le guide ``Itanium Software Conventions and
+    Runtime Architecture Guide'', disponible à l'adresse :
+  <br/>
+  <a href='http://www.intel.com/design/itanium/downloads/245358.htm'>http://www.intel.com/design/itanium/downloads/245358.htm</a>
+  <br/>
+  <br/>
+</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOMS-DE-REGISTRES'><a class='permalink' href='#NOMS-DE-REGISTRES'>NOMS DE REGISTRES</a></h1>
+<p class="Pp">La version IA-64 de libunwind définit trois types de macros de noms de
+    registres : les macros de registres de cadre, les macros de registres normaux
+    et les macros de commodité. Ci-dessous, nous décrivons chaque type à tour de
+    rôle :</p>
+<section class="Ss">
+<h2 class="Ss" id='MACROS-DE-REGISTRES-DE-CADRE'><a class='permalink' href='#MACROS-DE-REGISTRES-DE-CADRE'>MACROS DE REGISTRES DE CADRE</a></h2>
+<p class="Pp">Les registres de cadre sont des registres spéciaux (pseudo) car ils
+    ont toujours une valeur valide, même si parfois ils ne sont pas explicitement
+    sauvegardés (par exemple, si un cadre de pile mémoire mesure 16 octets, le
+    pointeur de pile précédent peut être calculé simplement comme sp+16, il n'est
+    donc pas nécessaire de sauvegarder explicitement le pointeur de pile). De
+    plus, l'ensemble des valeurs des registres de cadre identifie de manière unique
+    un cadre de pile. L'architecture IA-64 définit deux piles (une pile mémoire et
+    une pile de registres). En incluant le pointeur d'instruction (IP), cela fait
+    trois registres de cadre :</p>
+<dl class="Bl-tag">
+  <dt id="UNW_IA64_IP:"><a class="permalink" href="#UNW_IA64_IP:">UNW_IA64_IP:</a></dt>
+  <dd>
+    <br/>
+     Contient le pointeur d'instruction (IP, ou « compteur de programme ») du
+      cadre de pile courant. Étant donnée cette valeur, l'état machine restant
+      correspond aux valeurs des registres présentes dans le CPU lorsqu'il était
+      sur le point d'exécuter l'instruction pointée par UNW_IA64_IP. Les bits 0
+      et 1 de ce registre de cadre codent le numéro de slot de l'instruction.
+      <b>Note :</b> En raison de la manière dont l'instruction d'appel fonctionne
+      sur IA-64, le numéro de slot est généralement zéro, mais peut être non nul,
+      par exemple, dans le cadre de pile d'un trampoline de gestionnaire de
+      signal.</dd>
+  <dt id="UNW_IA64_SP:"><a class="permalink" href="#UNW_IA64_SP:">UNW_IA64_SP:</a></dt>
+  <dd>
+    <br/>
+     Contient la valeur du pointeur de pile (mémoire) (SP).</dd>
+  <dt id="UNW_IA64_BSP:"><a class="permalink" href="#UNW_IA64_BSP:">UNW_IA64_BSP:</a></dt>
+  <dd>
+    <br/>
+     Contient le pointeur de la pile de registres de sauvegarde (BSP). <b>Note :</b>
+      la valeur de ce registre est égale au contenu du registre ar.bsp au moment
+      où l'instruction à UNW_IA64_IP était sur le point de commencer son exécution.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='MACROS-DE-REGISTRES-NORMALE'><a class='permalink' href='#MACROS-DE-REGISTRES-NORMALE'>MACROS DE REGISTRES NORMALE</a></h2>
+<p class="Pp">Les macros de registres normaux suivantes sont disponibles :</p>
+<dl class="Bl-tag">
+  <dt id="UNW_IA64_GR:"><a class="permalink" href="#UNW_IA64_GR:">UNW_IA64_GR:</a></dt>
+  <dd>
+    <br/>
+     L'indice de base pour les registres généraux (entiers). Ajoutez un indice
+      dans la plage 0..127 pour obtenir un registre général particulier. Par
+      exemple, pour accéder à r4, utilisez l'indice UNW_IA64_GR+4. Les registres
+      r0 et r1 (gp) sont en lecture seule, et toute tentative de les modifier
+      entraînera une erreur (-UNW_EREADONLYREG). Même si r1 est en lecture seule,
+      libunwind ajustera automatiquement sa valeur si le pointeur d'instruction
+      (UNW_IA64_IP) est modifié. Par exemple, si UNW_IA64_IP est défini sur une
+      valeur à l'intérieur d'une fonction func(), lire UNW_IA64_GR+1 retournera la
+      valeur du pointeur global pour cette fonction.</dd>
+  <dt id="UNW_IA64_NAT:"><a class="permalink" href="#UNW_IA64_NAT:">UNW_IA64_NAT:</a></dt>
+  <dd>
+    <br/>
+     L'indice de base pour les bits NaT des registres généraux (entiers). Une
+      valeur non nulle dans ces registres correspond à un bit NaT défini. Ajoutez
+      un indice dans la plage 0..127 pour obtenir un registre de bit NaT
+      particulier. Par exemple, pour accéder au bit NaT de r4, utilisez l'indice
+      UNW_IA64_NAT+4.</dd>
+  <dt id="UNW_IA64_FR:"><a class="permalink" href="#UNW_IA64_FR:">UNW_IA64_FR:</a></dt>
+  <dd>
+    <br/>
+     L'indice de base pour les registres à virgule flottante. Ajoutez un indice
+      dans la plage 0..127 pour obtenir un registre à virgule flottante
+      particulier. Par exemple, pour accéder à f2, utilisez l'indice
+      UNW_IA64_FR+2. Les registres f0 et f1 sont en lecture seule, et toute
+      tentative d'écriture aux indices UNW_IA64_FR+0 ou UNW_IA64_FR+1 entraînera
+      une erreur (-UNW_EREADONLYREG).</dd>
+  <dt id="UNW_IA64_AR:"><a class="permalink" href="#UNW_IA64_AR:">UNW_IA64_AR:</a></dt>
+  <dd>
+    <br/>
+     L'indice de base pour les registres d'application. Ajoutez un indice dans la
+      plage 0..127 pour obtenir un registre d'application particulier. Par
+      exemple, pour accéder à ar40, utilisez l'indice UNW_IA64_AR+40. L'architecture
+      IA-64 définit plusieurs registres d'application comme « réservés pour une
+      utilisation future ». Tenter d'accéder à de tels registres entraîne une
+      erreur (-UNW_EBADREG).</dd>
+  <dt id="UNW_IA64_BR:"><a class="permalink" href="#UNW_IA64_BR:">UNW_IA64_BR:</a></dt>
+  <dd>
+    <br/>
+     L'indice de base pour les registres de branchement. Ajoutez un indice dans la
+      plage 0..7 pour obtenir un registre de branchement particulier. Par
+      exemple, pour accéder à b6, utilisez l'indice UNW_IA64_BR+6.</dd>
+  <dt id="UNW_IA64_PR:"><a class="permalink" href="#UNW_IA64_PR:">UNW_IA64_PR:</a></dt>
+  <dd>
+    <br/>
+     Contient l'ensemble des registres de prédicat. Ce registre de 64 bits de
+      large contient les registres p0 à p63 au format « large côté ». Tout comme
+      avec l'instruction « move predicates », les registres sont mappés comme si
+      CFM.rrb.pr était défini à 0. Ainsi, en général, la valeur du registre de
+      prédicat pN avec N>=16 se trouve dans le bit 16 + ((N-16)+CFM.rrb.pr) % 48.</dd>
+  <dt id="UNW_IA64_CFM:"><a class="permalink" href="#UNW_IA64_CFM:">UNW_IA64_CFM:</a></dt>
+  <dd>
+    <br/>
+     Contient le registre du masque de cadre actuel.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='MACROS-DE-COMMODITE'><a class='permalink' href='#MACROS-DE-COMMODITE'>MACROS DE COMMODITE</a></h2>
+<p class="Pp">Les macros de commodité sont simplement des alias pour certains
+    registres fréquemment utilisés :</p>
+<dl class="Bl-tag">
+  <dt id="UNW_IA64_GP:"><a class="permalink" href="#UNW_IA64_GP:">UNW_IA64_GP:</a></dt>
+  <dd>
+    <br/>
+     Alias pour UNW_IA64_GR+1, le registre du pointeur global.</dd>
+  <dt id="UNW_IA64_TP:"><a class="permalink" href="#UNW_IA64_TP:">UNW_IA64_TP:</a></dt>
+  <dd>
+    <br/>
+     Alias pour UNW_IA64_GR+13, le registre du pointeur de thread.</dd>
+  <dt id="UNW_IA64_AR_RSC:"><a class="permalink" href="#UNW_IA64_AR_RSC:">UNW_IA64_AR_RSC:</a></dt>
+  <dd>
+    <br/>
+     Alias pour UNW_IA64_GR+16, le registre de configuration de la pile de
+      registres.</dd>
+  <dt id="UNW_IA64_AR_BSP:"><a class="permalink" href="#UNW_IA64_AR_BSP:">UNW_IA64_AR_BSP:</a></dt>
+  <dd>
+    <br/>
+     Alias pour UNW_IA64_GR+17. Cet indice de registre accède à la valeur du
+      registre ar.bsp au moment où il a été sauvegardé explicitement pour la
+      dernière fois. Ceci est r</dd>
+</dl>
+</section>
+</div>
+</section>
+
+            </article>
+            <aside id="content-right">
+                
+            </aside>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD-xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <title>libunwind-ia64(3libunwind)</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta http-equiv="Content-Style-Type" content="text/css" />
+        <meta http-equiv="Content-Script-Type" content="text/javascript" />
+        <link rel="stylesheet" type="text/css" href="/css/style.css" />
+        <link rel="stylesheet" type="text/css" href="/css/print.css" media="print" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <section class="Sh">
+<h1 class="Sh" id="NAME">NAME</h1>
+<p class="Nd">libunwind-ia64 - IA-64 register names for libunwind</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="INTRODUCTION">INTRODUCTION</h1>
+<p class="Rd">The <span class="Nm">libunwind</span> library provides a generic API for
+    unwinding stack traces. This man page describes the IA-64-specific extensions
+    to <span class="Nm">libunwind</span>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="MACHINE-STATE">MACHINE-STATE</h1>
+<p class="Pc">An IA-64 machine state consists of the following registers:</p>
+<dl class="Nd">
+    <dt id="UNW_IA64_GR"><a class="permalink" href="#UNW_IA64_GR">UNW_IA64_GR</a></dt>
+    <dd>
+        <br />
+        The 128 general-purpose registers (r0-r127).</dd>
+    <dt id="UNW_IA64_AR"><a class="permalink" href="#UNW_IA64_AR">UNW_IA64_AR</a></dt>
+    <dd>
+        <br />
+        The 128 application registers (ar0-ar127).</dd>
+    <dt id="UNW_IA64_FR"><a class="permalink" href="#UNW_IA64_FR">UNW_IA64_FR</a></dt>
+    <dd>
+        <br />
+        The 128 floating-point registers (f0-f127).</dd>
+    <dt id="UNW_IA64_PR"><a class="permalink" href="#UNW_IA64_PR">UNW_IA64_PR</a></dt>
+    <dd>
+        <br />
+        The 64 predicate registers (p0-p63).</dd>
+    <dt id="UNW_IA64_BRP"><a class="permalink" href="#UNW_IA64_BRP">UNW_IA64_BRP</a></dt>
+    <dd>
+        <br />
+        The branch registers (b0-b7).</dd>
+    <dt id="UNW_IA64_CCV"><a class="permalink" href="#UNW_IA64_CCV">UNW_IA64_CCV</a></dt>
+    <dd>
+        <br />
+        The compare-and-swap value register.</dd>
+    <dt id="UNW_IA64_IIP"><a class="permalink" href="#UNW_IA64_IIP">UNW_IA64_IIP</a></dt>
+    <dd>
+        <br />
+        The instruction pointer.</dd>
+    <dt id="UNW_IA64_USP"><a class="permalink" href="#UNW_IA64_USP">UNW_IA64_USP</a></dt>
+    <dd>
+        <br />
+        The user stack pointer.</dd>
+    <dt id="UNW_IA64_RSP"><a class="permalink" href="#UNW_IA64_RSP">UNW_IA64_RSP</a></dt>
+    <dd>
+        <br />
+        The register stack pointer.</dd>
+    <dt id="UNW_IA64_BSP"><a class="permalink" href="#UNW_IA64_BSP">UNW_IA64_BSP</a></dt>
+    <dd>
+        <br />
+        The backing store pointer.</dd>
+    <dt id="UNW_IA64_RBS"><a class="permalink" href="#UNW_IA64_RBS">UNW_IA64_RBS</a></dt>
+    <dd>
+        <br />
+        The register backing store.</dd>
+    <dt id="UNW_IA64_PSR"><a class="permalink" href="#UNW_IA64_PSR">UNW_IA64_PSR</a></dt>
+    <dd>
+        <br />
+        The processor status register.</dd>
+    <dt id="UNW_IA64_SSR"><a class="permalink" href="#UNW_IA64_SSR">UNW_IA64_SSR</a></dt>
+    <dd>
+        <br />
+        The system state register.</dd>
+    <dt id="UNW_IA64_CPSR"><a class="permalink" href="#UNW_IA64_CPSR">UNW_IA64_CPSR</a></dt>
+    <dd>
+        <br />
+        The current processor status register.</dd>
+    <dt id="UNW_IA64_UNAT"><a class="permalink" href="#UNW_IA64_UNAT">UNW_IA64_UNAT</a></dt>
+    <dd>
+        <br />
+        The user NaT register.</dd>
+    <dt id="UNW_IA64_FPSR"><a class="permalink" href="#UNW_IA64_FPSR">UNW_IA64_FPSR</a></dt>
+    <dd>
+        <br />
+        The floating-point status register.</dd>
+    <dt id="UNW_IA64_RNAT"><a class="permalink" href="#UNW_IA64_RNAT">UNW_IA64_RNAT</a></dt>
+    <dd>
+        <br />
+        The register NaT register.</dd>
+    <dt id="UNW_IA64_PFS"><a class="permalink" href="#UNW_IA64_PFS">UNW_IA64_PFS</a></dt>
+    <dd>
+        <br />
+        The previous frame pointer.</dd>
+    <dt id="UNW_IA64_LC"><a class="permalink" href="#UNW_IA64_LC">UNW_IA64_LC</a></dt>
+    <dd>
+        <br />
+        The loop count register.</dd>
+    <dt id="UNW_IA64_EC"><a class="permalink" href="#UNW_IA64_EC">UNW_IA64_EC</a></dt>
+    <dd>
+        <br />
+        The epilogue count register.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="REGISTER_NAMES">REGISTER NAMES</h1>
+<p class="Pc">In addition to the generic register names defined in <span class="Xr"><a href="/man/unwind.h.html">unwind.h</a></span>,
+    the following IA-64-specific register names are available:</p>
+<dl class="Nd">
+    <dt id="UNW_IA64_GR:"><a class="permalink" href="#UNW_IA64_GR:">UNW_IA64_GR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_GR+0, the first general-purpose register.</dd>
+    <dt id="UNW_IA64_AR:"><a class="permalink" href="#UNW_IA64_AR:">UNW_IA64_AR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+0, the first application register.</dd>
+    <dt id="UNW_IA64_FR:"><a class="permalink" href="#UNW_IA64_FR:">UNW_IA64_FR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_FR+0, the first floating-point register.</dd>
+    <dt id="UNW_IA64_PR:"><a class="permalink" href="#UNW_IA64_PR:">UNW_IA64_PR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_PR+0, the first predicate register.</dd>
+    <dt id="UNW_IA64_BRP:"><a class="permalink" href="#UNW_IA64_BRP:">UNW_IA64_BRP:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_BRP+0, the first branch register.</dd>
+    <dt id="UNW_IA64_AR_RPID:"><a class="permalink" href="#UNW_IA64_AR_RPID:">UNW_IA64_AR_RPID:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+2, the return value pointer register.</dd>
+    <dt id="UNW_IA64_AR_PFS:"><a class="permalink" href="#UNW_IA64_AR_PFS:">UNW_IA64_AR_PFS:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+2, the previous frame pointer.</dd>
+    <dt id="UNW_IA64_AR_LC:"><a class="permalink" href="#UNW_IA64_AR_LC:">UNW_IA64_AR_LC:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+3, the loop count register.</dd>
+    <dt id="UNW_IA64_AR_EC:"><a class="permalink" href="#UNW_IA64_AR_EC:">UNW_IA64_AR_EC:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+4, the epilogue count register.</dd>
+    <dt id="UNW_IA64_AR_RNAT:"><a class="permalink" href="#UNW_IA64_AR_RNAT:">UNW_IA64_AR_RNAT:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+5, the NaT register.</dd>
+    <dt id="UNW_IA64_AR_CCV:"><a class="permalink" href="#UNW_IA64_AR_CCV:">UNW_IA64_AR_CCV:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+8, the compare-and-swap value register.</dd>
+    <dt id="UNW_IA64_AR_UNAT:"><a class="permalink" href="#UNW_IA64_AR_UNAT:">UNW_IA64_AR_UNAT:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+12, the user NaT register.</dd>
+    <dt id="UNW_IA64_AR_FPSR:"><a class="permalink" href="#UNW_IA64_AR_FPSR:">UNW_IA64_AR_FPSR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+13, the floating-point status register.</dd>
+    <dt id="UNW_IA64_AR_CSD:"><a class="permalink" href="#UNW_IA64_AR_CSD:">UNW_IA64_AR_CSD:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+14, the compare-and-swap data register.</dd>
+    <dt id="UNW_IA64_AR_GR:"><a class="permalink" href="#UNW_IA64_AR_GR:">UNW_IA64_AR_GR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+16, the general register stack pointer.</dd>
+    <dt id="UNW_IA64_AR_BSPSTORE:"><a class="permalink" href="#UNW_IA64_AR_BSPSTORE:">UNW_IA64_AR_BSPSTORE:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+18, the register-backing store write pointer.</dd>
+    <dt id="UNW_IA64_AR_RBS:"><a class="permalink" href="#UNW_IA64_AR_RBS:">UNW_IA64_AR_RBS:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+24, the register backing store.</dd>
+    <dt id="UNW_IA64_AR_CS:"><a class="permalink" href="#UNW_IA64_AR_CS:">UNW_IA64_AR_CS:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+25, the compare-and-swap register.</dd>
+    <dt id="UNW_IA64_AR_SSR:"><a class="permalink" href="#UNW_IA64_AR_SSR:">UNW_IA64_AR_SSR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+26, the system state register.</dd>
+    <dt id="UNW_IA64_AR_CPSR:"><a class="permalink" href="#UNW_IA64_AR_CPSR:">UNW_IA64_AR_CPSR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+27, the current processor status register.</dd>
+    <dt id="UNW_IA64_AR_CCV:"><a class="permalink" href="#UNW_IA64_AR_CCV:">UNW_IA64_AR_CCV:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+32, the compare-and-swap value register.</dd>
+    <dt id="UNW_IA64_AR_CSD:"><a class="permalink" href="#UNW_IA64_AR_CSD:">UNW_IA64_AR_CSD:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+25, the compare-and-swap-data register (used by
+            16-byte atomic operations).</dd>
+    <dt id="UNW_IA64_AR_UNAT:"><a class="permalink" href="#UNW_IA64_AR_UNAT:">UNW_IA64_AR_UNAT:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+36, the user NaT-collection register.</dd>
+    <dt id="UNW_IA64_AR_FPSR:"><a class="permalink" href="#UNW_IA64_AR_FPSR:">UNW_IA64_AR_FPSR:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+40, the floating-point status (and control)
+        register.</dd>
+    <dt id="UNW_IA64_AR_PFS:"><a class="permalink" href="#UNW_IA64_AR_PFS:">UNW_IA64_AR_PFS:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_AR+64, the previous frame-state register.</dd>
+    <dt id="UNW_IA64_AR_LC:"><a class="permalink" href="#UNW_IA64_AR_LC:">UNW_IA64_AR_LC:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_GR+65 the loop-count register.</dd>
+    <dt id="UNW_IA64_AR_EC:"><a class="permalink" href="#UNW_IA64_AR_EC:">UNW_IA64_AR_EC:</a></dt>
+    <dd>
+        <br />
+        Alias for UNW_IA64_GR+66, the epilogue-count register.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="THE_UNWIND-CONTEXT_TYPE">THE UNWIND-CONTEXT TYPE</h1>
+<p class="Pc">On IA-64, unw_context_t is simply an alias for ucontext_t (as
+    defined by the Single UNIX Spec). This implies that it is possible to
+    initialize a value of this type not just with unw_getcontext(), but also
+    with getcontext(), for example. However, since this is an IA-64-specific
+    extension to libunwind, portable code should not rely on this
+    equivalence.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO">SEE ALSO</h1>
+<p class="Pp"><span class="Xr"><a href="/man/libunwind.3libunwind.html">libunwind(3libunwind)</a></span></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AUTHOR">AUTHOR</h1>
+<p class="Pp">David Mosberger-Tang
+    <br />
+    Email: <b>dmosberger@gmail.com</b>
+    <br />
+    WWW: <a href="http://www.nongnu.org/libunwind/">http://www.nongnu.org/libunwind/</a>.</p>
+</section>
+</div>
+<table class="foot">
+    <tr>
+        <td class="foot-date">29 August 2023</td>
+        <td class="foot-os">Programming Library </td>
+    </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libunwind/">extra/libunwind</a></dd>
+        <dt>Version:</dt>
+        <dd>1.8.2-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.nongnu.org/libunwind/">https://www.nongnu.org/libunwind/</a></dd>
+        <dt>Licenses:</dt>
+        <dd>MIT</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/libunwind/">/listing/extra/libunwind/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#INTRODUCTION">INTRODUCTION</a></li>
+        
+            <li><a href="#MACHINE-STATE">MACHINE-STATE</a></li>
+        
+            <li><a href="#REGISTER_NAMES">REGISTER NAMES</a></li>
+        
+            <li><a href="#THE_UNWIND-CONTEXT_TYPE">THE UNWIND-CONTEXT TYPE</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#AUTHOR">AUTHOR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/libunwind-ia64.3.en.txt">txt</a>, 
+        
+            <a href="/man/libunwind-ia64.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

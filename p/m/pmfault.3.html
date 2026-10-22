@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pmfault(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pmfault(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/pcp/">pcp</a></p>
+<p class="lic">Licences: GPL-2.0-or-later, LGPL-2.1-or-later, CC-BY-3.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PMFAULT(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">PMFAULT(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><b>__pmFaultInject</b>, <b>__pmFaultSummary</b>,
+    <b>PM_FAULT_POINT</b>, <b>PM_FAULT_RETURN</b>, <b>PM_FAULT_CHECK</b>,
+    <b>PM_FAULT_CLEAR</b> - Infrastructure d'injection de fautes pour le contrôle qualité</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE_C'><a class='permalink' href='#SYNTAXE_C'>SYNTAXE C</a></h1>
+<p class="Pp"><b>#include &lt;pcp/pmapi.h&gt;</b>
+  <br/>
+  #include &lt;pcp/fault.h&gt;</p>
+<p class="Pp">void __pmFaultInject(const char *<i>ident</i>, int <i>class</i>);
+  <br/>
+  void __pmFaultSummary(FILE *<i>f</i>);</p>
+<p class="Pp">PM_FAULT_POINT(<i>ident</i>, <i>class</i>);
+  <br/>
+  PM_FAULT_RETURN(<i>retvalue</i>);
+  <br/>
+  PM_FAULT_CHECK;
+  <br/>
+  PM_FAULT_CLEAR;</p>
+<p class="Pp">cc -DPM_FAULT_INJECTION=1 ... -lpcp_fault</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Dans le cadre des changements pilotés par la couverture du contrôle qualité dans PCP 3.6, il est devenu apparent que nous avions besoin d'un moyen d'exercer les chemins de code "inhabituels" associés à la détection et à la récupération d'erreurs.</p>
+<p class="Pp">Les installations décrites ci-dessous fournissent une infrastructure de base pour l'injection de fautes (uniquement pour <i>libpcp</i> pour le moment, bien que le mécanisme soit beaucoup plus général et puisse être facilement étendu).</p>
+<p class="Pp">Une construction spéciale est requise pour créer <i>libpcp_fault</i> et le fichier d'en-tête <i>&lt;pcp/fault.h&gt;</i> associé. Une fois cela fait, de nouvelles applications de contrôle qualité peuvent être construites avec <b>-DPM_FAULT_INJECTION=1</b> et/ou des applications existantes peuvent être exercées en présence d'injection de fautes en forçant <i>libpcp_fault</i> à être utilisée de préférence à <i>libpcp</i>, comme décrit ci-dessous.</p>
+<p class="Pp">Dans le code à tester, <b>__pmFaultInject</b> définit un point de faute où une faute de type <i>class</i> peut être injectée. <i>ident</i> est une chaîne de caractères permettant d'identifier de manière unique le point de faute dans tout le code source de PCP, donc quelque chose comme &quot;libpcp/&quot; __FILE__ &quot;:&lt;nombre&gt;&quot; fonctionne très bien. La chaîne <i>ident</i> détermine également si une faute sera injectée ou non au moment de l'exécution - voir la section <b>CONTRÔLE À L'EXÉCUTION</b> ci-dessous. <i>class</i> sélectionne un type de défaillance, en utilisant l'une des valeurs définies suivantes (cette liste pourrait bien s'allonger avec le temps) :</p>
+<dl class="Bl-tag">
+  <dt id="PM_FAULT_ALLOC"><a class="permalink" href="#PM_FAULT_ALLOC"><b>PM_FAULT_ALLOC</b></a></dt>
+  <dd>Provoquera l'échec du <b>prochain</b> appel à <a href='/man/malloc.3.en'>malloc(3)</a>, <a href='/man/realloc.3.en'>realloc(3)</a> ou <a href='/man/strdup.3.en'>strdup(3)</a>, retournant NULL et définissant <i>errno</i> à <b>ENOMEM</b>. Nous pourrions étendre la couverture à toutes les routines liées à malloc, mais ces trois sont suffisantes pour couvrir la grande majorité des utilisations dans <i>libpcp</i>.</dd>
+  <dt id="PM_FAULT_CALL"><a class="permalink" href="#PM_FAULT_CALL"><b>PM_FAULT_CALL</b></a></dt>
+  <dd>Provoquera l'échec du <b>prochain</b> appel à une routine instrumentée en retournant un code d'erreur (possiblement le nouveau code <b>PM_ERR_FAULT</b>). Le code d'erreur réel est défini dans la macro <b>PM_FAULT_RETURN</b> au début d'une routine instrumentée. Initialement, seuls <a href='/man/__pmRegisterAnon.3.en'>__pmRegisterAnon(3)</a> (retourne <b>PM_ERR_FAULT</b>), <a href='/man/__pmGetPDU.3.en'>__pmGetPDU(3)</a> (retourne <b>PM_ERR_TIMEOUT</b>) et <a href='/man/__pmAllocResult.3.en'>__pmAllocResult(3)</a> (retourne <b>NULL</b>) étaient instrumentés comme preuve de concept pour cette partie de l'installation, cependant d'autres routines pourraient avoir cette capacité d'injection de faute ajoutée au fil du temps.</dd>
+  <dt id="PM_FAULT_MISC"><a class="permalink" href="#PM_FAULT_MISC"><b>PM_FAULT_MISC</b></a></dt>
+  <dd>La classe "autre", actuellement utilisée avec <b>PM_FAULT_CHECK</b> comme décrit ci-dessous.</dd>
+</dl>
+<p class="Pp">Pour permettre à l'injection de fautes de coexister dans le code source de production, <b>PM_FAULT_POINT</b> est une macro qui n'émet aucun code par défaut, mais lorsque <b>PM_FAULT_INJECTION</b> est définie, cela devient un appel à <b>__pmFaultInject</b>. Partout dans <i>libpcp</i>, nous utilisons <b>PM_FAULT_POINT</b> et non <b>__pmFaultInject</b> afin que <i>libpcp</i> et <i>libpcp_fault</i> puissent être construits à partir du même code source.</p>
+<p class="Pp">De même, la macro <b>PM_FAULT_RETURN</b> n'émet aucun code à moins que <b>PM_FAULT_INJECTION</b> ne soit définie, auquel cas, si une faute de type <b>PM_FAULT_CALL</b> a été armée avec <b>__pmFaultInject</b>, la routine englobante retourne avec la valeur de fonction <i>retvalue</i>.</p>
+<p class="Pp">La macro <b>PM_FAULT_CHECK</b> retourne une valeur qui peut être 0 ou 1. Si <b>PM_FAULT_INJECTION</b> est définie, alors si une faute de type <b>PM_FAULT_MISC</b> a été armée avec <b>__pmFaultInject</b>, la valeur est 1 sinon elle est 0.</p>
+<p class="Pp"><b>PM_FAULT_CHECK</b> est le plus souvent utilisée conjointement avec la macro <b>PM_FAULT_POINT</b> avec la classe <b>PM_FAULT_MISC</b> pour armer potentiellement un déclencheur, puis tester <b>PM_FAULT_CHECK</b> et si cela a la valeur 1, alors la macro <b>PM_FAULT_CLEAR</b> est utilisée pour effacer toutes les fautes armées, et le code d'injection de faute est exécuté.</p>
+<p class="Pp">Ceci est illustré dans l'exemple ci-dessous de <i>src/libpcp/src/exec.c</i> :</p>
+<pre>    pid = fork();
+    /* début du bloc d'injection de faute */
+    PM_FAULT_POINT(&quot;libpcp/&quot; __FILE__ &quot;:4&quot;, PM_FAULT_MISC);
+    if (PM_FAULT_CHECK) {
+	PM_FAULT_CLEAR;
+	if (pid &gt; (pid_t)0)
+	    kill(pid, SIGKILL);
+	setoserror(EAGAIN);
+	pid = -1;
+    }
+    /* fin du bloc d'injection de faute */</pre>
+<p class="Pp">Un résumé des points de faute rencontrés et des fautes injectées est produit sur le flux stdio <i>f</i> par <b>__pmFaultSummary</b>.</p>
+<p class="Pp">Un traçage supplémentaire (via <b>-Dfault</b> ou <b>pmDebugOptions.fault</b>) et un nouveau code d'erreur PMAPI (<b>PM_ERR_FAULT</b>) sont également définis, bien que ceux-ci ne seront jamais vus ou utilisés que dans <i>libpcp_fault</i>. Si <b>pmDebugOptions.fault</b> est défini lors du premier appel à <b>__pmFaultInject</b>, alors <b>__pmFaultSummary</b> sera appelé automatiquement pour faire un rapport sur <i>stderr</i> à la sortie de l'application (via <a href='/man/atexit.3.en'>atexit(3)</a>).</p>
+<p class="Pp">L'injection de fautes ne peut pas être imbriquée. Chaque appel à <b>__pmFaultInject</b> efface toute injection de faute précédente qui a été armée, mais pas encore exécutée.</p>
+<p class="Pp">L'infrastructure d'injection de fautes n'est <b>pas</b> thread-safe et ne doit être utilisée qu'avec des applications connues pour être monothread.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONTRÔLE_À_L_EXÉCUTION'><a class='permalink' href='#CONTRÔLE_À_L_EXÉCUTION'>CONTRÔLE À L'EXÉCUTION</a></h1>
+<p class="Pp">Par défaut, aucune injection de faute n'est activée à l'exécution, même lorsque <b>__pmFaultInject</b> est appelée.</p>
+<p class="Pp">Les fautes sont activées sélectivement à l'aide d'un fichier de contrôle, identifié par la variable d'environnement <b>$PM_FAULT_CONTROL</b> ; si elle n'est pas définie, aucune faute n'est activée.</p>
+<p class="Pp">Le fichier de contrôle (s'il existe) est lu la première fois que <b>__pmFaultInject</b> est appelé, et contient des lignes de la forme :
+    <i>ident</i> <i>op</i> <i>nombre</i>
+  <br/>
+  qui définissent des gardes d'injection de faute.</p>
+<p class="Pp"><i>ident</i> est une chaîne de point de faute (telle que définie par un appel à <b>__pmFaultInject</b>, ou plus couramment la macro <b>PM_FAULT_POINT</b>). Il faut donc avoir accès au code source de <i>libpcp</i> pour déterminer les chaînes <i>ident</i> disponibles et leurs sémantiques.</p>
+<p class="Pp"><i>op</i> est l'un des opérateurs de style C <b>&gt;=</b>,
+    <b>&gt;</b>, <b>==</b>, <b>&lt;</b>, <b>&lt;=</b>, <b>!=</b> ou <b>%</b> et
+    <i>nombre</i> est un entier non signé. <i>op</i> <i>nombre</i> est facultatif et la valeur par défaut est <b>&gt;0</b></p>
+<p class="Pp">La sémantique des gardes d'injection de faute est que chaque fois que <b>__pmFaultInject</b> est appelée pour un <i>ident</i> particulier, un compteur de déclenchement est incrémenté (le premier déclenchement est 1) ; si l'expression de style C
+    <i>compteur_de_déclenchement</i> <i>op</i> <i>nombre</i> a la valeur 1 (donc <b>vrai</b> pour la plupart des <i>op</i>s, ou le reste est égal à 1 pour l'opérateur <b>%</b>), alors une faute du <i>class</i> défini pour le point de faute associé à <i>ident</i> sera armée, et exécutée dès que possible.</p>
+<p class="Pp">Dans le fichier de contrôle, les lignes vides sont ignorées et les lignes commençant par # sont traitées comme des commentaires.</p>
+<p class="Pp">Pour une application existante liée avec <i>libpcp</i>, l'injection de fautes peut toujours être utilisée en forçant <i>libpcp_fault</i> à être utilisée à la place de <i>libpcp</i>. L'exemple suivant montre comment cela peut être fait.</p>
+<pre>$ export PM_FAULT_CONTROL=/tmp/control
+$ cat $PM_FAULT_CONTROL
+# ok pour 2 déclenchements, puis injecter des erreurs
+libpcp/events.c:1  &gt;2
+$ export LD_PRELOAD=/usr/lib/libpcp_fault.so
+$ pmevent -Dfault -s 3 sample.event.records
+host:      localhost
+samples:   3
+interval:  1.00 sec
+sample.event.records[fungus]: 0 event records
+__pmFaultInject(libpcp/events.c:1) ntrip=1 SKIP
+sample.event.records[bogus]: 2 event records
+  10:46:12.413 --- event record [0] flags 0x1 (point) ---
+    sample.event.param_string &quot;fetch #0&quot;
+  10:46:12.413 --- event record [1] flags 0x1 (point) ---
+    sample.event.param_string &quot;bingo!&quot;
+__pmFaultInject(libpcp/events.c:1) ntrip=2 SKIP
+sample.event.records[fungus]: 1 event records
+  10:46:03.416 --- event record [0] flags 0x1 (point) ---
+__pmFaultInject(libpcp/events.c:1) ntrip=3 INJECT
+sample.event.records[bogus]: pmUnpackEventRecords: Cannot allocate memory
+__pmFaultInject(libpcp/events.c:1) ntrip=4</pre>
+</div>
+</section>
+                
+            </article>
+            
+        </main>
+    </body>
+</html>
+ INJECT
+sample.event.records[fungus] : pmUnpackEventRecords : Impossible d'allouer la mémoire
+__pmFaultInject(libpcp/events.c:1) ntrip=5 INJECT
+sample.event.records[bogus] : pmUnpackEventRecords : Impossible d'allouer la mémoire
+=== Rapport d'injection de faute ===
+libpcp/events.c:1 : garde activée &gt;2, 5 activations, 3 fautes</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Se référer au code source de PCP et PCP QA.</p>
+<p class="Pp">Les définitions de macros se trouvent dans <i>src/include/pcp/fault.h</i>.</p>
+<p class="Pp"><i>src/libpcp/src/fault.c</i> contient toute l'implémentation sous-jacente.</p>
+<p class="Pp"><i>src/libpcp_fault</i> et <i>src/libpcp_fault/src</i> contiennent la recette et les Makefiles pour créer et installer <i>libpcp_fault.so</i> et <i>&lt;pcp/fault.h&gt;</i>.</p>
+<p class="Pp"><b>PM_FAULT_RETURN</b> a été initialement utilisé dans les fichiers source <i>libpcp</i> suivants : <i>derive_parser.y.in</i>, <i>pdu.c</i> et <i>result.c</i>.</p>
+<p class="Pp"><b>PM_FAULT_POINT</b>. a été initialement utilisé dans les fichiers source <i>libpcp</i> suivants : <i>derive_parser.y.in</i>, <i>desc.c</i>, <i>e_indom.c</i>, <i>e_labels.c</i>, <i>err.c</i>, <i>events.c</i>, <i>exec.c</i>, <i>fetch.c</i>, <i>help.c</i>, <i>instance.c</i>, <i>interp.c</i>, <i>labels.c</i>, <i>logmeta.c</i>, <i>pmns.c</i>, <i>p_profile.c</i> et <i>store.c</i>.</p>
+<p class="Pp">Le groupe de tests QA ``fault'' montre des exemples d'utilisation de fichiers de contrôle. Pour voir quels tests sont impliqués</p>
+<pre>$ cd qa
+$ check -n -g fault</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DIAGNOSTICS'><a class='permalink' href='#DIAGNOSTICS'>DIAGNOSTICS</a></h1>
+<p class="Pp">Certaines erreurs non récupérables sont signalées sur <i>stderr</i>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONNEMENT'><a class='permalink' href='#ENVIRONNEMENT'>ENVIRONNEMENT</a></h1>
+<dl class="Bl-tag">
+  <dt id="PM_FAULT_CONTROL"><a class="permalink" href="#PM_FAULT_CONTROL"><b>PM_FAULT_CONTROL</b></a></dt>
+  <dd>Chemin complet vers le fichier de contrôle d'injection de fautes.</dd>
+  <dt id="LD_PRELOAD"><a class="permalink" href="#LD_PRELOAD"><b>LD_PRELOAD</b></a></dt>
+  <dd>Force l'utilisation de <i>libpcp_fault</i> de préférence à <i>libpcp</i>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/PMAPI.3.en'>PMAPI(3)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os">Performance Co-Pilot</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/pcp/">extra/pcp</a></dd>
+        <dt>Version :</dt>
+        <dd>7.0.5-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://pcp.io">https://pcp.io</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-or-later, LGPL-2.1-or-later, CC-BY-3.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/pcp/">/listing/extra/pcp/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE_C">SYNTAXE C</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#CONTRÔLE_À_L&apos;EXÉCUTION">CONTRÔLE À L'EXÉCUTION</a></li>
+        
+            <li><a href="#EXEMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#DIAGNOSTICS">DIAGNOSTICS</a></li>
+        
+            <li><a href="#ENVIRONNEMENT">ENVIRONNEMENT</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pmfault.3.en.txt">txt</a>, 
+        
+            <a href="/man/pmfault.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

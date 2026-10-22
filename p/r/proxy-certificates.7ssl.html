@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>proxy-certificates(7ssl) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">proxy-certificates(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PROXY-CERTIFICATES(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">PROXY-CERTIFICATES(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">proxy-certificates - Certificats proxy dans OpenSSL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Les certificats proxy sont définis dans la RFC 3820. Ils sont utilisés
+    pour étendre des droits à une autre entité (un processus informatique, typiquement,
+    ou parfois à l'utilisateur lui-même). Cela permet à l'entité d'effectuer des
+    opérations pour le compte du propriétaire du certificat d'EE (Entité Finale).</p>
+<p class="Pp">Les exigences pour un certificat proxy valide sont :</p>
+<ul class="Bl-bullet">
+  <li>Ils sont émis par une Entité Finale, soit un certificat EE normal, soit un
+      autre certificat proxy.</li>
+  <li>Ils ne doivent pas avoir les extensions <b>subjectAltName</b> ou
+      <b>issuerAltName</b>.</li>
+  <li>Ils doivent avoir l'extension <b>proxyCertInfo</b>.</li>
+  <li>Ils doivent avoir le sujet de leur émetteur, avec un <b>commonName</b>
+      ajouté.</li>
+</ul>
+<section class="Ss">
+<h2 class="Ss" id="Activer_la_vérification_des_certificats_proxy"><a class='permalink' href='#Activer_la_vérification_des_certificats_proxy'>Activer la vérification des certificats proxy</a></h2>
+<p class="Pp">OpenSSL s'attend à ce que les applications qui souhaitent utiliser
+    des certificats proxy en soient spécialement conscientes et le rendent explicite.
+    Ceci est fait en définissant un indicateur de vérification X509 :</p>
+<pre>X509_STORE_CTX_set_flags(ctx, X509_V_FLAG_ALLOW_PROXY_CERTS);</pre>
+<p class="Pp">ou</p>
+<pre>X509_VERIFY_PARAM_set_flags(param, X509_V_FLAG_ALLOW_PROXY_CERTS);</pre>
+<p class="Pp">Voir &quot;NOTES&quot; pour une discussion sur cette exigence.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Créer_des_certificats_proxy"><a class='permalink' href='#Créer_des_certificats_proxy'>Créer des certificats proxy</a></h2>
+<p class="Pp">La création de certificats proxy peut être faite en utilisant la
+    commande <a href='/man/openssl-x509.1.en'>openssl-x509(1)</a>, avec des extensions
+    supplémentaires :</p>
+<pre>[ proxy ]
+basicConstraints = CA:FALSE
+authorityKeyIdentifier = keyid,issuer:always
+proxyCertInfo = critical,language:id-ppl-anyLanguage,pathlen:1,policy:text:AB</pre>
+<p class="Pp">Il est également possible de spécifier l'extension proxy dans une
+    section séparée :</p>
+<pre>proxyCertInfo = critical,@proxy_ext
+[ proxy_ext ]
+language = id-ppl-anyLanguage
+pathlen = 0
+policy = text:BC</pre>
+<p class="Pp">La valeur de la politique a une syntaxe spécifique,
+    <i>syntag</i>:<i>string</i>, où le <i>syntag</i> détermine ce qui sera fait
+    avec la chaîne. Les <i>syntag</i>s suivants sont reconnus :</p>
+<dl class="Bl-tag">
+  <dt id="text"><a class="permalink" href="#text"><b>text</b></a></dt>
+  <dd>indique que la chaîne est une séquence d'octets, sans aucun encodage :
+        <pre>policy=text:r&#x00E4;ksm&#x00F6;rg&#x00E5;s
+</pre>
+  </dd>
+  <dt id="hex"><a class="permalink" href="#hex"><b>hex</b></a></dt>
+  <dd>indique que la chaîne est une donnée binaire encodée en hexadécimal, avec
+      des deux-points entre chaque octet (tous les deux chiffres hexadécimaux) :
+        <pre>policy=hex:72:E4:6B:73:6D:F6:72:67:E5:73
+</pre>
+  </dd>
+  <dt id="file"><a class="permalink" href="#file"><b>file</b></a></dt>
+  <dd>indique que le texte de la politique doit être pris à partir d'un fichier.
+      La chaîne est alors un nom de fichier. Ceci est utile pour les politiques
+      qui sont plus longues que quelques lignes, comme XML ou d'autres balisages.</dd>
+</dl>
+<p class="Pp">Notez que la valeur de la politique proxy est ce qui détermine les
+    droits accordés au processus pendant le certificat proxy, et il appartient à
+    l'application d'interpréter et de combiner ces politiques.</p>
+<p class="Pp">Avec une extension proxy, la création d'un certificat proxy est une
+    affaire de deux commandes :</p>
+<pre>openssl req -new -config proxy.cnf \
+    -out proxy.req -keyout proxy.key \
+    -subj &quot;/DC=org/DC=openssl/DC=users/CN=proxy&quot;
+openssl x509 -req -CAcreateserial -in proxy.req -out proxy.crt \
+    -CA user.crt -CAkey user.key -days 7 \
+    -extfile proxy.cnf -extensions proxy</pre>
+<p class="Pp">Vous pouvez également créer un certificat proxy en utilisant un autre
+    certificat proxy comme émetteur. Notez que cet exemple utilise une section de
+    configuration différente pour les extensions proxy :</p>
+<pre>openssl req -new -config proxy.cnf \
+    -out proxy2.req -keyout proxy2.key \
+    -subj &quot;/DC=org/DC=openssl/DC=users/CN=proxy/CN=proxy 2&quot;
+openssl x509 -req -CAcreateserial -in proxy2.req -out proxy2.crt \
+    -CA proxy.crt -CAkey proxy.key -days 7 \
+    -extfile proxy.cnf -extensions proxy_2</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Utiliser_les_certificats_proxy_dans_les_applications"><a class='permalink' href='#Utiliser_les_certificats_proxy_dans_les_applications'>Utiliser les certificats proxy dans les applications</a></h2>
+<p class="Pp">Pour interpréter les politiques proxy, l'application commencerait
+    normalement avec certains droits par défaut (peut-être aucun), puis calculerait
+    les droits résultants en vérifiant les droits par rapport à la chaîne de certificats
+    proxy, au certificat utilisateur et aux certificats CA.</p>
+<p class="Pp">La partie compliquée est de déterminer comment passer des données
+    entre votre application et la procédure de validation de certificat.</p>
+<p class="Pp">Les ingrédients suivants sont nécessaires pour un tel traitement :</p>
+<ul class="Bl-bullet">
+  <li>une fonction de rappel qui sera appelée pour chaque certificat validé. Le
+      rappel est appelé plusieurs fois pour chaque certificat, vous devez donc
+      faire attention à effectuer l'interprétation de la politique proxy au bon
+      moment. Vous devez également définir les valeurs par défaut lors de la vérification
+      du certificat EE.</li>
+  <li>une structure de données partagée entre votre code applicatif et le
+      rappel.</li>
+  <li>une fonction wrapper qui configure tout.</li>
+  <li>une fonction d'indexation ex_data qui crée un index pour le magasin
+      ex_data générique attaché à un contexte de validation X509.</li>
+</ul>
+<p class="Pp">Le squelette de code suivant peut servir de point de départ :</p>
+<pre>#include &lt;string.h&gt;
+#include &lt;netdb.h&gt;
+#include &lt;openssl/x509.h&gt;
+#include &lt;openssl/x509v3.h&gt;
+#define total_rights 25
+/*
+ * Dans cet exemple, j'utiliserai une vue des droits accordés comme un tableau
+ * de bits, un bit pour chaque droit possible.
+ */
+typedef struct your_rights {
+    unsigned char rights[(total_rights + 7) / 8];
+} YOUR_RIGHTS;
+/*
+ * La procédure suivante créera un index pour le magasin ex_data
+ * dans le contexte de validation X509 lors de son premier appel.
+ * Les appels ultérieurs retourneront le même index.
+ */
+static int get_proxy_auth_ex_data_idx(X509_STORE_CTX *ctx)
+{
+    static volatile int idx = -1;
+    if (idx &lt; 0) {
+        X509_STORE_lock(X509_STORE_CTX_get0_store(ctx));
+        if (idx &lt; 0) {
+            idx = X509_STORE_CTX_get_ex_new_index(0,
+                                                  &quot;for verify callback&quot;,
+                                                  NULL,NULL,NULL);
+        }
+        X509_STORE_unlock(X509_STORE_CTX_get0_store(ctx));
+    }
+    return idx;
+}
+/* Callback à donner à la procédure de validation X509.  */
+static int verify_callback(int ok, X509_STORE_CTX *ctx)
+{
+    if (ok == 1) {
+        /*
+         * Il est TRÈS important de garder la vérification de la politique proxy
+         * dans cette section. Il est important de savoir que lorsque
+         * ok est 1, les certificats sont vérifiés de haut en
+         * bas. Vous obtenez d'abord la racine CA, suivie par la
+         * chaîne possible des CA intermédiaires, suivie par le certificat EE,
+         * suivie par les certificats proxy possibles.
+         */
+        X509 *xs = X509_STORE_CTX_get_current_cert(ctx);
+        if (X509_get_extension_flags(xs) &amp; EXFLAG_PROXY) {
+            YOUR_RIGHTS *rights =
+                (YOUR_RIGHTS *)X509_STORE_CTX_get_ex_data(ctx,
+                    get_proxy_auth_ex_data_idx(ctx));
+            PROXY_CERT_INFO_EXTENSION *pci =
+                X509_get_ext_d2i(xs, NID_proxyCertInfo, NULL, NULL);
+            switch (OBJ_obj2nid(pci-&gt;proxyPolicy-&gt;policyLanguage)) {
+            case NID_Independent:
+                /*
+                 * Faites tout ce que vous avez à faire pour accorder des droits explicites
+                 * à ce certificat proxy particulier, généralement
+                 * en les récupérant dans une base de données. S'il n'y en a pas à trouver,
+                 * effacez tous les droits (rendant ce certificat et tout certificat proxy
+                 * ultérieur sans aucun droit).
+                 */
+                memset(rights-&gt;rights, 0, sizeof(rights-&gt;rights));
+                break;
+            case NID_id_ppl_inheritAll:
+                /*
+                 * Ceci est essentiellement un NOP, nous laissons simplement
+                 * les droits actuels tels quels.
+                 */
+                break;
+            default:
+                /*
+                 * C'est généralement la section de code la plus complexe.
+                 * Vous faites vraiment ce que vous voulez tant que vous
+                 * suivez la RFC 3820. Dans l'exemple que nous utilisons
+                 * ici, la chose la plus simple à faire est de construire
+                 * un autre tableau de bits temporaire et de le remplir avec
+                 * les droits accordés par le certificat proxy actuel, puis de
+                 * l'utiliser comme masque sur le tableau de bits accumulé, et voilà,
+                 * vous avez maintenant un nouveau tableau de bits accumulé.
+                 */
+                {
+                    int i;
+                    YOUR_RIGHTS tmp_rights;
+                    memset(tmp_rights.rights, 0,
+                           sizeof(tmp_rights.rights));
+                    /*
+                     * process_rights() est censé être un
+ */
+                    break;
+                }
+            }
+            PROXY_CERT_INFO_EXTENSION_free(pci);
+        }
+    }
+    return ok;
+}
+/*
+ * Wrapper pour configurer le contexte de validation.
+ */
+int setup_proxy_validation(X509_STORE *store, X509_VERIFY_PARAM *param)
+{
+    YOUR_RIGHTS *rights;
+    int idx;
+    if (!param)
+        return 0;
+    /*
+     * Indiquer que les certificats proxy sont autorisés.
+     */
+    X509_VERIFY_PARAM_set_flags(param, X509_V_FLAG_ALLOW_PROXY_CERTS);
+    /*
+     * Créer un index pour le stockage des données supplémentaires.
+     */
+    idx = get_proxy_auth_ex_data_idx(NULL);
+    if (idx &lt; 0)
+        return 0;
+    /*
+     * Créer la structure des droits initiaux. Pour cet exemple,
+     * nous supposons qu'il n'y a aucun droit par défaut.
+     */
+    rights = OPENSSL_malloc(sizeof(YOUR_RIGHTS));
+    if (!rights)
+        return 0;
+    memset(rights-&gt;rights, 0, sizeof(rights-&gt;rights));
+    /*
+     * Stocker les droits dans le contexte de validation X509.
+     */
+    if (!X509_VERIFY_PARAM_set_ex_data(param, idx, rights)) {
+        OPENSSL_free(rights);
+        return 0;
+    }
+    /*
+     * Installer le rappel de vérification.
+     */
+    X509_VERIFY_PARAM_set_verify_callback(param, verify_callback);
+    return 1;
+}
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="NOTES"><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">Une des choses étranges dans le RFC 3820 est la nécessité de
+    l'indicateur <b>X509_V_FLAG_ALLOW_PROXY_CERTS</b>. Sans cela, le certificat
+    proxy sera traité comme un certificat normal, et la vérification échouera
+    car il ne sera pas une autorité de certification.</p>
+<p class="Pp">C'est intentionnel, et conçu pour empêcher OpenSSL de se
+    comporter comme un serveur proxy par défaut. Les applications doivent explicitement
+    indiquer qu'elles souhaitent prendre en charge les certificats proxy.</p>
+<p class="Pp">Le rôle de la fonction de rappel est de combiner les droits. Elle
+    est appelée pour chaque certificat de la chaîne de confiance. Comme les certificats
+    sont vérifiés de haut en bas, la fonction de rappel est appelée avec le
+    certificat de niveau supérieur en premier. Les certificats proxy sont généralement
+    situés près du bas de la chaîne, le certificat EE est le dernier avant les
+    certificats proxy.</p>
+<p class="Pp">L'exemple de code suppose que les droits sont représentés par un
+    tableau de bits. Les droits sont combinés en utilisant un OU bit à bit, ou
+    un masque bit à bit, selon le type de politique.</p>
+<p class="Pp">Les valeurs de politique telles que <b>language:id-ppl-anyLanguage</b>,
+    <b>language:id-ppl-inheritAll</b>, et <b>language:id-ppl-independent</b>
+    sont définies dans la RFC 3820. L'utilisation de ces valeurs de politique est
+    soumise à l'interprétation de l'application.</p>
+<p class="Pp">L'exemple de code fourni est une ébauche et ne doit pas être utilisé
+    en production sans une révision et une adaptation approfondies.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="VOIR_AUSSI"><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/openssl.1.en'>openssl(1)</a>, <a href='/man/openssl-x509.1.en'>openssl-x509(1)</a></p>
+</section>
+</div>
+</section>
+            </article>
+            <aside id="content-right">
+                <p>
+    <b>proxy-certificates</b>
+    <br/>
+    OpenSSL
+    <br/>
+    <a href='https://manpages.debian.org/cgi-bin/man.cgi?query=proxy-certificates&amp;apropos=1&amp;format=html&amp;MANPATH=ssl'>
+        Debian manpages
+    </a>
+    <br/>
+    <a href='https://manpages.org/proxy-certificates'>
+        manpages.org
+    </a>
+    <br/>
+    <a href='https://www.freebsd.org/cgi/man.cgi?query=proxy-certificates&amp;sektion=7&amp;manpath=FreeBSD+13.1-RELEASE'>
+        FreeBSD manpages
+    </a>
+</p>
+            </aside>
+        </main>
+        <footer>
+        </footer>
+    </body>
+</html>
+                    /*
+                     * procédure qui prend une chaîne et sa
+                     * longueur, l'interprète et définit les bits
+                     * dans YOUR_RIGHTS pointés par le
+                     * troisième argument.
+                     */
+                    process_rights((char *) pci->proxyPolicy->policy->data,
+                                   pci->proxyPolicy->policy->length,
+                                   &tmp_rights);
+                    for(i = 0; i < total_rights / 8; i++)
+                        rights->rights[i] &= tmp_rights.rights[i];
+                }
+                break;
+            }
+            PROXY_CERT_INFO_EXTENSION_free(pci);
+        } else if (!(X509_get_extension_flags(xs) & EXFLAG_CA)) {
+            /* Nous avons un certificat EE, utilisons-le pour définir la valeur par défaut ! */
+            YOUR_RIGHTS *rights =
+                (YOUR_RIGHTS *)X509_STORE_CTX_get_ex_data(ctx,
+                    get_proxy_auth_ex_data_idx(ctx));
+            /*
+             * La procédure suivante détermine quels droits le
+             * propriétaire du certificat actuel possède, et les définit
+             * dans la structure YOUR_RIGHTS pointée par le
+             * deuxième argument.
+             */
+            set_default_rights(xs, rights);
+        }
+    }
+    return ok;
+}
+static int my_X509_verify_cert(X509_STORE_CTX *ctx,
+                               YOUR_RIGHTS *needed_rights)
+{
+    int ok;
+    int (*save_verify_cb)(int ok,X509_STORE_CTX *ctx) =
+        X509_STORE_CTX_get_verify_cb(ctx);
+    YOUR_RIGHTS rights;
+    X509_STORE_CTX_set_verify_cb(ctx, verify_callback);
+    X509_STORE_CTX_set_ex_data(ctx, get_proxy_auth_ex_data_idx(ctx),
+                               &rights);
+    X509_STORE_CTX_set_flags(ctx, X509_V_FLAG_ALLOW_PROXY_CERTS);
+    ok = X509_verify_cert(ctx);
+    if (ok == 1) {
+        ok = check_needed_rights(rights, needed_rights);
+    }
+    X509_STORE_CTX_set_verify_cb(ctx, save_verify_cb);
+    return ok;
+}</pre>
+<p class="Pp">Si vous utilisez SSL ou TLS, vous pouvez facilement configurer une
+    fonction de rappel pour que les certificats soient vérifiés correctement, en
+    utilisant le code ci-dessus :</p>
+<pre>SSL_CTX_set_cert_verify_callback(s_ctx, my_X509_verify_cert,
+                                 &needed_rights);</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">À ce jour, il semble que les certificats proxy n'aient été utilisés
+    que dans des environnements qui les connaissent, et personne ne semble avoir
+    étudié comment ils peuvent être utilisés ou mal utilisés en dehors d'un tel
+    environnement.</p>
+<p class="Pp">Pour cette raison, OpenSSL exige que les applications qui connaissent
+    les certificats proxy doivent également le rendre explicite.</p>
+<p class="Pp"><b>subjectAltName</b> et <b>issuerAltName</b> sont interdits dans
+    les certificats proxy, et cela est appliqué dans OpenSSL. Le sujet doit être le
+    même que l'émetteur, avec un commonName ajouté.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/X509_STORE_CTX_set_flags.3.en'>X509_STORE_CTX_set_flags(3)</a>,
+    <a href='/man/X509_STORE_CTX_set_verify_cb.3.en'>X509_STORE_CTX_set_verify_cb(3)</a>,
+    <a href='/man/X509_VERIFY_PARAM_set_flags.3.en'>X509_VERIFY_PARAM_set_flags(3)</a>,
+    <a href='/man/SSL_CTX_set_cert_verify_callback.3.en'>SSL_CTX_set_cert_verify_callback(3)</a>, <a href='/man/openssl-req.1.en'>openssl-req(1)</a>,
+    <a href='/man/openssl-x509.1.en'>openssl-x509(1)</a>, RFC 3820
+  <a href='https://tools.ietf.org/html/rfc3820'>https://tools.ietf.org/html/rfc3820</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2019-2020 The OpenSSL Project Authors. Tous droits
+    réservés.</p>
+<p class="Pp">Licence sous la licence Apache 2.0 (la &quot;Licence&quot;). Vous ne
+    pouvez pas utiliser ce fichier sauf en conformité avec la Licence. Vous pouvez
+    obtenir une copie dans le fichier LICENSE de la distribution source ou à
+    <a href='https://www.openssl.org/source/license.html'>https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version :</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/proxy-certificates.7ssl.fr.txt">txt</a>, 
+        
+            <a href="/man/proxy-certificates.7ssl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>, à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

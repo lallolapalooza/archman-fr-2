@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>podman-troubleshooting(7) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">podman-troubleshooting(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/podman/">podman</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">podman-troubleshooting(7)</td>
+    <td class="head-vol">Manuel d'informations diverses</td>
+    <td class="head-rtitle">podman-troubleshooting(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='Dépannage'><a class='permalink' href='#Dépannage'>Dépannage</a></h1>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Une_liste_des_problèmes_courants_et_des_solutions_pour_Podman'><a class='permalink' href='#Une_liste_des_problèmes_courants_et_des_solutions_pour_Podman'>Une   liste des problèmes courants et des solutions pour Podman</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='1)_Variété_de_problèmes_-_Valider_la_version'><a class='permalink' href='#1)_Variété_de_problèmes_-_Valider_la_version'>1)   Variété de problèmes - Valider la version</a></h2>
+<p class="Pp">Un grand nombre de problèmes signalés contre Podman se trouvent souvent déjà résolus dans les versions plus récentes du projet. Avant de signaler un problème, veuillez vérifier la version que vous utilisez avec <b>podman version</b> et la comparer à la dernière version documentée en haut du fichier &#x27E8;README.md&#x27E9; de Podman.</p>
+<p class="Pp">Si elles diffèrent, veuillez mettre à jour votre version de PODMAN à la dernière version possible et réessayer votre commande avant de signaler le problème.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='2)_Impossible_d&apos;utiliser_le_montage_de_volume,_obtenir_un_refus_d&apos;autorisation'><a class='permalink' href='#2)_Impossible_d&apos;utiliser_le_montage_de_volume,_obtenir_un_refus_d&apos;autorisation'>2)   Impossible d'utiliser le montage de volume, obtenir un refus d'autorisation</a></h2>
+<pre>$ podman run -v ~/mycontent:/content fedora touch /content/file
+touch: impossible de toucher '/content/file': Permission refusée</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution'><a class='permalink' href='#Solution'>Solution</a></h2>
+<p class="Pp">Ceci est parfois causé par SELinux, et parfois par des espaces de noms d'utilisateur.</p>
+<p class="Pp">Les systèmes d'étiquetage comme SELinux exigent que les bonnes étiquettes soient placées sur le contenu du volume monté dans un conteneur. Sans étiquette, le système de sécurité pourrait empêcher les processus s'exécutant à l'intérieur du conteneur d'utiliser le contenu. Par défaut, Podman ne modifie pas les étiquettes définies par le système d'exploitation.</p>
+<p class="Pp">Pour changer une étiquette dans le contexte du conteneur, vous pouvez ajouter l'un des deux suffixes <b>:z</b> ou <b>:Z</b> au montage de volume. Ces suffixes indiquent à Podman de réétiqueter les objets de fichier sur les volumes partagés. L'option <b>z</b> indique à Podman que deux conteneurs partagent le contenu du volume. En conséquence, Podman étiquette le contenu avec une étiquette de contenu partagé. Les étiquettes de volume partagé permettent à tous les conteneurs de lire/écrire le contenu. L'option <b>Z</b> indique à Podman d'étiqueter le contenu avec une étiquette privée non partagée. Seul le conteneur actuel peut utiliser un volume privé.</p>
+<pre>$ podman run -v ~/mycontent:/content:Z fedora touch /content/file</pre>
+<p class="Pp">Assurez-vous que le contenu est privé pour le conteneur. Ne réétiquetez pas les répertoires système et le contenu. La réétiquetage du contenu système pourrait causer l'échec d'autres services confinés sur votre machine. Pour ces types de conteneurs, nous recommandons de désactiver la séparation SELinux. L'option <b>--security-opt label=disable</b> désactivera la séparation SELinux pour le conteneur.</p>
+<pre>$ podman run --security-opt label=disable -v ~:/home/user fedora touch /home/user/file</pre>
+<p class="Pp">Dans les cas où l'image du conteneur s'exécute en tant qu'utilisateur spécifique, non-root, la solution consiste à corriger l'espace de noms d'utilisateur. Cela inclurait les images de conteneurs telles que l'image Jupyter Notebook (qui s'exécute en tant que « jovyan ») et l'image Postgres (qui s'exécute en tant que « postgres »). Dans les deux cas, utilisez le commutateur <b>--userns</b> pour mapper les espaces de noms d'utilisateur, le plus souvent en utilisant l'option <b>keep-id</b>.</p>
+<pre>$ podman run -v &quot;$PWD&quot;:/home/jovyan/work --userns=keep-id jupyter/scipy-notebook</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='3)_Aucune_telle_image_ou_les_clés_brutes_ne_peuvent_contenir_&apos;:&apos;'><a class='permalink' href='#3)_Aucune_telle_image_ou_les_clés_brutes_ne_peuvent_contenir_&apos;:&apos;'>3)   Aucune telle image ou les clés brutes ne peuvent contenir ':'</a></h2>
+<p class="Pp">Lorsque vous effectuez une commande <b>podman pull</b> ou <b>podman build</b> et qu'une image « courante » ne peut pas être tirée, il est probable que le fichier <b>/etc/containers/registries.conf</b> ne soit pas installé ou soit potentiellement mal configuré.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptôme'><a class='permalink' href='#Symptôme'>Symptôme</a></h2>
+<pre>$ sudo podman build -f Dockerfile
+STEP 1: FROM alpine
+error building: error creating build container: no such image "alpine" in registry: image not known</pre>
+<p class="Pp">ou</p>
+<pre>$ sudo podman pull fedora
+error pulling image "fedora": unable to pull fedora: error getting default registries to try: Near line 9 (last key parsed ''): Bare keys cannot contain ':'.</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_2'><a class='permalink' href='#Solution_2'>Solution</a></h2>
+<ul class="Bl-bullet">
+  <li>Vérifiez que le fichier <b>/etc/containers/registries.conf</b> existe. Si
+      non, vérifiez que le paquet containers-common est installé.</li>
+  <li>Vérifiez que les entrées dans la liste <b>unqualified-search-registries</b>
+      du fichier <b>/etc/containers/registries.conf</b> sont valides et
+      accessibles.</li>
+</ul>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>c'est-à-dire <b>unqualified-search-registries =
+      [&quot;registry.fedoraproject.org&quot;, &quot;quay.io&quot;,
+      &quot;registry.access.redhat.com&quot;]</b></dd>
+</dl>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='4)_http:_server_gave_HTTP_response_to_HTTPS_client'><a class='permalink' href='#4)_http:_server_gave_HTTP_response_to_HTTPS_client'>4)   http: le serveur a donné une réponse HTTP à un client HTTPS</a></h2>
+<p class="Pp">Lorsque vous utilisez une commande Podman telle que <b>build</b>, <b>commit</b>,
+    <b>pull</b> ou <b>push</b> vers un registre, la vérification TLS est activée par
+    défaut. Si le chiffrement n'est pas utilisé avec ces commandes, cette erreur
+    peut se produire.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptôme_2'><a class='permalink' href='#Symptôme_2'>Symptôme</a></h2>
+<pre>$ sudo podman push alpine docker://localhost:5000/myalpine:latest
+Getting image source signatures
+Get https://localhost:5000/v2/: http: server gave HTTP response to HTTPS client</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_3'><a class='permalink' href='#Solution_3'>Solution</a></h2>
+<p class="Pp">Par défaut, la vérification TLS est activée lors de la communication avec les registres depuis Podman. Si le registre n'exige pas de chiffrement, les commandes Podman telles que <b>build</b>, <b>commit</b>, <b>pull</b> et <b>push</b> échoueront à moins que la vérification TLS ne soit désactivée en utilisant l'option <b>--tls-verify</b>. <b>REMARQUE :</b> Il n'est absolument pas recommandé de communiquer avec un registre sans utiliser la vérification TLS.</p>
+<ul class="Bl-bullet">
+  <li>Désactivez la vérification TLS en passant false à l'option tls-verify.</li>
+  <li>Par exemple : <b>podman push --tls-verify=false alpine
+      docker://localhost:5000/myalpine:latest</b>
+      </li>
+</ul>
+<p class="Pp">Pour une solution globale, les utilisateurs[1] peuvent créer le fichier
+    <b>/etc/containers/registries.conf.d/registry-NAME.conf</b> (en remplaçant NAME par le nom de ce registre) avec le contenu suivant (en remplaçant
+    FULLY.QUALIFIED.NAME.OF.REGISTRY par l'adresse de ce registre) :</p>
+<pre>[[registry]]
+location = &quot;FULLY.QUALIFIED.NAME.OF.REGISTRY&quot;
+insecure = true</pre>
+<p class="Pp">[1] Si vous utilisez un Mac / Windows, vous devez exécuter <b>podman
+    machine ssh</b> pour vous connecter à la machine podman avant d'ajouter l'entrée insecure au fichier registry&#x2014;conf.</p>
+<p class="Pp"><b>Ceci est une méthode non sécurisée et doit être utilisée avec
+  prudence.</b></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='5)_les_conteneurs_sans_root_ne_peuvent_pas_pinger_les_hôtes'><a class='permalink' href='#5)_les_conteneurs_sans_root_ne_peuvent_pas_pinger_les_hôtes'>5)   Les conteneurs sans root ne peuvent pas pinger les hôtes</a></h2>
+<p class="Pp">Lorsque vous utilisez la commande ping depuis un conteneur non-root, la commande peut échouer en raison d'un manque de privilèges.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptôme_3'><a class='permalink' href='#Symptôme_3'>Symptôme</a></h2>
+<pre>$ podman run --rm fedora ping -W10 -c1 redhat.com
+PING redhat.com (209.132.183.105): 56 data bytes
+--- redhat.com ping statistics ---
+1 packets transmitted, 0 packets received, 100% packet loss</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_4'><a class='permalink' href='#Solution_4'>Solution</a></h2>
+<p class="Pp">Il est fort probable qu'il soit nécessaire d'activer les pings non privilégiés sur l'hôte. Assurez-vous que l'UID de l'utilisateur fait partie de la plage dans le fichier
+    <b>/proc/sys/net/ipv4/ping_group_range</b>.</p>
+<p class="Pp">Pour modifier sa valeur, vous pouvez utiliser quelque chose comme :</p>
+<pre># sysctl -w "net.ipv4.ping_group_range=0 2000000"</pre>
+<p class="Pp">Pour rendre le changement permanent, vous devrez ajouter un fichier dans
+    <b>/etc/sysctl.d</b> contenant <b>net.ipv4.ping_group_range=0
+    $MAX_UID</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='6)_La_construction_se_bloque_quand_le_Dockerfile_contient_la_commande_useradd'><a class='permalink' href='#6)_La_construction_se_bloque_quand_le_Dockerfile_contient_la_commande_useradd'>6)   La construction se bloque lorsque le Dockerfile contient la commande useradd</a></h2>
+<p class="Pp">Lorsque le Dockerfile contient une commande comme <b>RUN useradd -u
+    99999000 -g users newuser</b>, la construction peut se bloquer.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptôme_4'><a class='permalink' href='#Symptôme_4'>Symptôme</a></h2>
+<p class="Pp">Si vous utilisez une commande useradd dans un Dockerfile avec un UID/GID important, cela créera un fichier sparse volumineux <b>/var/log/lastlog</b>.
+    Cela peut faire que la construction se bloque indéfiniment. Le langage Go ne prend pas correctement en charge les fichiers sparse, ce qui peut entraîner la création de fichiers énormes.</p>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<section class="Ss">
+<h2 class="Ss" id='Solution_5'><a class='permalink' href='#Solution_5'>Solution</a></h2>
+<p class="Pp">Si l'entrée dans le Dockerfile ressemblait à : RUN useradd -u
+    99999000 -g users newuser, ajoutez le paramètre <b>--no-log-init</b> pour le modifier en : <b>RUN useradd --no-log-init -u 99999000 -g users newuser</b>.
+    Cette option indique à useradd de ne pas créer le fichier lastlog.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='7)_Permission_refusée_lors_de_l_exécution_de_commandes_Podman'><a class='permalink' href='#7)_Permission_refusée_lors_de_l_exécution_de_commandes_Podman'>7)   Permission refusée lors de l'exécution de commandes Podman</a></h2>
+<p class="Pp">Lorsque Podman sans privilèges tente d'exécuter un conteneur sur un répertoire personnel non exécutable (noexec), une erreur de permission sera générée.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_5'><a class='permalink' href='#Symptom_5'>Symptôme</a></h2>
+<p class="Pp">Si vous exécutez Podman ou Buildah sur un répertoire personnel monté en mode noexec, ils échoueront avec un message tel que :</p>
+<pre>$ podman run centos:7
+standard_init_linux.go:203: exec user process caused &quot;permission denied&quot;</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_6'><a class='permalink' href='#Solution_6'>Solution</a></h2>
+<p class="Pp">Étant donné que l'administrateur du système a configuré votre répertoire personnel en mode noexec, vous ne serez pas autorisé à exécuter des conteneurs à partir du stockage de votre répertoire personnel. Il est possible de contourner ce problème en spécifiant manuellement un chemin de stockage de conteneur qui ne se trouve pas sur un montage noexec. Copiez simplement le fichier /etc/containers/storage.conf vers ~/.config/containers/ (en créant le répertoire si nécessaire). Spécifiez un répertoire graphroot qui n'est pas sur un point de montage noexec et auquel vous avez des privilèges de lecture/écriture. Vous devrez également modifier d'autres champs pour qu'ils pointent vers des répertoires inscriptibles.</p>
+<p class="Pp">Par exemple :</p>
+<pre>$ cat ~/.config/containers/storage.conf
+[storage]
+  driver = &quot;overlay&quot;
+  runroot = &quot;/run/user/1000&quot;
+  graphroot = &quot;/execdir/myuser/storage&quot;
+  [storage.options]
+    mount_program = &quot;/bin/fuse-overlayfs&quot;</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='8)_Permission_refusée_lors_de_l_exécution_de_systemd_dans_un_conteneur_Podman'><a class='permalink' href='#8)_Permission_refusée_lors_de_l_exécution_de_systemd_dans_un_conteneur_Podman'>8)   Permission refusée lors de l'exécution de systemd dans un conteneur Podman</a></h2>
+<p class="Pp">Lors de l'exécution de systemd en tant que PID 1 à l'intérieur d'un conteneur sur une machine isolée par SELinux, il doit écrire dans le système de fichiers cgroup.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_6'><a class='permalink' href='#Symptom_6'>Symptôme</a></h2>
+<p class="Pp">Systemd reçoit un message de permission refusée en tentant d'écrire dans le système de fichiers cgroup, et des messages AVC commencent à apparaître dans le fichier audit.log ou dans le journal du système.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_7'><a class='permalink' href='#Solution_7'>Solution</a></h2>
+<p class="Pp">Les versions plus récentes de Podman (2.0 ou ultérieure) prennent en charge l'exécution de conteneurs basés sur init avec des étiquettes SELinux différentes, ce qui permet au processus du conteneur d'accéder au système de fichiers cgroup. Cette fonctionnalité nécessite container-selinux-2.132 ou des versions plus récentes.</p>
+<p class="Pp">Avant Podman 2.0, le booléen SELinux <b>container_manage_cgroup</b> permettait aux processus des conteneurs d'écrire dans le système de fichiers cgroup. Activez ce booléen, sur les systèmes isolés par SELinux, pour permettre à systemd de fonctionner correctement dans le conteneur. Ne le faites que sur les systèmes exécutant d'anciennes versions de Podman.</p>
+<pre># setsebool -P container_manage_cgroup true</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='9)_Newuidmap_manquant_lors_de_l_exécution_de_commandes_Podman_sans_privilèges'><a class='permalink' href='#9)_Newuidmap_manquant_lors_de_l_exécution_de_commandes_Podman_sans_privilèges'>9)   Newuidmap manquant lors de l'exécution de commandes Podman sans privilèges</a></h2>
+<p class="Pp">Podman sans privilèges nécessite que les programmes newuidmap et newgidmap soient installés.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_7'><a class='permalink' href='#Symptom_7'>Symptôme</a></h2>
+<p class="Pp">Si vous exécutez Podman ou Buildah en tant qu'utilisateur sans privilèges, vous recevez une erreur signalant l'absence de l'exécutable newuidmap.</p>
+<pre>$ podman run -ti fedora sh
+command required for rootless mode with multiple IDs: exec: &quot;newuidmap&quot;: executable file not found in $PATH</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_8'><a class='permalink' href='#Solution_8'>Solution</a></h2>
+<p class="Pp">Installez une version de shadow-utils qui inclut ces exécutables. Notez que pour RHEL et CentOS 7, au moins la version 7.7 doit être installée pour que la prise en charge soit disponible.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='10)_rootless_setup_user:_argument_invalide'><a class='permalink' href='#10)_rootless_setup_user:_argument_invalide'>10)   rootless setup user: argument invalide</a></h2>
+<p class="Pp">Podman sans privilèges nécessite que l'utilisateur qui l'exécute ait une plage d'UIDs listée dans /etc/subuid et /etc/subgid.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_8'><a class='permalink' href='#Symptom_8'>Symptôme</a></h2>
+<p class="Pp">Un utilisateur, soit via --user, soit via la configuration par défaut pour l'image, n'est pas mappé à l'intérieur de l'espace de noms.</p>
+<pre>$ podman run --rm -ti --user 1000000 alpine echo hi
+Error: container create failed: container_linux.go:344: starting container process caused &quot;setup user: invalid argument&quot;</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_9'><a class='permalink' href='#Solution_9'>Solution</a></h2>
+<p class="Pp">Mettez à jour /etc/subuid et /etc/subgid avec des champs pour les utilisateurs qui ressemblent à ceci :</p>
+<pre>$ cat /etc/subuid
+johndoe:100000:65536
+test:165536:65536</pre>
+<p class="Pp">Le format de ce fichier est <b>NOMUTILISATEUR:UID:PLAGE</b></p>
+<ul class="Bl-bullet">
+  <li>nom d'utilisateur tel qu'il apparaît dans <b>/etc/passwd</b> ou <b>getpwent</b>.</li>
+  <li>L'UID initial alloué à l'utilisateur.</li>
+  <li>La taille de la plage d'UIDs allouée à l'utilisateur.
+      </li>
+</ul>
+<p class="Pp">Cela signifie que johndoe se voit attribuer les UIDs 100000-165535 ainsi que son UID standard dans le fichier <b>/etc/passwd</b>.</p>
+<p class="Pp">Vous devez vous assurer que chaque utilisateur dispose d'une plage d'UIDs unique, car des UIDs qui se chevauchent pourraient potentiellement permettre à un utilisateur d'attaquer un autre utilisateur. De plus, assurez-vous que la plage d'UIDs que vous allouez peut couvrir tous les UIDs requis par le conteneur. Par exemple, si le conteneur a un utilisateur avec l'UID 10000, assurez-vous d'avoir au moins 10000 subuids, et si le conteneur doit être exécuté en tant qu'utilisateur avec l'UID 1000000, assurez-vous d'avoir au moins 1000000 subuids.</p>
+<p class="Pp">Vous pouvez également utiliser le programme <b>usermod</b> pour attribuer des UIDs à un utilisateur.</p>
+<p class="Pp">Si vous mettez à jour le fichier <b>/etc/subuid</b> ou <b>/etc/subgid</b>, vous devez arrêter tous les conteneurs en cours d'exécution et tuer le processus de pause. Ceci est fait automatiquement par la commande <b>system migrate</b>, qui peut également être utilisée pour arrêter tous les conteneurs et tuer le processus de pause.</p>
+<pre># usermod --add-subuids 200000-201000 --add-subgids 200000-201000 johndoe
+# grep johndoe /etc/subuid /etc/subgid
+/etc/subuid:johndoe:200000:1001
+/etc/subgid:johndoe:200000:1001</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='11)_Changer_l_emplacement_du_Graphroot_entraîne_une_permission_refusée'><a class='permalink' href='#11)_Changer_l_emplacement_du_Graphroot_entraîne_une_permission_refusée'>11)   Changer l'emplacement du Graphroot entraîne une permission refusée</a></h2>
+<p class="Pp">Lorsque je modifie l'emplacement de stockage du graphroot dans storage.conf, la prochaine fois que j'exécute Podman, je reçois une erreur telle que :</p>
+<pre># podman run -p 5000:5000 -it centos bash
+bash: error while loading shared libraries: /lib64/libc.so.6: cannot apply additional memory protection after relocation: Permission denied</pre>
+<p class="Pp">Par exemple, l'administrateur configure un disque de spare pour être monté sur <b>/src/containers</b>, et pointe storage.conf vers ce répertoire.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_9'><a class='permalink' href='#Symptom_9'>Symptôme</a></h2>
+<p class="Pp">SELinux empêche les conteneurs d'utiliser des emplacements arbitraires pour le stockage overlay. Ces répertoires doivent être étiquetés avec les mêmes étiquettes que si le contenu était sous <b>/var/lib/containers/storage</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_10'><a class='permalink' href='#Solution_10'>Solution</a></h2>
+<p class="Pp">Informez SELinux du nouveau stockage de conteneurs en créant un enregistrement d'équivalence. Cela indique à SELinux d'étiqueter le contenu sous le nouveau chemin, comme s'il était stocké sous <b>/var/lib/containers/storage</b>.</p>
+<pre># semanage fcontext -a -e /var/lib/containers /srv/containers
+# restorecon -R -v /srv/containers</pre>
+<p class="Pp">La commande semanage ci-dessus indique à SELinux de définir l'étiquetage par défaut de <b>/srv/containers</b> pour qu'il corresponde à <b>/var/lib/containers</b>. La commande <b>restorecon</b> indique à SELinux d'appliquer les étiquettes au contenu réel.</p>
+<p class="Pp">Désormais, tout nouveau contenu créé dans ces répertoires sera automatiquement créé avec la bonne étiquette.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='12)_Le_pull_d_image_anonyme_échoue_avec_&apos;nom_d_utilisateur/mot_de_passe_invalide&apos;'><a class='permalink' href='#12)_Le_pull_d_image_anonyme_échoue_avec_&apos;nom_d_utilisateur/mot_de_passe_invalide&apos;'>12)   Le pull d'image anonyme échoue avec 'nom d'utilisateur/mot de passe invalide'</a></h2>
+<p class="Pp">Le tirage d'une image anonyme qui ne nécessite pas d'authentification peut entraîner une erreur <b>nom d'utilisateur/mot de passe invalide</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_10'><a class='permalink' href='#Symptom_10'>Symptôme</a></h2>
+<p class="Pp">Si vous tirez une image anonyme, une qui ne devrait pas nécessiter d'identifiants, vous pouvez recevoir une erreur <b>nom d'utilisateur/mot de passe invalide</b> si vous avez des identifiants établis dans le fichier d'authentification pour le registre de conteneurs cible qui ne sont plus valides.</p>
+<pre>$ podman run -it --rm docker://docker.io/library/alpine:latest ls
+Trying to pull docker://docker.io/library/alpine:latest...ERRO[0000] Error pulling image ref //alpine:latest: Error determining manifest MIME type for docker://alpine:latest: unable to retrieve auth token: invalid username/password
+Failed
+Error: unable to pull docker://docker.io/library/alpine:latest: unable to pull image: Error determining manifest MIME type for docker://alpine:latest: unable to retrieve auth token: invalid username/password</pre>
+<p class="Pp">Cela peut se produire si le fichier d'authentification est modifié 'à la main' ou si les identifiants sont établis localement puis que le mot de passe est mis à jour ultérieurement dans le registre de conteneurs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_11'><a class='permalink' href='#Solution_11'>Solution</a></h2>
+<p class="Pp">Selon l'outil de conteneur utilisé pour établir les identifiants, utilisez <b>podman logout</b> ou <b>docker logout</b> pour supprimer les identifiants du fichier d'authentification.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='13)_L_exécution_de_Podman_à_l_intérieur_d_un_conteneur_provoque_des_plantages_de_conteneur_et_des_états_incohérents'><a class='permalink' href='#13)_L_exécution_de_Podman_à_l_intérieur_d_un_conteneur_provoque_des_plantages_de_conteneur_et_des_états_incohérents'>13)   L'exécution de Podman à l'intérieur d'un conteneur provoque des plantages de conteneur et des états incohérents</a></h2>
+<p class="Pp">L'exécution de Podman dans un conteneur et le transfert de certains, mais pas tous, des répertoires hôtes requis peuvent entraîner un comportement incohérent du conteneur.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_11'><a class='permalink' href='#Symptom_11'>Symptôme</a></h2>
+<p class="Pp">Après avoir créé un conteneur avec les répertoires de stockage de Podman montés depuis l'hôte et r</p>
+<section class="Ss">
+<h2 class="Ss" id='Running_Podman_inside_a_container'><a class='permalink' href='#Running_Podman_inside_a_container'>Running Podman inside a container</a></h2>
+<p class="Pp">When running Podman inside a container, all containers show their
+    state as &quot;configured&quot; or &quot;created&quot;, even if they were running or stopped.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_12'><a class='permalink' href='#Solution_12'>Solution</a></h2>
+<p class="Pp">When running Podman inside a container, it is recommended to mount
+    at a minimum <b>/var/lib/containers/storage/</b> as a volume. Typically, you
+    will not mount in the host version of the directory, but if you wish to
+    share containers with the host, you can do so. If you do mount in the host's
+    <b>/var/lib/containers/storage</b>, however, you must also mount in the
+    host's <b>/run/libpod</b> and <b>/run/containers/storage</b> directories.
+    Not doing this will cause Podman in the container to detect that temporary
+    files have been cleared, leading it to assume a system restart has taken
+    place. This can cause Podman to reset container states and lose track of
+    running containers.</p>
+<p class="Pp">For running containers on the host from inside a container, we
+    also recommend the Podman remote client
+    &#x27E8;docs/tutorials/remote_client.md&#x27E9;, which only requires a
+    single socket to be mounted into the container.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='14)_Rootless_&apos;podman_build&apos;_fails_EPERM_on_NFS:'><a class='permalink' href='#14)_Rootless_&apos;podman_build&apos;_fails_EPERM_on_NFS:'>14)   Rootless 'podman build' fails EPERM on NFS:</a></h2>
+<p class="Pp">NFS enforces file creation on different UIDs on the server side
+    and does not understand user namespace, which rootless Podman requires. When
+    a container root process like YUM attempts to create a file owned by a
+    different UID, NFS Server denies the creation. NFS is also a problem for the
+    file locks when the storage is on it. Other distributed file systems (for
+    example: Lustre, Spectrum Scale, the General Parallel File System (GPFS))
+    are also not supported when running in rootless mode as these file systems
+    do not understand user namespace.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_12'><a class='permalink' href='#Symptom_12'>Symptom</a></h2>
+<pre>$ podman build .
+ERRO[0014] Error while applying layer: ApplyLayer exit status 1 stdout:  stderr: open /root/.bash_logout: permission denied
+error creating build container: Error committing the finished image: error adding layer with blob &quot;sha256:a02a4930cb5d36f3290eb84f4bfa30668ef2e9fe3a1fb73ec015fc58b9958b17&quot;: ApplyLayer exit status 1 stdout:  stderr: open /root/.bash_logout: permission denied</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_13'><a class='permalink' href='#Solution_13'>Solution</a></h2>
+<p class="Pp">Choose one of the following:
+  <br/>
+   * Set up containers/storage in a different directory, not on an NFS share.
+  <br/>
+   * Create a directory on a local file system.
+  <br/>
+   * Edit <b>~/.config/containers/containers.conf</b> and point the
+    <b>volume_path</b> option to that local directory. (Copy
+    <b>/usr/share/containers/containers.conf</b> if
+    <b>~/.config/containers/containers.conf</b> does not exist)
+  <br/>
+   * Otherwise just run Podman as root, via <b>sudo podman</b></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='15)_Rootless_&apos;podman_build&apos;_fails_when_using_OverlayFS:'><a class='permalink' href='#15)_Rootless_&apos;podman_build&apos;_fails_when_using_OverlayFS:'>15)   Rootless 'podman build' fails when using OverlayFS:</a></h2>
+<p class="Pp">The Overlay file system (OverlayFS) requires the ability to call
+    the <b>mknod</b> command when creating whiteout files when extracting an
+    image. However, a rootless user does not have the privileges to use
+    <b>mknod</b> in this capacity.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_13'><a class='permalink' href='#Symptom_13'>Symptom</a></h2>
+<pre>$ podman build --storage-driver overlay .
+STEP 1: FROM docker.io/ubuntu:xenial
+Getting image source signatures
+Copying blob edf72af6d627 done
+Copying blob 3e4f86211d23 done
+Copying blob 8d3eac894db4 done
+Copying blob f7277927d38a done
+Copying config 5e13f8dd4c done
+Writing manifest to image destination
+Storing signatures
+Error: creating build container: Error committing the finished image: error adding layer with blob &quot;sha256:8d3eac894db4dc4154377ad28643dfe6625ff0e54bcfa63e0d04921f1a8ef7f8&quot;: Error processing tar file(exit status 1): operation not permitted
+$ podman build .
+ERRO[0014] Error while applying layer: ApplyLayer exit status 1 stdout:  stderr: open /root/.bash_logout: permission denied
+error creating build container: Error committing the finished image: error adding layer with blob &quot;sha256:a02a4930cb5d36f3290eb84f4bfa30668ef2e9fe3a1fb73ec015fc58b9958b17&quot;: ApplyLayer exit status 1 stdout:  stderr: open /root/.bash_logout: permission denied</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_14'><a class='permalink' href='#Solution_14'>Solution</a></h2>
+<p class="Pp">Choose one of the following:
+  <br/>
+   * Complete the build operation as a privileged user.
+  <br/>
+   * Install and configure fuse-overlayfs.
+  <br/>
+   * Install the fuse-overlayfs package for your Linux Distribution.
+  <br/>
+   * Add <b>mount_program = &quot;/usr/bin/fuse-overlayfs&quot;</b> under
+    <b>[storage.options]</b> in your <b>~/.config/containers/storage.conf</b>
+    file.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='16)_RHEL_7_and_CentOS_7_based_&lt;b&gt;init&lt;/b&gt;_images_don&apos;t_work_with_cgroup_v2'><a class='permalink' href='#16)_RHEL_7_and_CentOS_7_based_&lt;b&gt;init&lt;/b&gt;_images_don&apos;t_work_with_cgroup_v2'>16)   RHEL 7 and CentOS 7 based <b>init</b> images don't work with cgroup   v2</a></h2>
+<p class="Pp">The systemd version shipped in RHEL 7 and CentOS 7 doesn't have
+    support for cgroup v2. Support for cgroup v2 requires version 230 of systemd
+    or newer, which was never shipped or supported on RHEL 7 or CentOS 7.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_14'><a class='permalink' href='#Symptom_14'>Symptom</a></h2>
+<pre># podman run --name test -d registry.access.redhat.com/rhel7-init:latest &amp;&amp; sleep 10 &amp;&amp; podman exec test systemctl status
+c8567461948439bce72fad3076a91ececfb7b14d469bfa5fbc32c6403185beff
+Failed to get D-Bus connection: Operation not permitted
+Error: non zero exit code: 1: OCI runtime error</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_15'><a class='permalink' href='#Solution_15'>Solution</a></h2>
+<p class="Pp">You'll need to either:</p>
+<ul class="Bl-bullet">
+  <li>configure the host to use cgroup v1. On Fedora you can do:
+        <pre># dnf install -y grubby
+# grubby --update-kernel=ALL --args=&#x201D;systemd.unified_cgroup_hierarchy=0&quot;
+# reboot
+</pre>
+      </li>
+  <li>update the image to use an updated version of systemd.
+      </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='17)_rootless_containers_exit_once_the_user_session_exits'><a class='permalink' href='#17)_rootless_containers_exit_once_the_user_session_exits'>17)   rootless containers exit once the user session exits</a></h2>
+<p class="Pp">You need to set lingering mode through loginctl to prevent user
+    processes to be killed once the user session completed.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_15'><a class='permalink' href='#Symptom_15'>Symptom</a></h2>
+<p class="Pp">Once the user logs out all the containers exit.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_16'><a class='permalink' href='#Solution_16'>Solution</a></h2>
+<pre># loginctl enable-linger $UID</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='18)_&lt;b&gt;podman&lt;/b&gt;_&lt;b&gt;run&lt;/b&gt;_fails_with_bpf_create:_permission_denied_error'><a class='permalink' href='#18)_&lt;b&gt;podman&lt;/b&gt;_&lt;b&gt;run&lt;/b&gt;_fails_with_bpf_create:_permission_denied_error'>18) <b>podman</b>   <b>run</b> fails with bpf create: permission denied error</a></h2>
+<p class="Pp">The Kernel Lockdown patches deny eBPF programs when Secure Boot is
+    enabled in the BIOS. Matthew Garrett's post describes the relationship
+    between Lockdown and Secure Boot and Jan-Philip Gehrcke's connects this with
+    eBPF. RH bug 1768125 contains some additional details.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_16'><a class='permalink' href='#Symptom_16'>Symptom</a></h2>
+<p class="Pp">Attempts to run podman result in</p>
+<pre>#### Solution
+One workaround is to disable Secure Boot in your BIOS.
+### 19) error creating libpod runtime: there might not be enough IDs available in the namespace
+Unable to pull images
+#### Symptom
+```console
+$ podman unshare cat /proc/self/uid_map
+	 0       1000          1</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_17'><a class='permalink' href='#Solution_17'>Solution</a></h2>
+<pre>$ podman system migrate</pre>
+<p class="Pp">Original command now returns</p>
+<pre>$ podman unshare cat /proc/self/uid_map
+	 0       1000          1
+	 1     100000      65536</pre>
+<p class="Pp">Reference subuid and subgid man pages for more detail.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='20)_Passed-in_devices_or_files_can&apos;t_be_accessed_in_rootless_container'><a class='permalink' href='#20)_Passed-in_devices_or_files_can&apos;t_be_accessed_in_rootless_container'>20)   Passed-in devices or files can't be accessed in rootless container</a></h2>
+<p class="Pp">As a non-root user you have group access rights to a device or
+    files that you want to pass into a rootless container with
+    <b>--device=...</b> or <b>--volume=...</b></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_17'><a class='permalink' href='#Symptom_17'>Symptom</a></h2>
+<p class="Pp">Any access inside the container is rejected with &quot;Permission
+    denied&quot;.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_18'><a class='permalink' href='#Solution_18'>Solution</a></h2>
+<p class="Pp">The runtime uses <a href='/man/setgroups.2.en'>setgroups(2)</a> hence the process loses all
+    additional groups the non-root user has. Use the <b>--group-add
+    keep-groups</b> flag to pass the user's supplementary group access into the
+    container. Currently only available with the <b>crun</b> OCI runtime.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='21)_A_rootless_container_running_in_detached_mode_is_closed_at_logout'><a class='permalink' href='#21)_A_rootless_container_running_in_detached_mode_is_closed_at_logout'>21)   A rootless container running in detached mode is closed at logout</a></h2>
+<p class="Pp">When running a container with a command like <b>podman run
+    --detach httpd</b> as a rootless user, the container is closed upon logout
+    and is not kept running.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_18'><a class='permalink' href='#Symptom_18'>Symptom</a></h2>
+<p class="Pp">When logging out of a rootless user session, all containers that
+    were started in detached mode are stopped and are not kept running. As the
+    root user, these same containers would survive the logout and continue
+    running.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_19'><a class='permalink' href='#Solution_19'>Solution</a></h2>
+<p class="Pp">When systemd notes that a session that started a Podman container
+    has exited, it will also stop any containers that have been associated with
+    it. To avoid this, use the following command before logging out: <b>loginctl
+    enable-linger</b>. To later revert the linger functionality, use <b>loginctl
+    disable-linger</b>.</p>
+<p class="Pp">LOGINCTL(1), SYSTEMD(1)</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='22)_Containers_default_detach_keys_conflict_with_shell_history_navigation'><a class='permalink' href='#22)_Containers_default_detach_keys_conflict_with_shell_history_navigation'>22)   Containers default detach keys conflict with shell history navigation</a></h2>
+<p class="Pp">When running containers in the foreground, hitting <b>Ctrl+p</b>
+    followed by <b>Ctrl+q</b> detaches the container. However, in many shells,
+    this sequence of key presses also manipulates the shell history. This is
+    confusing for users.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_19'><a class='permalink' href='#Symptom_19'>Symptom</a></h2>
+<p class="Pp">Attempting to detach a container running in the foreground may
+    accidentally move you to a different line in the shell history.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_20'><a class='permalink' href='#Solution_20'>Solution</a></h2>
+<p class="Pp">You can change the detach keys sequence by setting the
+    <b>detach-keys</b> option in the <b>containers.conf</b> file. For example,
+    to change the sequence to <b>Ctrl+s</b> followed by <b>Ctrl+w</b>, you would
+    add the following lines to your <b>~/.config/containers/containers.conf</b>
+    file:</p>
+<pre>[containers]
+detach-keys = &quot;ctrl-s,ctrl-w&quot;
+</pre>
+<p class="Pp">Note that if the <b>containers.conf</b> file does not exist, you
+    will need to copy the default file from
+    <b>/usr/share/containers/containers.conf</b> to
+    <b>~/.config/containers/containers.conf</b> and then edit it.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='23)_Rootless_container_exit_when_using_systemd_v248+'><a class='permalink' href='#23)_Rootless_container_exit_when_using_systemd_v248+''>23)   Rootless container exit when using systemd v248+</a></h2>
+<p class="Pp">As of systemd v248, systemd terminates lingering user sessions if
+    they are not actively connected to a graphical session or a TTY. This
+    behavior impacts rootless containers started from such sessions, causing
+    them to exit unexpectedly.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_20'><a class='permalink' href='#Symptom_20'>Symptom</a></h2>
+<p class="Pp">Rootless containers started in detached mode exit when the user
+    logs out or disconnects from their graphical session or TTY, even if
+    `loginctl enable-linger` was previously set.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_21'><a class='permalink' href='#Solution_21'>Solution</a></h2>
+<p class="Pp">To keep rootless containers running, you need to manually start
+    them as a service via systemd. Create a user systemd service file (e.g.,
+    <code>~/.config/systemd/user/mycontainer.service</code>) with the following
+    content:</p>
+<pre>[Unit]
+Description=My Detached Container
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/podman run --rm --name mycontainer IMAGE
+ExecStop=/usr/bin/podman stop mycontainer
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+</pre>
+<p class="Pp">Replace <code>IMAGE</code> with the actual image name and
+    adjust the container name and other podman run options as needed. Then,
+    enable and start the service:</p>
+<pre>$ systemctl --user enable mycontainer.service
+$ systemctl --user start mycontainer.service
+</pre>
+<p class="Pp">This approach ensures the container runs as a managed service,
+    persisting across user logouts and system reboots.</p>
+</section>
+<h2><a class='permalink' href='#22)_Default_detach_keys_conflict_with_shell_history_navigation'>22) Les touches de détachement par défaut entrent en conflit avec la navigation dans l'historique du shell</a></h2>
+<p class="Pp">Podman utilise par défaut <b>ctrl-p,ctrl-q</b> pour détacher un conteneur en cours d'exécution. Les shells bash et zsh utilisent par défaut <b>ctrl-p</b> pour afficher la commande précédente. Cela pose des problèmes lors de l'exécution d'un shell à l'intérieur d'un conteneur.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_19'><a class='permalink' href='#Symptom_19'>Symptôme</a></h2>
+<p class="Pp">Avec la combinaison de touches de détachement par défaut ctrl-p,ctrl-q, la navigation dans l'historique du shell (testée dans bash et zsh) utilisant ctrl-p pour accéder à la commande précédente n'affichera pas cette commande précédente, ni quoi que ce soit d'autre. Conmon attend un caractère supplémentaire pour voir si l'utilisateur souhaite se détacher du conteneur. L'ajout de caractères supplémentaires à la commande provoquera son affichage ainsi que le caractère supplémentaire. Si l'utilisateur tape ctrl-p une deuxième fois, le shell affichera l'avant-dernière commande.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_20'><a class='permalink' href='#Solution_20'>Solution</a></h2>
+<p class="Pp">La solution consiste à modifier les <b>detach_keys</b> par défaut. Par exemple, pour modifier les valeurs par défaut en <b>ctrl-q,ctrl-q</b>, utilisez l'option <b>--detach-keys</b>.</p>
+<pre>$ podman run -ti --detach-keys ctrl-q,ctrl-q fedora sh</pre>
+<p class="Pp">Pour que ce changement soit le défaut pour tous les conteneurs, les utilisateurs peuvent modifier le fichier containers.conf. Cela peut être fait simplement dans votre répertoire personnel, en ajoutant les lignes suivantes à containers.conf de l'utilisateur :</p>
+<pre>$ cat &gt;&gt; ~/.config/containers/containers.conf &lt;&lt; _eof
+[engine]
+detach_keys=&quot;ctrl-q,ctrl-q&quot;
+_eof</pre>
+<p class="Pp">Afin d'affecter les conteneurs exécutés en tant que root et tous les utilisateurs, modifiez les valeurs par défaut du système dans <b>/etc/containers/containers.conf</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='23)_Container_with_exposed_ports_won&apos;t_run_in_a_pod'><a class='permalink' href='#23)_Container_with_exposed_ports_won&apos;t_run_in_a_pod'>23) Un conteneur avec des ports exposés ne s'exécute pas dans un pod</a></h2>
+<p class="Pp">Un conteneur avec des ports publiés avec l'option <b>--publish</b> ou <b>-p</b> ne peut pas être exécuté dans un pod.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_20'><a class='permalink' href='#Symptom_20'>Symptôme</a></h2>
+<pre>$ podman pod create --name srcview -p 127.0.0.1:3434:3434 -p 127.0.0.1:7080:7080 -p 127.0.0.1:3370:3370                        4b2f4611fa2cbd60b3899b936368c2b3f4f0f68bc8e6593416e0ab8ecb0a3f1d
+$ podman run --pod srcview --name src-expose -p 3434:3434 -v &quot;${PWD}:/var/opt/localrepo&quot;:Z,ro sourcegraph/src-expose:latest serve /var/opt/localrepo
+Error: cannot set port bindings on an existing container network namespace</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_21'><a class='permalink' href='#Solution_21'>Solution</a></h2>
+<p class="Pp">C'est une limitation connue. Si un conteneur doit être exécuté dans un pod, il n'est pas nécessaire de publier le port pour les conteneurs du pod. Le port doit uniquement être publié par le pod lui-même. Les piles réseau des pods agissent comme la pile réseau de l'hôte - vous avez une variété de conteneurs dans le pod, et des programmes dans le conteneur, partageant tous une seule interface et une seule adresse IP, ainsi que les ports associés. Si un conteneur se lie à un port, aucun autre conteneur ne peut utiliser ce port dans le pod tant qu'il est utilisé. Les conteneurs du pod peuvent également communiquer via localhost en faisant en sorte qu'un conteneur se lie à localhost dans le pod, et qu'un autre se connecte à ce port.</p>
+<p class="Pp">Dans l'exemple de la section symptôme, supprimer le <b>-p 3434:3434</b> permettrait à la commande <b>podman run</b> de se terminer, et le conteneur faisant partie du pod aurait toujours accès à ce port. Par exemple :</p>
+<pre>$ podman run --pod srcview --name src-expose -v &quot;${PWD}:/var/opt/localrepo&quot;:Z,ro sourcegraph/src-expose:latest serve /var/opt/localrepo</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='24)_Podman_container_images_fail_with_&lt;b&gt;fuse:&lt;/b&gt;_&lt;b&gt;device&lt;/b&gt;_&lt;b&gt;not&lt;/b&gt;_&lt;b&gt;found&lt;/b&gt;_when_run'><a class='permalink' href='#24)_Podman_container_images_fail_with_&lt;b&gt;fuse:&lt;/b&gt;_&lt;b&gt;device&lt;/b&gt;_&lt;b&gt;not&lt;/b&gt;_&lt;b&gt;found&lt;/b&gt;_when_run'>24) Les images de conteneurs Podman échouent avec <b>fuse :</b> <b>appareil</b> <b>non</b> <b>trouvé</b> lors de l'exécution</a></h2>
+<p class="Pp">Certaines images de conteneurs nécessitent que le module noyau fuse soit chargé dans le noyau avant de pouvoir être exécutées avec le système de fichiers fuse.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_21'><a class='permalink' href='#Symptom_21'>Symptôme</a></h2>
+<p class="Pp">Lors de la tentative d'exécution des images de conteneurs trouvées sur quay.io/podman, quay.io/containers, registry.access.redhat.com/ubi8 ou d'autres emplacements, une erreur peut parfois être retournée :</p>
+<pre>ERRO error unmounting /var/lib/containers/storage/overlay/30c058cdadc888177361dd14a7ed7edab441c58525b341df321f07bc11440e68/merged: invalid argument
+error mounting container &quot;1ae176ca72b3da7c70af31db7434bcf6f94b07dbc0328bc7e4e8fc9579d0dc2e&quot;: error mounting build container &quot;1ae176ca72b3da7c70af31db7434bcf6f94b07dbc0328bc7e4e8fc9579d0dc2e&quot;: error creating overlay mount to /var/lib/containers/storage/overlay/30c058cdadc888177361dd14a7ed7edab441c58525b341df321f07bc11440e68/merged: using mount program /usr/bin/fuse-overlayfs: fuse: device not found, try 'modprobe fuse' first
+fuse-overlayfs: cannot mount: No such device
+: exit status 1
+ERRO exit status 1</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_22'><a class='permalink' href='#Solution_22'>Solution</a></h2>
+<p class="Pp">Si vous rencontrez une erreur <b>fuse: device not found</b> lors de l'exécution de l'image du conteneur, il est probable que le module noyau fuse n'ait pas été chargé sur votre système hôte. Utilisez la commande <b>modprobe fuse</b> pour charger le module, puis exécutez l'image du conteneur par la suite. Pour l'activer automatiquement au démarrage, vous pouvez ajouter un fichier de configuration dans <b>/etc/modules.load.d</b>. Voir <b>man modules-load.d</b> pour plus de détails.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='25)_podman_run_--rootfs_link/to//read/only/dir_does_not_work'><a class='permalink' href='#25)_podman_run_--rootfs_link/to//read/only/dir_does_not_work'>25) podman run --rootfs link/to//read/only/dir ne fonctionne pas</a></h2>
+<p class="Pp">Une erreur telle que "OCI runtime error" sur un système de fichiers en lecture seule ou l'erreur "{image} n'est pas un chemin absolu ou est un lien symbolique" sont souvent des indicateurs de ce problème. Pour plus de détails, consultez ce problème &#x27E8;<a href='https://github.com/containers/podman/issues/5895'>https://github.com/containers/podman/issues/5895</a>&#x27E9;.</p>
+</section>
+<section class=" Ss">
+<h2 class="Ss" id='Symptom_22'><a class='permalink' href='#Symptom_22'>Symptôme</a></h2>
+<p class="Pp">Podman sans root nécessite certains fichiers dans un système de fichiers pour pouvoir s'exécuter. Podman créera /etc/resolv.conf, /etc/hosts et d'autres descripteurs de fichiers sur le rootfs afin de monter des volumes dessus.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_23'><a class='permalink' href='#Solution_23'>Solution</a></h2>
+<p class="Pp">Exécutez le conteneur une fois en mode lecture/écriture. Podman créera tous les FDs sur le rootfs, et à partir de ce moment, vous pourrez exécuter avec un rootfs en lecture seule.</p>
+<pre>$ podman run --rm --rootfs /path/to/rootfs true</pre>
+<p class="Pp">La commande ci-dessus créera tous les répertoires manquants nécessaires pour exécuter le conteneur.</p>
+<p class="Pp">Ensuite, il peut être utilisé en mode lecture seule, par plusieurs conteneurs en même temps :</p>
+<pre>$ podman run --read-only --rootfs /path/to/rootfs ....</pre>
+<p class="Pp">Une autre option consiste à utiliser un montage Overlay Rootfs :</p>
+<pre>$ podman run --rootfs /path/to/rootfs:O ....</pre>
+<p class="Pp">Les modifications apportées au point de montage sont détruites lorsque le conteneur a fini de s'exécuter, similaire à un point de montage tmpfs qui est démonté.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='26)_Running_containers_with_resource_limits_fails_with_a_permissions_error'><a class='permalink' href='#26)_Running_containers_with_resource_limits_fails_with_a_permissions_error'>26) L'exécution de conteneurs avec des limites de ressources échoue avec une erreur de permission</a></h2>
+<p class="Pp">Sur certains systèmes basés sur systemd, les utilisateurs non root n'ont pas les permissions de délégation de limites de ressources. Cela provoque l'échec de la définition des limites de ressources.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_23'><a class='permalink' href='#Symptom_23'>Symptôme</a></h2>
+<p class="Pp">L'exécution d'un conteneur avec des options de limite de ressources échouera avec une erreur similaire à la suivante :</p>
+<p class="Pp"><b>--cpus</b>, <b>--cpu-period</b>, <b>--cpu-quota</b>, <b>--cpu-shares</b> :</p>
+<pre>Error: OCI runtime error: crun: the requested cgroup controller `cpu` is not available</pre>
+<p class="Pp"><b>--cpuset-cpus</b>, <b>--cpuset-mems</b> :</p>
+<pre>Error: OCI runtime error: crun: the requested cgroup controller `cpuset` is not available</pre>
+<p class="Pp">Cela signifie que la délégation des limites de ressources n'est pas activée pour l'utilisateur actuel.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_24'><a class='permalink' href='#Solution_24'>Solution</a></h2>
+<p class="Pp">Vous pouvez vérifier si la délégation des limites de ressources est activée en exécutant la commande suivante :</p>
+<pre>$ cat &quot;/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers&quot;</pre>
+<p class="Pp">Exemple de sortie possible :</p>
+<pre>memory pids</pre>
+<p class="Pp">Dans l'exemple ci-dessus, <b>cpu</b> et <b>cpuset</b> ne sont pas listés, ce qui signifie que l'utilisateur actuel n'a pas la permission de définir des limites de CPU ou de CPUSET.</p>
+<p class="Pp">Si vous souhaitez activer la délégation des limites de CPU ou de CPUSET pour tous les utilisateurs, vous pouvez créer le fichier <b>/etc/systemd/system/user@.service.d/delegate.conf</b> avec le contenu suivant :</p>
+<pre>[Service]
+Delegate=memory pids cpu cpuset</pre>
+<p class="Pp">Après vous être déconnecté et reconnecté, vous devriez avoir la permission de définir les limites de CPU et de CPUSET.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='27)_&lt;b&gt;exec&lt;/b&gt;_&lt;b&gt;container&lt;/b&gt;_&lt;b&gt;process&lt;/b&gt;_&lt;b&gt;&apos;/bin/sh&apos;:&lt;/b&gt;_&lt;b&gt;Exec&lt;/b&gt;_&lt;b&gt;format&lt;/b&gt;_&lt;b&gt;error&lt;/b&gt;_(or_another_binary_than_&lt;b&gt;bin/sh&lt;/b&gt;)'><a class='permalink' href='#27)_&lt;b&gt;exec&lt;/b&gt;_&lt;b&gt;container&lt;/b&gt;_&lt;b&gt;process&lt;/b&gt;_&lt;b&gt;&apos;/bin/sh&apos;:&lt;/b&gt;_&lt;b&gt;Exec&lt;/b&gt;_&lt;b&gt;format&lt;/b&gt;_&lt;b&gt;error&lt;/b&gt;_(or_another_binary_than_&lt;b&gt;bin/sh&lt;/b&gt;)'>27) Erreur de format d'exécution pour <b>exec</b> <b>processus</b> <b>de</b> <b>conteneur</b> <b>'/bin/sh'</b> (ou un autre binaire que <b>bin/sh</b>)</a></h2>
+<p class="Pp">Cela peut se produire lors de l'exécution d'un conteneur à partir d'une image pour une architecture autre que celle sur laquelle vous vous exécutez.</p>
+<p class="Pp">Par exemple, si un dépôt distant ne contient que, et vous envoie donc, un système d'exploitation/architecture <i>OS/ARCH</i> <b>linux/arm64</b> mais que vous vous exécutez sur <b>linux/amd64</b> (comme cela s'est produit dans &#x27E8;<a href='https://github.com/openMF/community-app/issues/3323'>https://github.com/openMF/community-app/issues/3323</a>&#x27E9; en raison de &#x27E8;<a href='https://github.com/timbru31/docker-ruby-node/issues/564'>https://github.com/timbru31/docker-ruby-node/issues/564</a>&#x27E9;).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='28)_&lt;b&gt;Error:&lt;/b&gt;_&lt;b&gt;failed&lt;/b&gt;_&lt;b&gt;to&lt;/b&gt;_&lt;b&gt;create&lt;/b&gt;_&lt;b&gt;sshClient:&lt;/b&gt;_&lt;b&gt;Connection&lt;/b&gt;_&lt;b&gt;to&lt;/b&gt;_&lt;b&gt;bastion&lt;/b&gt;_&lt;b&gt;host&lt;/b&gt;_&lt;b&gt;(ssh://user@host:22/run/user/.../podman/podman.sock)&lt;/b&gt;_&lt;b&gt;failed.:&lt;/b&gt;_&lt;b&gt;ssh:&lt;/b&gt;_&lt;b&gt;handshake&lt;/b&gt;_'><a class='permalink' href='#28)_&lt;b&gt;Error:&lt;/b&gt;_&lt;b&gt;failed&lt;/b&gt;_&lt;b&gt;to&lt;/b&gt;_&lt;b&gt;create&lt;/b&gt;_&lt;b&gt;sshClient:&lt;/b&gt;_&lt;b&gt;Connection&lt;/b&gt;_&lt;b&gt;to&lt;/b&gt;_&lt;b&gt;bastion&lt;/b&gt;_&lt;b&gt;host&lt;/b&gt;_&lt;b&gt;(ssh://user@host:22/run/user/.../podman/podman.sock)&lt;/b&gt;_&lt;b&gt;failed.:&lt;/b&gt;_&lt;b&gt;ssh:&lt;/b&gt;_&lt;b&gt;handshake&lt;/b&gt;_'>28) <b>Erreur :</b> <b>échec</b> <b>de</b> <b>création</b> <b>sshClient :</b> <b>Connexion</b> <b>à</b> <b>l'hôte</b> <b>bastion</b> <b>(ssh://user@host:22/run/user/.../podman/podman.sock)</b> <b>a</b> <b>échoué :</b> <b>ssh :</b> <b>handshake</b> </a></h2>
+&lt;b&gt;échoué:&lt;/b&gt;_&lt;b&gt;ssh:&lt;/b&gt;_&lt;b&gt;impossible&lt;/b&gt;_&lt;b&gt;d'authentifier,&lt;/b&gt;_&lt;b&gt;méthodes&lt;/b&gt;_&lt;b&gt;tentées&lt;/b&gt;_&lt;b&gt;[aucune&lt;/b&gt;_&lt;b&gt;clé publique],&lt;/b&gt;_&lt;b&gt;aucune&lt;/b&gt;_&lt;b&gt;méthode&lt;/b&gt;_&lt;b&gt;supportée&lt;/b&gt;_&lt;b&gt;n'est&lt;/b&gt;_&lt;b&gt;restante&lt;/b&gt;'&gt;&lt;a class='permalink' href='#28)_&lt;b&gt;Erreur:&lt;/b&gt;_&lt;b&gt;échec&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;création&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;sshClient:&lt;/b&gt;_&lt;b&gt;connexion&lt;/b&gt;_&lt;b&gt;à&lt;/b&gt;_&lt;b&gt;l'hôte&lt;/b&gt;_&lt;b&gt;bastion&lt;/b&gt;_&lt;b&gt;(ssh://user@host:22/run/user/.../podman/podman.sock)&lt;/b&gt;_&lt;b&gt;échouée.:&lt;/b&gt;_&lt;b&gt;ssh:&lt;/b&gt;_&lt;b&gt;échec&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;l'établissement&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;la&lt;/b&gt;_&lt;b&gt;connexion&lt;/b&gt;: _&lt;b&gt;ssh:&lt;/b&gt;_&lt;b&gt;impossible&lt;/b&gt;_&lt;b&gt;d'authentifier,&lt;/b&gt;_&lt;b&gt;méthodes&lt;/b&gt;_&lt;b&gt;tentées&lt;/b&gt;_&lt;b&gt;%5Baucune&lt;/b&gt;_&lt;b&gt;clé publique%5D,&lt;/b&gt;_&lt;b&gt;aucune&lt;/b&gt;_&lt;b&gt;méthode&lt;/b&gt;_&lt;b&gt;supportée&lt;/b&gt;_&lt;b&gt;n'est&lt;/b&gt;_&lt;b&gt;restante&lt;/b&gt;'&gt;28) <b>Erreur:</b>   <b>échec</b>   <b>de</b>   <b>création</b>   <b>de</b>   <b>sshClient:</b>   <b>connexion</b>   <b>à</b>   <b>l'hôte</b>   <b>bastion</b>   <b>(ssh://user@host:22/run/user/.../podman/podman.sock)</b>   <b>échouée.:</b>   <b>ssh:</b>   <b>échec</b>   <b>de</b>   <b>l'établissement</b>   <b>de</b>   <b>la</b>   <b>connexion:</b>   <b>ssh:</b>   <b>impossible</b>   <b>d'authentifier,</b>   <b>méthodes</b>   <b>tentées</b>   <b>[aucune</b>   <b>clé publique],</b>   <b>aucune</b>   <b>méthode</b>   <b>supportée</b>   <b>n'est</b>   <b>restante</b></a></h2>
+<p class="Pp">Dans certaines situations où le client ne se trouve pas sur la même machine
+    que celle où le démon podman est en cours d'exécution, la clé du client peut
+    utiliser un chiffrement non pris en charge par l'hôte. Cela indique un problème
+    avec la configuration SSH de l'utilisateur. Tant que le problème n'est pas
+    résolu, l'utilisation de podman via SSH avec une clé pré-partagée sera
+    impossible.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptome_24'><a class='permalink' href='#Symptome_24'>Symptôme</a></h2>
+<p class="Pp">Les chiffrements acceptés par
+    <b>/etc/crypto-policies/back-ends/openssh.config</b> ne sont pas ceux qui ont
+    été utilisés pour créer la paire de clés publique/privée qui a été transférée
+    vers l'hôte pour l'authentification SSH.</p>
+<p class="Pp">Vous pouvez confirmer que c'est le cas en tentant de vous connecter à
+    l'hôte via <b>podman-remote info</b> depuis le client et, simultanément, sur
+    l'hôte en exécutant <b>journalctl -f</b> et en observant l'erreur
+    <b>userauth_pubkey: key type ssh-rsa not in PubkeyAcceptedAlgorithms
+    [preauth]</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_25'><a class='permalink' href='#Solution_25'>Solution</a></h2>
+<p class="Pp">Créez une nouvelle clé en utilisant un algorithme pris en charge, par
+    exemple ecdsa :</p>
+<pre>$ ssh-keygen -t ecdsa -f ~/.ssh/podman</pre>
+<p class="Pp">Copiez ensuite le nouvel identifiant :</p>
+<pre>$ ssh-copy-id -i ~/.ssh/podman.pub user@host</pre>
+<p class="Pp">Et ajoutez ensuite la connexion (en supprimant l'ancienne si
+    nécessaire) :</p>
+<pre>$ podman-remote system connection add myuser --identity ~/.ssh/podman ssh://user@host/run/user/1000/podman/podman.sock</pre>
+<p class="Pp">Et maintenant, cela devrait fonctionner :</p>
+<pre>$ podman-remote info</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='29)_Le_réseau_CNI_sans_root_échoue_dans_RHEL_avec_Podman_v2.2.1_à_v3.0.1.'><a class='permalink' href='#29)_Le_réseau_CNI_sans_root_échoue_dans_RHEL_avec_Podman_v2.2.1_à_v3.0.1.'>29)   Le réseau CNI sans root échoue dans RHEL avec Podman v2.2.1 à v3.0.1.</a></h2>
+<p class="Pp">Un échec est rencontré lors de la tentative d'utilisation du réseau sur un
+    conteneur sans root dans Podman v2.2.1 à v3.0.1 sur RHEL. Cette erreur ne se
+    produit pas sur d'autres distributions Linux.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptome_25'><a class='permalink' href='#Symptome_25'>Symptôme</a></h2>
+<p class="Pp">Un conteneur sans root est créé en utilisant un réseau CNI, mais la
+    commande <b>podman run</b> renvoie une erreur indiquant qu'une image doit
+    être construite.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_26'><a class='permalink' href='#Solution_26'>Solution</a></h2>
+<p class="Pp">Pour utiliser un réseau CNI dans un conteneur sans root sur RHEL, une
+    image de conteneur Infra pour CNI-in-slirp4netns doit être créée. Les
+    instructions pour construire l'image de conteneur Infra peuvent être trouvées
+    pour v2.2.1 ici, et pour v3.0.1 ici.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='30)_Les_règles_de_pare-feu_liées_aux_conteneurs_sont_perdues_après_le_rechargement_de_firewalld'><a class='permalink' href='#30)_Les_règles_de_pare-feu_liées_aux_conteneurs_sont_perdues_après_le_rechargement_de_firewalld'>30)   Les règles de pare-feu liées aux conteneurs sont perdues après le rechargement de firewalld</a></h2>
+<p class="Pp">Le réseau du conteneur ne peut pas être atteint après
+    <b>firewall-cmd --reload</b> et <b>systemctl restart firewalld</b>. L'exécution
+    de <b>podman network reload</b> le corrigera, mais cela doit être fait
+    manuellement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptome_26'><a class='permalink' href='#Symptome_26'>Symptôme</a></h2>
+<p class="Pp">Les règles de pare-feu créées par podman sont perdues lorsque le pare-feu
+    est rechargé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_27'><a class='permalink' href='#Solution_27'>Solution</a></h2>
+<p class="Pp">@ranjithrajaram a créé un hook systemd pour résoudre ce problème.</p>
+<p class="Pp">1) Pour &quot;firewall-cmd --reload&quot;, créez un fichier d'unité systemd
+    avec le contenu suivant :</p>
+<pre>[Unit]
+Description=firewalld reload hook - run a hook script on firewalld reload
+Wants=dbus.service
+After=dbus.service
+[Service]
+Type=simple
+ExecStart=/bin/bash -c '/bin/busctl monitor --system --match "interface=org.fedoraproject.FirewallD1,member=Reloaded" --match "interface=org.fedoraproject.FirewallD1,member=PropertiesChanged" | while read -r line ; do podman network reload --all ; done'
+[Install]
+WantedBy=default.target</pre>
+<p class="Pp">2) Pour &quot;systemctl restart firewalld&quot;, créez un fichier d'unité
+    systemd avec le contenu suivant :</p>
+<pre>[Unit]
+Description=podman network reload
+Wants=firewalld.service
+After=firewalld.service
+PartOf=firewalld.service
+[Service]
+Type=simple
+RemainAfterExit=yes
+ExecStart=/usr/bin/podman network reload --all
+[Install]
+WantedBy=default.target</pre>
+<p class="Pp">Cependant, si vous utilisez busctl monitor, vous ne pouvez pas obtenir
+    une sortie lisible par machine sur RHEL 8. Car il n'a pas <b>busctl -j</b> comme
+    mentionné ici par @yrro.</p>
+<p class="Pp">Pour RHEL 8, vous pouvez utiliser le script bash suivant en une seule
+    ligne.</p>
+<pre>[Unit]
+Description=Redo podman NAT rules after firewalld starts or reloads
+Wants=dbus.service
+After=dbus.service
+Requires=firewalld.service
+[Service]
+Type=simple
+ExecStart=/bin/bash -c "dbus-monitor --profile --system 'type=signal,sender=org.freedesktop.DBus,path=/org/freedesktop/DBus,interface=org.freedesktop.DBus,member=NameAcquired,arg0=org.fedoraproject.FirewallD1' 'type=signal,path=/org/fedoraproject/FirewallD1,interface=org.fedoraproject.FirewallD1,member=Reloaded' | sed -u '/^#/d' | while read -r type timestamp serial sender destination path interface member _junk; do if [[ $type = '#'* ]]; then continue; elif [[ $interface = org.freedesktop.DBus &amp;&amp; $member = NameAcquired ]]; then echo 'firewalld started'; podman network reload --all; elif [[ $interface = org.fedoraproject.FirewallD1 &amp;&amp; $member = Reloaded ]]; then echo 'firewalld reloaded'; podman network reload --all; fi; done"
+Restart=Always
+[Install]
+WantedBy=default.target</pre>
+<p class="Pp"><b>busctl-monitor</b> est presque utilisable sur RHEL 8, sauf qu'il
+    affiche toujours deux événements erronés lors de son démarrage, dont l'un est
+    (dans son seul format lisible par machine) indiscernable de
+    <b>NameOwnerChanged</b> que vous obtenez lorsque firewalld démarre. Cela
+    signifie que vous obtiendrez un <b>podman network reload --all</b> supplémentaire
+    lors du démarrage de cette unité.</p>
+<p class="Pp">En dehors de cela, vous pouvez utiliser le service systemd suivant avec le
+    code python3.</p>
+<pre>[Unit]
+Description=Redo podman NAT rules after firewalld starts or reloads
+Wants=dbus.service
+Requires=firewalld.service
+After=dbus.service
+[Service]
+Type=simple
+ExecStart=/usr/bin/python  /path/to/python/code/podman-redo-nat.py
+Restart=always
+[Install]
+WantedBy=default.target</pre>
+<p class="Pp">Le code recharge le réseau podman deux fois lorsque vous utilisez
+    <b>systemctl restart firewalld</b>.</p>
+<pre>import dbus
+from gi.repository import GLib
+from dbus.mainloop.glib import DBusGMainLoop
+import subprocess
+import sys
+# Je suis un peu confus sur les valeurs de retour dans le code
+# Je ne suis pas sûr si elles sont nécessaires.
+def reload_podman_network():
+    try:
+        subprocess.run([&quot;podman&quot;,&quot;network&quot;,&quot;reload&quot;,&quot;--all&quot;],timeout=90)
+        # Je ne suis pas sûr de cette partie
+        sys.stdout.write(&quot;podman network reload done\n&quot;)
+        sys.stdout.flush()
+    except subprocess.TimeoutExpired as t:
+        sys.stderr.write(f&quot;Podman reload failed due to Timeout {t}&quot;)
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write(f&quot;Podman reload failed due to {e}&quot;)
+    except Exception as e:
+        sys.stderr.write(f&quot;Podman reload failed with an Unhandled Exception {e}&quot;)
+    return False
+def signal_handler(*args, **kwargs):
+    if kwargs.get('member') == &quot;Reloaded&quot;:
+        reload_podman_network()
+    elif kwargs.get('member') == &quot;NameOwnerChanged&quot;:
+        reload_podman_network()
+    else:
+        return None
+    return None
+def signal_listener():
+    try:
+        DBusGMainLoop(set_as_default=True)# Définit la boucle.
+        loop = GLib.MainLoop()
+        system_bus = dbus.SystemBus()
+        # Écoute les redémarrages de systemctl firewalld avec un filtre ajouté, ce qui entraînera le rechargement du réseau podman deux fois
+        system_bus.add_signal_receiver(signal_handler,dbus_interface='org.freedesktop.DBus',arg0='org.fedoraproject.FirewallD1',member_keyword='member')
+        # Écoute les rechargements de firewall-cmd --reload
+        system_bus.add_signal_receiver(signal_handler,dbus_interface='org.fedoraproject.FirewallD1',signal_name='Reloaded',member_keyword='member')
+        loop.run()
+    except KeyboardInterrupt:
+        loop.quit()
+        sys.exit(0)
+    except Exception as e:
+        loop.quit()
+        sys.stderr.write(f&quot;Error occurred {e}&quot;)
+        sys.exit(1)
+if __name__ == &quot;__main__&quot;:
+    signal_listener()</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='31)_Podman_run_échoue_avec_&lt;b&gt;ERRO%5B0000%5D&lt;/b&gt;_&lt;b&gt;XDG_RUNTIME_DIR&lt;/b&gt;_&lt;b&gt;le&lt;/b&gt;_&lt;b&gt;répertoire&lt;/b&gt;_&lt;b&gt;/run/user/0&lt;/b&gt;_&lt;b&gt;n'est&lt;/b&gt;_&lt;b&gt;pas&lt;/b&gt;_&lt;b&gt;détenu&lt;/b&gt;_&lt;b&gt;par&lt;/b&gt;_&lt;b&gt;l'utilisateur&lt;/b&gt;_&lt;b&gt;actuel&lt;/b&gt;_ou_&lt;b&gt;Erreur:&lt;/b&gt;_&lt;b&gt;création&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;tmpdir:&lt;/b&gt;_&lt;b&gt;mkdir&lt;/b&gt;_&lt;b&gt;/run/user/1000:&lt;/b&gt;_&lt;b&gt;permission&lt;/b&gt;_&lt;b&gt;refusée&lt;/b&gt;.'><a class='permalink' href='#31)_Podman_run_échoue_avec_&lt;b&gt;ERRO%5B0000%5D&lt;/b&gt;_&lt;b&gt;XDG_RUNTIME_DIR&lt;/b&gt;_&lt;b&gt;le&lt;/b&gt;_&lt;b&gt;répertoire&lt;/b&gt;_&lt;b&gt;/run/user/0&lt;/b&gt;_&lt;b&gt;n'est&lt;/b&gt;_&lt;b&gt;pas&lt;/b&gt;_&lt;b&gt;détenu&lt;/b&gt;_&lt;b&gt;par&lt;/b&gt;_&lt;b&gt;l'utilisateur&lt;/b&gt;_&lt;b&gt;actuel&lt;/b&gt;_ou_&lt;b&gt;Erreur:&lt;/b&gt;_&lt;b&gt;création&lt;/b&gt;_&lt;b&gt;de&lt;/b&gt;_&lt;b&gt;tmpdir:&lt;/b&gt;_&lt;b&gt;mkdir&lt;/b&gt;_&lt;b&gt;/run/user/1000:&lt;/b&gt;_&lt;b&gt;permission&lt;/b&gt;_&lt;b&gt;refusée&lt;/b&gt;.'>31)   Podman run échoue avec <b>ERRO[0000]</b>   <b>XDG_RUNTIME_DIR</b>   <b>le</b>   <b>répertoire</b>   <b>/run/user/0</b>   <b>n'est</b>   <b>pas</b>   <b>détenu</b>   <b>par</b>   <b>l'utilisateur</b>   <b>actuel</b> ou <b>Erreur:</b>   <b>création</b>   <b>de</b>   <b>tmpdir:</b>   <b>mkdir</b>   <b>/run/user/1000:</b>   <b>permission</b>   <b>refusée</b>.</a></h2>
+<p class="Pp">Un échec est rencontré lors de l'exécution de <b>podman run</b> avec l'avertissement
+    <b>XDG_RUNTIME_DIR pointe vers un chemin non inscriptible. Podman échouera très
+    probablement.</b></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_27'><a class='permalink' href='#Symptom_27'>Symptôme</a></h2>
+<p class="Pp">Un conteneur sans privilèges root est invoqué avec une configuration cgroup de type <b>cgroupv2</b> pour un utilisateur dont la <b>session systemd</b> est manquante ou invalide.</p>
+<p class="Pp">Cas d'exemple</p>
+<pre># su user1 -c 'podman images'
+ERRO[0000] Le répertoire XDG_RUNTIME_DIR "/run/user/0" n'est pas la propriété de l'utilisateur actuel</pre>
+<pre># su - user1 -c 'podman images'
+Error: impossible de créer le répertoire temporaire : mkdir /run/user/1000 : permission refusée</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_28'><a class='permalink' href='#Solution_28'>Solution</a></h2>
+<p class="Pp">Podman s'attend à une session de connexion valide pour le cas d'utilisation
+    <b>sans privilèges root + cgroupv2</b>. L'exécution de Podman est susceptible d'échouer si la session de connexion est absente. Dans la plupart des cas, Podman trouvera une solution par lui-même, mais si <b>XDG_RUNTIME_DIR</b> pointe vers un chemin qui n'est pas accessible en écriture, l'exécution échouera très probablement. Les scénarios typiques de ces cas se produisent lorsque les utilisateurs essaient d'utiliser Podman avec <b>su - &lt;utilisateur&gt; -c '&lt;commande-podman&gt;'</b>, ou <b>sudo -l</b> avec une session systemd mal configurée.</p>
+<p class="Pp">Alternatives :</p>
+<ul class="Bl-bullet">
+  <li>Exécutez Podman via <b>systemd-run</b> qui démarrera d'abord une session systemd :
+        <pre>  $ sudo systemd-run --machine=username@ --quiet --user --collect --pipe --wait podman run --rm docker.io/library/alpine echo hello
+</pre>
+      </li>
+  <li>Démarrez un shell interactif dans une session systemd avec la commande
+      <b>machinectl shell &lt;nom-utilisateur&gt;@</b> puis exécutez Podman
+        <pre>  $ sudo -i
+  # machinectl shell username@
+  Connecté à l'hôte local. Appuyez trois fois sur ^] en 1 seconde pour quitter la session.
+  $ podman run --rm docker.io/library/alpine echo hello
+</pre>
+      </li>
+  <li>Démarrez une nouvelle session systemd en vous connectant avec <b>ssh</b>, c'est-à-dire
+      <b>ssh &lt;nom-utilisateur&gt;@localhost</b>, puis exécutez Podman.</li>
+  <li>Avant d'invoquer la commande Podman, créez une session de connexion valide pour votre utilisateur sans privilèges root en utilisant <b>loginctl enable-linger &lt;nom-utilisateur&gt;</b>
+      </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='32)_127.0.0.1:7777_port_déjà_occupé'><a class='permalink' href='#32)_127.0.0.1:7777_port_déjà_occupé'>32)   Le port 127.0.0.1:7777 est déjà occupé</a></h2>
+<p class="Pp">Après avoir supprimé une VM sur macOS, l'initialisation des VM ultérieures échoue.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_28'><a class='permalink' href='#Symptom_28'>Symptôme</a></h2>
+<p class="Pp">Après avoir supprimé une VM client sur macOS via <b>podman machine stop</b>
+    &amp;&amp; <b>podman machine rm</b>, tenter d'initialiser une nouvelle VM client avec <b>podman machine
+    init</b> conduit à une erreur indiquant que le port 127.0.0.1:7777 est déjà occupé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_29'><a class='permalink' href='#Solution_29'>Solution</a></h2>
+<p class="Pp">Vous devrez supprimer le processus gv-proxy bloqué sur le port en question. Par exemple, si le port mentionné dans le message d'erreur est 127.0.0.1:7777, vous pouvez utiliser la commande <b>kill -9 $(lsof -i:7777)</b> pour identifier et supprimer le processus bloqué qui vous empêche de démarrer une nouvelle VM sur ce port par défaut.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='33)_Le_processus_sshd_échoue_à_s'exécuter_à_l'intérieur_du_conteneur.'><a class='permalink' href='#33)_Le_processus_sshd_échoue_à_s'exécuter_à_l'intérieur_du_conteneur.'>33)   Le processus sshd échoue à s'exécuter à l'intérieur du conteneur.</a></h2>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_29'><a class='permalink' href='#Symptom_29'>Symptôme</a></h2>
+<p class="Pp">Le processus sshd s'exécutant à l'intérieur du conteneur échoue avec l'erreur
+    "Erreur d'écriture de /proc/self/loginuid".</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_30'><a class='permalink' href='#Solution_30'>Solution</a></h2>
+<p class="Pp">Si le fichier <b>/proc/self/loginuid</b> est déjà initialisé, alors la capacité
+    <b>CAP_AUDIT_CONTROL</b> est nécessaire pour le remplacer.</p>
+<p class="Pp">Cela se produit lorsque Podman est exécuté depuis une session utilisateur car
+    le fichier <b>/proc/self/loginuid</b> est déjà initialisé. La solution consiste à exécuter Podman depuis un service système, soit en utilisant le service Podman, puis en utilisant podman -remote pour démarrer le conteneur, soit simplement en exécutant quelque chose comme <b>systemd-run podman run ...</b>. Dans ce cas, le conteneur n'aura besoin que de <b>CAP_AUDIT_WRITE</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='34)_Le_conteneur_crée_un_fichier_qui_n'appartient_pas_à_l\'UID_régulier_de_l\'utilisateur'><a class='permalink' href='#34)_Le_conteneur_crée_un_fichier_qui_n'appartient_pas_à_l\'UID_régulier_de_l\'utilisateur'>34)   Le conteneur crée un fichier qui n'appartient pas à l'UID régulier de l'utilisateur</a></h2>
+<p class="Pp">Après avoir exécuté un conteneur avec Podman sans privilèges root, l'utilisateur non root voit un UID et un GID numériques au lieu d'un nom d'utilisateur et d'un nom de groupe.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_30'><a class='permalink' href='#Symptom_30'>Symptôme</a></h2>
+<p class="Pp">Lors de la liste des permissions de fichiers avec <b>ls -l</b> sur l'hôte, dans un répertoire qui a été passé comme <b>--volume /some/dir</b> à <b>podman run</b>, l'UID et le GID sont affichés au lieu du nom d'utilisateur et du nom de groupe correspondants. Les numéros d'UID et de GID affichés proviennent des plages d'UID et de GID subordonnés de l'utilisateur sur le système hôte.</p>
+<p class="Pp">Un exemple</p>
+<pre>$ mkdir dir1
+$ chmod 777 dir1
+$ podman run --rm -v ./dir1:/dir1:Z   
+             --user 2003:2003   
+             docker.io/library/ubuntu bash -c &quot;touch /dir1/a; chmod 600 /dir1/a&quot;
+$ ls -l dir1/a
+-rw-------. 1 102002 102002 0 Jan 19 19:35 dir1/a
+$ less dir1/a
+less: dir1/a: Permission denied</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_31'><a class='permalink' href='#Solution_31'>Solution</a></h2>
+<p class="Pp">Si vous souhaitez lire, chown, ou supprimer un tel fichier, entrez dans un espace de noms utilisateur. Au lieu d'exécuter des commandes telles que <b>less dir1/a</b> ou <b>rm dir1/a</b>, vous devez préfixer la ligne de commande avec <b>podman unshare</b>, c'est-à-dire <b>podman unshare less dir1/a</b> ou <b>podman unshare rm dir1/a</b>. Pour changer la propriété du fichier <b>dir1/a</b> à l'UID et au GID de votre utilisateur régulier, exécutez <b>podman unshare chown 0:0 dir1/a</b>. Un fichier ayant la propriété <b>0:0</b> dans l'espace de noms utilisateur appartient à l'utilisateur régulier sur l'hôte. Pour utiliser les fonctionnalités de Bash, telles que l'expansion de variables et le globbing, vous devez encapsuler la commande avec <b>bash -c</b>, par exemple <b>podman unshare bash -c
+    'ls $HOME/dir1/a*'</b>.</p>
+<p class="Pp">Aurait-il été possible d'exécuter Podman d'une autre manière pour que votre utilisateur régulier devienne le propriétaire du fichier ? Oui, vous pouvez utiliser l'option <b>--userns keep-id:uid=$uid,gid=$gid</b> pour modifier la façon dont les UID et GID sont mappés entre le conteneur et l'hôte. Essayons.</p>
+<p class="Pp">Dans l'exemple ci-dessus, <b>ls -l</b> affiche l'UID 102002 et le GID
+    102002. Définissez les variables shell</p>
+<pre>$ uid_from_ls=102002
+$ gid_from_ls=102002</pre>
+<p class="Pp">Définissez les variables shell sur l'UID et le GID subordonnés les plus bas</p>
+<pre>$ lowest_subuid=$(podman info --format &quot;{{ (index .Host.IDMappings.UIDMap 1).HostID }}&quot;)
+$ lowest_subgid=$(podman info --format &quot;{{ (index .Host.IDMappings.GIDMap 1).HostID }}&quot;)</pre>
+<p class="Pp">Calculez l'UID et le GID à l'intérieur du conteneur qui correspondent au propriétaire du fichier créé sur l'hôte.</p>
+<pre>$ uid=$(( $uid_from_ls - $lowest_subuid + 1))
+$ gid=$(( $gid_from_ls - $lowest_subgid + 1))</pre>
+<p class="Pp">(Dans le calcul, on a supposé qu'il n'y avait qu'une seule plage de subuid et une seule plage de subgid)</p>
+<p class="Pp">$ echo $uid
+2003
+$ echo $gid
+2003</pre>
+<p class="Pp">Le calcul montre que l'UID est <b>2003</b> et le GID est
+    <b>2003</b> à l'intérieur du conteneur. Ce n'est pas surprenant car c'est ce qui a été spécifié précédemment avec <b>--user=2003:2003</b>, mais le même calcul pourrait être utilisé chaque fois qu'un nom d'utilisateur est spécifié ou que l'option <b>--user</b> n'est pas utilisée.</p>
+<p class="Pp">Exécutez à nouveau le conteneur, mais cette fois avec les UID et GID mappés</p>
+<pre>$ mkdir dir1
+$ chmod 777 dir1
+$ podman run --rm
+  -v ./dir1:/dir1:Z   
+  --user $uid:$gid   
+  --userns keep-id:uid=$uid,gid=$gid   
+     docker.io/library/ubuntu bash -c &quot;touch /dir1/a; chmod 600 /dir1/a&quot;
+$ id -u
+tester
+$ id -g
+tester
+$ ls -l dir1/a
+-rw-------. 1 tester tester 0 Jan 19 20:31 dir1/a
+$</pre>
+<p class="Pp">Dans cet exemple, l'option <b>--user</b> a spécifié un utilisateur sans privilèges root dans le conteneur. Étant donné que l'utilisateur sans privilèges root pourrait également être spécifié dans l'image du conteneur, par exemple :</p>
+<pre>$ podman image inspect --format &quot;user: {{.User}}&quot; IMAGE
+user: hpc</pre>
+<p class="Pp">le même problème pourrait également survenir même sans spécifier
+    <b>--user</b>.</p>
+<p class="Pp">Une autre variante du même problème peut survenir lors de l'utilisation de
+    <b>--user=root:root</b> (par défaut), mais où l'utilisateur root crée des fichiers n'appartenant pas à root d'une manière ou d'une autre (par exemple, en les créant lui-même, ou en changeant l'UID effectif à un utilisateur sans privilèges root puis en créant des fichiers).</p>
+<p class="Pp">Voir également l'astuce de dépannage :</p>
+<p class="Pp">&#x27E8;#39-podman-run-échoue-avec-l'erreur-espace-de-noms-non-reconnu-keep-iduid1000gid1000-passé&#x27E9;</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='35)_Les_périphériques_ou_fichiers_transmis_ne_sont_pas_accessibles_dans_le_conteneur_sans_privilèges_root_(problème_de_mappage_UID/GID)'><a class='permalink' href='#35)_Les_périphériques_ou_fichiers_transmis_ne_sont_pas_accessibles_dans_le_conteneur_sans_privilèges_root_(problème_de_mappage_UID/GID)'>35)   Les périphériques ou fichiers transmis ne sont pas accessibles dans le conteneur sans privilèges root (problème de mappage UID/GID)</a></h2>
+<p class="Pp">En tant qu'utilisateur non root, vous avez des droits d'accès aux périphériques, fichiers et répertoires que vous souhaitez passer dans un conteneur sans privilèges root avec
+    <b>--device=...</b>, <b>--volume=...</b> ou <b>--mount=..</b>.</p>
+<p class="Pp">Podman mappe par défaut un utilisateur non root à l'intérieur d'un conteneur vers l'un des UID subordonnés et GID subordonnés de l'utilisateur sur l'hôte. Lorsque l'utilisateur du conteneur tente d'accéder à un fichier, une erreur "Permission denied" peut survenir car l'utilisateur du conteneur n'a pas les permissions de l'utilisateur régulier de l'hôte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_31'><a class='permalink' href='#Symptom_31'>Symptôme</a></h2>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Tout accès à l'intérieur du conteneur est rejeté avec "Permission
+      denied" pour les fichiers, répertoires ou périphériques transmis au conteneur avec
+      <b>--device=..</b>,<b>--volume=..</b> ou <b>--mount=..</b>, par exemple
+        <pre>$ mkdir dir1
+$ chmod 700 dir1
+$ podman run --rm -v ./dir1:/dir1:Z   
+             --user 2003:2003   
+             docker.io/library/ubuntu ls /dir1
+ls: impossible d'ouvrir le répertoire '/dir1': Permission denied
+</pre>
+      </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_32'><a class='permalink' href='#Solution_32'>Solution</a></h2>
+<p class="Pp">Nous suivons essentiellement la même solution que dans le conseil de dépannage précédent :</p>
+<p class="Pp">&#x27E8;#34-le-conteneur-crée-un-fichier-qui-n'appartient-pas-à-l'UID-régulier-de-l'utilisateur&#x27E9;</p>
+<p class="Pp">mais pour ce problème, l'UID et le GID du conteneur ne peuvent pas être calculés aussi facilement par simple addition et soustraction.</p>
+<p class="Pp">En d'autres termes, il peut être plus difficile de trouver l'UID et le GID à l'intérieur du conteneur que nous voulons mapper à l'utilisateur régulier sur l'hôte.</p>
+<p class="Pp">Si l'option <b>--user</b> est utilisée avec un UID et un GID numériques pour spécifier un utilisateur sans privilèges root, nous connaissons déjà la réponse.</p>
+<p class="Pp">Si l'option <b>--user</b> est utilisée avec un nom d'utilisateur et un nom de groupe, nous pourrions rechercher l'UID et le GID dans le fichier <b>/etc/passwd</b> du conteneur.</p>
+<p class="Pp">
+<section class="Sh">
+<h1 class="Sh" id="35)_Troubleshoot_the_rootless_container_user">35) Dépannage de l'utilisateur de conteneur sans privilèges</h1>
+<p class="Pp">Si l'utilisateur du conteneur n'est pas défini via <b>--user</b> mais
+    plutôt à partir de l'image du conteneur, nous pouvons inspecter l'image du
+    conteneur</p>
+<pre>$ podman image inspect --format &quot;user: {{.User}}&quot; IMAGE
+user: hpc</pre>
+<p class="Pp">et ensuite le rechercher dans <b>/etc/passwd</b> du conteneur.</p>
+<p class="Pp">Si le problème survient dans un conteneur qui est démarré pour
+    s'exécuter en tant que root mais qui passe ensuite à un UID effectif d'un
+    utilisateur sans privilèges, il peut être moins simple de trouver l'UID et le
+    GID. La lecture du <b>Containerfile</b>, du <b>Dockerfile</b> ou de
+    <b>/etc/passwd</b> pourrait donner un indice.</p>
+<p class="Pp">Pour exécuter le conteneur avec l'UID et le GID du conteneur sans
+    privilèges mappés à l'UID et au GID réguliers de l'utilisateur sur l'hôte,
+    suivez ces étapes :</p>
+<p class="Pp">Définissez les variables shell <b>uid</b> et <b>gid</b> dans un shell
+    Bash avec l'UID et le GID de l'utilisateur qui s'exécutera dans le conteneur,
+    par exemple :</p>
+<pre>$ uid=2003
+$ gid=2003</pre>
+<p class="Pp">et exécutez</p>
+<pre>$ mkdir dir1
+$ echo hello &gt; dir1/file.txt
+$ chmod 700 dir1/file.txt
+$ podman run --rm   
+  -v ./dir1:/dir1:Z   
+  --user $uid:$gid   
+  --userns keep-id:uid=$uid,gid=$gid   
+  docker.io/library/alpine cat /dir1/file.txt
+hello</pre>
+<p class="Pp">Voir aussi l'astuce de dépannage :</p>
+<p class="Pp">&#x27E8;#39-podman-run-fails-with-error-unrecognized-namespace-mode-keep-iduid1000gid1000-passed&#x27E9;</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='36)_Images_dans_les_magasins_supplémentaires_peuvent_être_supprimées_même_si_des_conteneurs_les_utilisent'><a class='permalink' href='#36)_Images_dans_les_magasins_supplémentaires_peuvent_être_supprimées_même_si_des_conteneurs_les_utilisent'>36)   Les images dans les magasins supplémentaires peuvent être supprimées même si des conteneurs les utilisent</a></h2>
+<p class="Pp">Lorsqu'une image dans un magasin supplémentaire est utilisée, elle n'est
+    pas verrouillée et peut donc être supprimée même si des conteneurs l'utilisent.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_32'><a class='permalink' href='#Symptom_32'>Symptôme</a></h2>
+<p class="Pp">WARN[0000] Impossible d'accéder à la couche inférieure
+    &quot;/var/lib/containers/storage/overlay/l/7HS76F2P5N73FDUKUQAOJA3WI5&quot;
+    car elle n'existe pas. Parcours du stockage pour recréer les symlinks manquants.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_33'><a class='permalink' href='#Solution_33'>Solution</a></h2>
+<p class="Pp">Il incombe à l'utilisateur de s'assurer que les images dans un magasin
+    supplémentaire ne sont pas supprimées pendant qu'elles sont utilisées par des
+    conteneurs dans un autre magasin.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='37)_Synchronisation_des_corrections_de_bogues_pour_podman-remote_ou_les_configurations_utilisant_l&#x27;API_Podman'><a class='permalink' href='#37)_Synchronisation_des_corrections_de_bogues_pour_podman-remote_ou_les_configurations_utilisant_l&#x27;API_Podman'>37)   Synchronisation des corrections de bogues pour podman-remote ou les configurations utilisant l'API Podman</a></h2>
+<p class="Pp">Après avoir mis à niveau Podman vers une nouvelle version, un problème
+    avec la version précédente de Podman persiste lors de l'utilisation de
+  podman-remote.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_33'><a class='permalink' href='#Symptom_33'>Symptôme</a></h2>
+<p class="Pp">Lors de l'exécution de commandes podman remote avec le Podman le plus
+    récent, des problèmes qui ont été corrigés dans une version antérieure de
+    Podman peuvent survenir soit du côté du client Podman, soit du côté du serveur
+    Podman.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_34'><a class='permalink' href='#Solution_34'>Solution</a></h2>
+<p class="Pp">Lors de la mise à niveau de Podman vers une version particulière pour
+    les corrections nécessaires, les utilisateurs font souvent l'erreur de ne
+    mettre à niveau que le client Podman. Cependant, supposez qu'une
+    configuration utilise <b>podman-remote</b> ou utilise un client qui
+    communique avec le serveur Podman sur une machine distante via l'API REST.
+    Dans ce cas, il est nécessaire de mettre à niveau à la fois le client Podman
+    et le serveur Podman fonctionnant sur la machine distante. Le client et le
+    serveur Podman doivent être mis à niveau vers la même version.</p>
+<p class="Pp">Exemple : Si un bogue particulier a été corrigé dans la version
+    <b>v4.1.0</b>, le client Podman doit avoir la version <b>v4.1.0</b> et le
+    serveur Podman doit avoir la version <b>v4.1.0</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='38)_Des_retours_chariot_inattendus_sont_affichés_sur_le_terminal'><a class='permalink' href='#38)_Des_retours_chariot_inattendus_sont_affichés_sur_le_terminal'>38)   Des retours chariot inattendus sont affichés sur le terminal</a></h2>
+<p class="Pp">Lors de l'utilisation de l'indicateur <b>--tty</b> (<b>-t</b>), des
+    retours chariot inattendus sont affichés sur le terminal.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_34'><a class='permalink' href='#Symptom_34'>Symptôme</a></h2>
+<p class="Pp">Le programme du conteneur imprime une nouvelle ligne (<b>\n</b>) mais
+    le terminal affiche un retour chariot et une nouvelle ligne (<b>\r\n</b>).</p>
+<pre>$ podman run --rm -t fedora echo abc | od -c
+0000000   a   b   c  \r  \n
+0000005</pre>
+<p class="Pp">Lorsqu'il est exécuté directement sur l'hôte, le résultat est conforme
+    aux attentes.</p>
+<pre>$ echo abc | od -c
+0000000   a   b   c  \n
+0000004</pre>
+<p class="Pp">Des retours chariot supplémentaires peuvent également décaler l'invite vers la
+    droite.</p>
+<pre>$ podman run --rm -t fedora sh -c &quot;echo 1; echo 2; echo 3&quot; | cat -A
+1^M$
+    2^M$
+        3^M$
+            $</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_35'><a class='permalink' href='#Solution_35'>Solution</a></h2>
+<p class="Pp">Exécutez Podman sans l'indicateur <b>--tty</b> (<b>-t</b>).</p>
+<pre>$ podman run --rm fedora echo abc | od -c
+0000000   a   b   c  \n
+0000004</pre>
+<p class="Pp">L'indicateur <b>--tty</b> (<b>-t</b>) ne doit être utilisé que lorsque le
+    programme nécessite une interaction utilisateur dans le terminal, par exemple
+    en attendant que l'utilisateur tape une réponse à une question.</p>
+<p class="Pp">D'où vient le retour chariot <b>\r</b> supplémentaire ?</p>
+<p class="Pp">Le <b>\r</b> supplémentaire n'est pas émis par Podman mais par le
+    terminal. En fait, une reconfiguration du terminal peut faire disparaître le
+    <b>\r</b> supplémentaire.</p>
+<pre>$ podman run --rm -t fedora /bin/sh -c &quot;stty -onlcr &amp;&amp; echo abc&quot; | od -c
+0000000   a   b   c  \n
+0000004</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='39)_Podman_run_échoue_avec_l&#x27;erreur_:_mode_de_namespace_non_reconnu_keep-id:uid=1000,gid=1000_passé'><a class='permalink' href='#39)_Podman_run_échoue_avec_l&#x27;erreur_:_mode_de_namespace_non_reconnu_keep-id:uid=1000,gid=1000_passé'>39)   Podman run échoue avec l'erreur : mode de namespace non reconnu keep-id:uid=1000,gid=1000 passé</a></h2>
+<p class="Pp">Podman 4.3.0 a introduit les options <i>uid</i> et <i>gid</i> qui peuvent
+    être fournies à <b>--userns keep-id</b> et qui ne sont pas reconnues par les
+    anciennes versions de Podman.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_35'><a class='permalink' href='#Symptom_35'>Symptôme</a></h2>
+<p class="Pp">Lors de l'utilisation d'une version de Podman antérieure à 4.3.0, les
+    options <i>uid</i> et <i>gid</i> ne sont pas reconnues et une erreur
+    &quot;mode de namespace non reconnu&quot; est levée.</p>
+<pre>$ uid=1000
+$ gid=1000
+$ podman run --rm
+  --user $uid:$gid   
+  --userns keep-id:uid=$uid,gid=$gid   
+     docker.io/library/ubuntu /bin/cat /proc/self/uid_map
+Error: unrecognized namespace mode keep-id:uid=1000,gid=1000 passed
+$</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_36'><a class='permalink' href='#Solution_36'>Solution</a></h2>
+<p class="Pp">Utilisez les options <b>--uidmap</b> et <b>--gidmap</b> pour décrire
+    le même mappage UID et GID.</p>
+<p class="Pp">Exécutez</p>
+<pre>$ uid=1000
+$ gid=1000
+$ subuidSize=$(( $(podman info --format &quot;{{ range   
+   .Host.IDMappings.UIDMap }}+{{.Size }}{{end }}&quot; ) - 1 ))
+$ subgidSize=$(( $(podman info --format &quot;{{ range   
+   .Host.IDMappings.GIDMap }}+{{.Size }}{{end }}&quot; ) - 1 ))
+$ podman run --rm   
+  --user $uid:$gid   
+  --uidmap 0:1:$uid   
+  --uidmap $uid:0:1   
+  --uidmap $(($uid+1)):$(($uid+1)):$(($subuidSize-$uid))   
+  --gidmap 0:1:$gid   
+  --gidmap $gid:0:1   
+  --gidmap $(($gid+1)):$(($gid+1)):$(($subgidSize-$gid))   
+     docker.io/library/ubuntu /bin/cat /proc/self/uid_map
+         0          1       1000
+      1000          0          1
+      1001       1001      64536</pre>
+<p class="Pp">qui utilise le même mappage UID et GID qu'en spécifiant
+    <b>--userns keep-id:uid=$uid,gid=$gid</b> avec Podman 4.3.0 (ou version
+    ultérieure)</p>
+<pre>$ uid=1000
+$ gid=1000
+$ podman run --rm   
+  --user $uid:$gid   
+  --userns keep-id:uid=$uid,gid=$gid   
+     docker.io/library/ubuntu /bin/cat /proc/self/uid_map
+         0          1       1000
+      1000          0          1
+      1001       1001      64536</pre>
+<p class="Pp">Remplacez <b>/bin/cat /proc/self/uid_map</b> par <b>/bin/cat
+    /proc/self/gid_map</b> pour afficher le mappage GID.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='40)_Podman_ne_trouve_pas_l&#x27;image_attendue_avec_l&#x27;erreur_locating_pulled_image_,_image_not_known'><a class='permalink' href='#40)_Podman_ne_trouve_pas_l&#x27;image_attendue_avec_l&#x27;erreur_locating_pulled_image_,_image_not_known'>40)   Podman ne trouve pas l'image attendue avec l'erreur localisant l'image tirée , image   inconnue</a></h2>
+<p class="Pp">Lorsque vous essayez d'exécuter une commande Podman qui tire une image du
+    stockage local ou d'un dépôt distant, une erreur indiquant &quot;image
+    inconnue&quot; ou &quot;erreur lors de la localisation de l'image tirée&quot;
+    est levée. Même si l'image avait été vérifiée avant l'invocation de la commande
+    Podman.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_36'><a class='permalink' href='#Symptom_36'>Symptôme</a></h2>
+<p class="Pp">Après avoir vérifié qu'une image est en place soit localement, soit dans
+    un dépôt distant, une commande Podman faisant référence à cette image échoue
+    de manière similaire à :</p>
+<pre># ls Containerfile
+FROM registry.access.redhat.com/ubi8-minimal:latest
+MAINTAINER Podman Community
+USER root
+# podman build .
+STEP 1/2: FROM registry.access.redhat.com/ubi8-minimal
+Trying to pull registry.access.redhat.com/ubi8-minimal:latest...
+Getting image source signatures
+Checking if image destination supports signatures
+Copying blob a6577091999b done
+Copying config abb1ba1bce done
+Writing manifest to image destination
+Storing signatures
+Error: error creating build container: error locating pulled image &quot;registry.access.redhat.com/ubi8-minimal:latest&quot; name in containers storage: registry.access.redhat.com/ubi8-minimal:latest: image not known</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_37'><a class='permalink' href='#Solution_37'>Solution</a></h2>
+<p class="Pp">La cause générale est un problème de temporisation. Pour rendre les
+    commandes Podman aussi efficaces que possible, des verrous de lecture et
+    d'écriture ne sont établis que pour les sections critiques du code. Lors du
+    tirage d'une image d'un dépôt, une copie de cette image est d'abord écrite
+    dans le stockage local à l'aide d'un verrou d'écriture. Ce verrou est relâché
+    avant que l'image ne soit acquise/lue. Si un autre processus exécute une
+    commande nuisible telle que <b>podman system prune --all</b> ou <b>podman
+    system reset</b> ou <b>podman rmi --all</b>, entre le moment où l'image est
+    écrite et avant que le premier processus ne puisse l'acquérir, ce type
+    d'erreur <b>image inconnue</b> peut survenir.</p>
+<p class="Pp">Les mainteneurs de Podman ont envisagé des verrous plus robustes pour
+    fermer cette fenêtre de temporisation. Cependant, le ralentissement que toutes
+    les commandes Podman rencontreraient n'a pas été considéré comme valant le coût
+    de fermeture complète de cette petite fenêtre de temporisation.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='41)_Une_étape_de_build_podman_avec_&lt;b&gt;--mount=type=secret&lt;/b&gt;_échoue_avec_operation_not_permitted'><a class='permalink' href='#41)_Une_étape_de_build_podman_avec_&lt;b&gt;--mount=type=secret&lt;/b&gt;_échoue_avec_operation_not_permitted'>41)   Une étape de build podman avec <b>--mount=type=secret</b> échoue avec opération non autorisée</a></h2>
+<p class="Pp">L'exécution d'une étape dans un <b>Dockerfile</b>/<b>Containerfile</b>
+    qui monte des secrets en utilisant <b>--mount=type=secret</b> échoue avec
+    &quot;opération non autori</p>
+mitted&quot; lorsqu'il est exécuté sur un système de fichiers hôte monté avec
+    <b>nosuid</b> et lors de l'utilisation du runtime <b>runc</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_37'><a class='permalink' href='#Symptom_37'>Symptôme</a></h2>
+<p class="Pp">Une ligne <b>RUN</b> dans le <b>Dockerfile</b>/<b>Containerfile</b>
+    contient un montage secret tel que
+    <b>--mount=type=secret,id=MY_USER,target=/etc/dnf/vars/MY_USER</b>. Lors de
+    l'exécution de <b>podman build</b>, le processus échoue avec un message
+    d'erreur tel que :</p>
+<pre>STEP 3/13: RUN --mount=type=secret,id=MY_USER,target=/etc/dnf/vars/MY_USER     --mount=type=secret,id=MY_USER,target=/etc/dnf/vars/MY_USER     ...: time=&quot;2023-06-13T18:04:59+02:00&quot; level=error msg=&quot;runc create failed: unable to start container process: error during container init: error mounting \&quot;/var/tmp/buildah2251989386/mnt/buildah-bind-target-11\&quot; to rootfs at \&quot;/etc/dnf/vars/MY_USER\&quot;: mount /var/tmp/buildah2251989386/mnt/buildah-bind-target-11:/etc/dnf/vars/MY_USER (via /proc/self/fd/7), flags: 0x1021: operation not permitted&quot;
+: exit status 1
+ERRO[0002] did not get container create message from subprocess: EOF</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_38'><a class='permalink' href='#Solution_38'>Solution</a></h2>
+<ul class="Bl-bullet">
+  <li>Installez <b>crun</b>, par exemple avec <b>dnf install crun</b>.</li>
+  <li>Utilisez le runtime <b>crun</b> en passant <b>--runtime /usr/bin/crun</b>
+      à <b>podman build</b>.</li>
+</ul>
+<p class="Pp">Voir également le problème Buildah 4228 pour une discussion complète
+    du problème.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='42)_les_builds_podman-dans-podman_intensifs_en_E/S_de_fichiers_sont_très_lents'><a class='permalink' href='#42)_les_builds_podman-dans-podman_intensifs_en_E/S_de_fichiers_sont_très_lents'>42)   Les builds podman-dans-podman intensifs en E/S de fichiers sont très lents</a></h2>
+<p class="Pp">Lorsque vous utilisez le pilote de stockage <b>overlay</b> pour effectuer
+    un <b>podman build</b> imbriqué dans un conteneur en cours d'exécution, les
+    opérations d'E/S de fichiers telles que <b>COPY</b> d'une grande quantité
+    de données sont très lentes ou peuvent se bloquer complètement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_38'><a class='permalink' href='#Symptom_38'>Symptôme</a></h2>
+<p class="Pp">En utilisant le pilote de stockage <b>overlay</b> par défaut, une ligne
+    <b>COPY</b>, <b>ADD</b> ou une ligne <b>RUN</b> intensive en E/S dans un
+    <b>Containerfile</b> exécutée à l'intérieur d'un autre conteneur est très
+    lente ou se bloque complètement lors de l'exécution d'un <b>podman build</b>
+    à l'intérieur du conteneur parent en cours d'exécution.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_39'><a class='permalink' href='#Solution_39'>Solution</a></h2>
+<p class="Pp">Cela pourrait être causé par le conteneur enfant utilisant
+    <b>fuse-overlayfs</b> pour écrire dans <b>/var/lib/containers/storage</b>.
+    Les écritures peuvent être lentes avec <b>fuse-overlayfs</b>. La solution est
+    d'utiliser le système de fichiers <b>overlay</b> natif en utilisant un répertoire
+    local sur le système hôte comme volume vers <b>/var/lib/containers/storage</b>
+    comme ceci : <b>podman run --privileged --rm -it -v ./nested_storage:/var/lib/containers/storage
+    parent:latest</b>. Assurez-vous que l'image de base de <b>parent:latest</b>
+    dans cet exemple ne contient rien dans <b>/var/lib/containers/storage</b> dans
+    l'image elle-même pour que cela fonctionne. Une fois que vous utilisez le
+    volume natif, le conteneur imbriqué ne devrait pas se rabattre sur
+    <b>fuse-overlayfs</b> pour écrire des fichiers et le build imbriqué se
+    terminera beaucoup plus rapidement.</p>
+<p class="Pp">Si vous n'avez pas accès au processus d'exécution parent, comme dans
+    un environnement CI, alors la deuxième option consiste à changer le pilote de
+    stockage en <b>vfs</b> dans l'image parente en changeant cette ligne dans votre
+    fichier <b>storage.conf</b> : <b>driver = &quot;vfs&quot;</b>. Vous devrez peut-être
+    exécuter <b>podman system reset</b> pour que cela prenne effet. Vous saurez
+    que c'est changé lorsque <b>podman info |grep graphDriverName</b> affichera
+    <b>graphDriverName: vfs</b>. Cette méthode est plus lente que la méthode du
+    volume ci-dessus, mais elle est significativement plus rapide que
+    <b>fuse-overlayfs</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='43)_les_builds_podman-run_--userns=auto_échouent_avec_Error:_creating_container_storage:_not_enough_unused_IDs_in_user_namespace'><a class='permalink' href='#43)_les_builds_podman-run_--userns=auto_échouent_avec_Error:_creating_container_storage:_not_enough_unused_IDs_in_user_namespace'>43)   <b>podman</b>   <b>run</b>   <b>--userns=auto</b>   échoue avec Error: creating container storage: not enough unused IDs in user namespace</a></h2>
+<p class="Pp">L'utilisation de <b>--userns=auto</b> lors de la création de nouveaux
+    conteneurs ne fonctionne pas tant qu'il existe des conteneurs créés avec
+    <b>--userns=keep-id</b> ou <b>--userns=nomap</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_39'><a class='permalink' href='#Symptom_39'>Symptôme</a></h2>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>Exécuter avec <b>--userns=auto</b> <b></b> <b>$ podman run --rm -d
+      --userns=auto alpine sleep 3600</b> <b></b> La commande réussit.</dd>
+  <dt> 2.</dt>
+  <dd>Exécuter avec <b>--userns=auto</b> <b></b> <b>$ podman run --rm -d
+      --userns=auto alpine sleep 3600</b> <b></b> La commande réussit.</dd>
+  <dt> 3.</dt>
+  <dd>Exécuter avec <b>--userns=keep-id</b> <b></b> <b>$ podman run --rm -d
+      --userns=keep-id alpine sleep 3600</b> <b></b> La commande réussit.</dd>
+  <dt> 4.</dt>
+  <dd>Exécuter avec <b>--userns=auto</b> <b></b> <b>$ podman run --rm -d
+      --userns=auto alpine sleep 3600</b> <b></b> La commande échoue avec le
+      message d'erreur <b></b> <b>Error: creating container storage: not enough
+      unused IDs in user namespace</b> <b></b></dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_40'><a class='permalink' href='#Solution_40'>Solution</a></h2>
+<p class="Pp">Tous les conteneurs existants créés avec <b>--userns=keep-id</b> ou
+    <b>--userns=nomap</b> doivent d'abord être supprimés avant qu'un nouveau
+    conteneur puisse être créé avec <b>--userns=auto</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='44)_sudo_podman_run_--userns=auto_échoue_avec_Cannot_find_mappings_for_user_containers'><a class='permalink' href='#44)_sudo_podman_run_--userns=auto_échoue_avec_Cannot_find_mappings_for_user_containers'>44)   <b>sudo</b>   <b>podman</b>   <b>run</b>   <b>--userns=auto</b>   échoue avec   <b>Cannot</b>   <b>find</b>   <b>mappings</b>   <b>for</b>   <b>user</b>   <b>containers</b>   <b></b></a></h2>
+<p class="Pp">Lorsque Podman rootful est appelé avec <b>--userns=auto</b>, Podman doit
+    sélectionner des sous-plages de subuids et subgids pour l'espace de noms
+    utilisateur du conteneur. Podman rootful garantit que les plages de subuid et
+    de subgid pour de tels conteneurs ne se chevauchent pas, mais comment Podman
+    rootful peut-il empêcher d'autres outils d'utiliser accidentellement ces ID
+    ?</p>
+<p class="Pp">Il n'est pas possible d'empêcher d'autres outils exécutés en tant que
+    root d'utiliser ces ID, mais de tels outils n'utiliseraient normalement pas des
+    subuids et des subgids déjà attribués à un utilisateur dans
+    <i>/etc/subuid</i> et <i>/etc/subgid</i>.</p>
+<p class="Pp">Le nom d'utilisateur <i>containers</i> sur l'hôte a une fonction
+    spéciale pour Podman rootful. Podman rootful utilise les subuids et subgids de
+    l'utilisateur <i>containers</i> lors de l'exécution de conteneurs
+    <b>--userns=auto</b>. L'utilisateur <i>containers</i> n'a pas besoin de ces
+    subuids et subgids car aucun processus ne devrait être démarré en tant qu'utilisateur
+    <i>containers</i>. En d'autres termes, l'utilisateur <i>containers</i> est un
+    utilisateur spécial qui n'existe sur le système que pour réserver des
+    <i>subuids</i> et <i>subgids</i> pour Podman rootful.</p>
+<p class="Pp"><i>containers</i> est le nom d'utilisateur par défaut, mais il peut
+    être modifié en définissant l'option <b>root-auto-userns-user</b> dans le
+    fichier <i>/etc/containers/storage.conf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_40'><a class='permalink' href='#Symptom_40'>Symptôme</a></h2>
+<p class="Pp">Exécutez Podman rootful avec <b>--userns=auto</b></p>
+<pre>sudo podman run --rm --userns=auto alpine echo hello</pre>
+<p class="Pp">La commande échoue avec le message d'erreur :</p>
+<pre>ERRO[0000] Cannot find mappings for user &quot;containers&quot;: no subuid ranges found for user &quot;containers&quot; in /etc/subuid
+Error: creating container storage: not enough unused IDs in user namespace</pre>
+<p class="Pp">Les fichiers <i>/etc/subuid</i> et <i>/etc/subgid</i> ne contiennent
+    aucune ligne commençant par <b>containers:</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Solution_41'><a class='permalink' href='#Solution_41'>Solution</a></h2>
+<p class="Pp">Ajoutez des plages subuid et subgid pour l'utilisateur <i>containers</i>
+    dans <i>/etc/subuid</i> et <i>/etc/subgid</i> ou fournissez de telles plages
+    avec <i>/etc/nsswitch.conf</i>. Pour plus de détails, voir subid(5).</p>
+<p class="Pp">Les étapes suivantes créent l'utilisateur <i>containers</i> et lui
+    attribuent de grandes plages subuid et subgid :</p>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>Créez l'utilisateur <i>containers</i> <b></b> <b>sudo useradd --comment
+      &quot;Helper user to reserve subuids and subgids for Podman&quot;</b>
+    <br/>
+    <b> --no-create-home</b>
+    <br/>
+    <b> --shell /usr/sbin/nologin</b>
+    <br/>
+    <b> containers</b> <b></b></dd>
+  <dt> 2.</dt>
+  <dd>Vérifiez les plages subuid et subgid de l'utilisateur <i>containers</i>
+      <b></b> <b>$ grep ^containers: /etc/subuid</b> <b>containers:720896:65536</b>
+      <b>$ grep ^containers: /etc/subgid</b> <b>containers:720896:65536</b>
+      <b></b> Par défaut, <b>useradd</b> attribue 65536 subuids et 65536 subgids
+      à un nouvel utilisateur. Généralement, vous voudrez que le pool réservé soit
+      plus grand que cela. Plus la taille est grande, plus le nombre de conteneurs
+      pouvant être démarrés avec <b>sudo podman run --userns=auto ...</b> est
+      élevé.</dd>
+  <dt> 3.</dt>
+  <dd>Modifiez la ligne de l'utilisateur <i>containers</i> dans les fichiers
+      <i>/etc/subuid</i> et <i>/etc/subgid</i> pour agrandir les plages.
+      Assurez-vous que la plage subuid de l'utilisateur <i>containers</i> ne se
+      chevauche pas avec d'autres plages subuid dans les fichiers
+      <i>/etc/subuid</i>. Assurez-vous que la plage subgid de l'utilisateur
+      <i>containers</i> ne se chevauche pas avec d'autres plages subgid dans les
+      fichiers <i>/etc/subgid</i>.</dd>
+</dl>
+<p class="Pp">Testez à nouveau la commande echo</p>
+<pre>sudo podman run --rm --userns=auto alpine echo hello</pre>
+<p class="Pp">La commande réussit et affiche <b>hello</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='45)_Podman_échoue_avec_lsetxattr(label=system_u:object_r:container_file_t:s0)/dir:_operation_not_permitted'><a class='permalink' href='#45)_Podman_échoue_avec_lsetxattr(label=system_u:object_r:container_file_t:s0)/dir:_operation_not_permitted'>45)   Podman échoue avec   <b>lsetxattr(label=system_u:object_r:container_file_t:s0)</b>   <b>/dir:</b>   <b>operation</b>   <b>not</b>   <b>permitted</b></a></h2>
+<p class="Pp">Des permissions de fichiers strictes empêchent Podman de modifier les
+    étiquettes de contexte SELinux des fichiers dans un répertoire monté par
+    liaison. L'erreur peut également se produire lors de l'utilisation de
+    répertoires montés par liaison qui résident sur des systèmes de fichiers ne
+    prenant pas en charge les XATTR (comme les anciennes versions de NFS).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Symptom_41'><a class='permalink' href='#Symptom_41'>Symptôme</a></h2>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>Créez un répertoire</dd>
+</dl>
+<html>
+    <head>
+        <title>podman-troubleshooting(7)</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <link rel="stylesheet" type="text/css" href="/man.css" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <section class="Sh">
+<h1 class="Sh" id="Troubleshooting">Troubleshooting</h1>
+<p class="Nd">A list of common issues and solutions for Podman</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="A_list_of_common_issues_and_solutions_for_Podman">A list of common issues and solutions for Podman</h1>
+<dl class="Dl">
+  <dt> 1.</dt>
+  <dd>Create a directory owned by root <b></b> <b>sudo mkdir /var/test</b>
+    <b></b>
+  </dd>
+  <dt> 2.</dt>
+  <dd>Give everyone read access to the directory <b></b> <b>sudo chmod 755
+      /var/test</b> <b></b>
+  </dd>
+  <dt> 3.</dt>
+  <dd>Run <b>ls</b> directly on the host <b></b> <b>ls /var/test</b> <b></b> The
+      command succeeds.
+  </dd>
+  <dt> 4.</dt>
+  <dd>Run rootless podman with the directory bind-mounted. Set <b>z</b> as
+      volume option. <b></b> <b>podman run --rm -v /var/test:/dir:z fedora ls
+      /dir</b> <b></b> The command fails with the following error message:
+      <b></b> <b>Error: lsetxattr(label=system_u:object_r:container_file_t:s0)
+      /var/test: operation not permitted</b> <b></b> The error is expected
+      because the unprivileged user does not have the privileges to modify the
+      SELinux context of the directory <b>/var/test</b>
+  </dd>
+  <dt> 5.</dt>
+  <dd>Repeat the previous command but remove the volume option <b></b> <b>podman
+      run --rm -v /var/test:/dir fedora ls /dir</b> <b></b> The command is
+      blocked by SELinux and fails with the following error message: <b></b>
+      <b>ls: cannot open directory '/dir': Permission denied</b> <b></b>
+  </dd>
+</dl>
+<p class="Pp">Note, access to the bind-mounted directory depends on SELinux
+    rules. For example, bind-mounting the directory <b>/usr/share</b> succeeds
+    even though the user does not have write permissions to the directory. The
+    following command succeeds:</p>
+<pre>podman run --rm -v /usr/share:/dir fedora ls /dir</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Solution_42"><a class='permalink' href='#Solution_42'>Solution</a></h2>
+<p class="Pp">Alternative 1</p>
+<p class="Pp">Use the <b>O</b> flag to mount the directory from the host as a
+    temporary storage using the overlay file system.</p>
+<pre>podman run --rm -v /var/test:/dir:O fedora ls /dir</pre>
+<p class="Pp">Modifications to the mount point are destroyed when the container
+    finishes executing, similar to a tmpfs mount point being unmounted.</p>
+<p class="Pp">The following command succeeds:</p>
+<pre>podman run --rm -v /var/test:/dir:O fedora touch /dir/file</pre>
+<p class="Pp">The command <b>touch</b> creates the file but the file is
+    discarded when the container finishes.</p>
+<p class="Pp">Alternative 2</p>
+<p class="Pp">If the directory <b>/var/test</b> resides on a file system that
+    supports XATTR, set a directory SELinux context that corresponds to the
+    podman volume flag <b>:z</b></p>
+<pre>sudo chcon -R system_u:object_r:container_file_t:s0 /var/test</pre>
+<p class="Pp">The following command now succeeds</p>
+<pre>podman run --rm -v /var/test:/dir ls /dir</pre>
+<p class="Pp">Alternative 3</p>
+<p class="Pp">Modify the default SELinux context configuration for the directory
+    <b>/var/test</b> with the command</p>
+<pre>sudo semanage fcontext -a -s system_u -t container_file_t &quot;/var/test(/.*)?&quot;</pre>
+<p class="Pp">Change the SElinux contexts recursively for files and directories
+    under <b>/var/test</b> to match the new configuration</p>
+<pre>sudo restorecon -R -F -v /var/test</pre>
+<p class="Pp">Alternative 4</p>
+<p class="Pp">Add the option <b>--security-opt label=disable</b> to disable
+    SELinux for the Podman command.</p>
+<pre>podman run --rm --security-opt label=disable -v /var/test:/dir fedora ls /dir</pre>
+</section>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/podman/">extra/podman</a></dd>
+        <dt>Version:</dt>
+        <dd>5.7.0-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://github.com/containers/podman">https://github.com/containers/podman</a></dd>
+        <dt>Licenses:</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/podman/">/listing/extra/podman/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#Troubleshooting">Troubleshooting</a></li>
+        
+            <li><a href="#A_list_of_common_issues_and_solutions_for_Podman">A list of common issues and solutions for Podman</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/podman-troubleshooting.7.en.txt">txt</a>, 
+        
+            <a href="/man/podman-troubleshooting.7.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

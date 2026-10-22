@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>smokeping_master_slave(7) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">smokeping_master_slave(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/smokeping/">smokeping</a></p>
+<p class="lic">Licences: GPL2</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SMOKEPING_MASTER_SLAVE(7)</td>
+    <td class="head-vol">SmokePing</td>
+    <td class="head-rtitle">SMOKEPING_MASTER_SLAVE(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">smokeping_master_slave - Comment exécuter plusieurs instances distribuées de SmokePing</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='APERÇU'><a class='permalink' href='#APERÇU'>APERÇU</a></h1>
+<p class="Pp">Normalement, les sondes smokeping exécutent leurs tests depuis l'hôte où smokeping est exécuté vers un hôte cible et surveillent la latence de la connexion entre les deux.</p>
+<p class="Pp">Le concept Maître/Esclave permet à toutes les sondes smokeping de s'exécuter à distance. Le cas d'utilisation pour cela est de mesurer la connectivité globale dans un réseau. Si vous souhaitez vérifier que votre serveur DNS central ou votre serveur de fichiers fonctionne pour tout le monde, vous pourriez configurer plusieurs instances smokeping pour surveiller ces deux serveurs à partir de plusieurs emplacements dans votre réseau. Avec la configuration Maître/Esclave de smokeping, ce processus devient beaucoup plus simple, car un serveur maître smokeping peut contrôler plusieurs esclaves.</p>
+<p class="Pp">Toutes les données de surveillance sont stockées et présentées sur le serveur, mais collectées par les esclaves. Les esclaves recevront également leurs informations de configuration du maître, de sorte que vous n'ayez qu'à maintenir le fichier de configuration du serveur maître et que le reste soit géré automatiquement.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Architecture'><a class='permalink' href='#Architecture'>Architecture</a></h2>
+<p class="Pp">Les esclaves communiquent avec le serveur maître smokeping via l'interface web normale de smokeping. Au démarrage, chaque esclave se connecte au serveur maître et demande ses affectations. Lorsque l'esclave a effectué une série de sondages, il se reconnecte au maître pour livrer les résultats.</p>
+<p class="Pp">Si l'affectation d'un esclave change, le maître le dira à l'esclave après que celui-ci ait livré ses résultats.</p>
+<p class="Pp">Le maître et les esclaves signent leurs messages en fournissant un code HMAC-MD5 (RFC 2104) du message et un secret partagé. La communication entière peut éventuellement s'exécuter sur SSL.</p>
+<pre>[esclave 1]     [esclave 2]      [esclave 3]
+    |             |              |
+    +-------+     |     +--------+
+            |     |     |
+            v     v     v
+          +---------------+
+          |     maître     |
+          +---------------+</pre>
+<p class="Pp">L'esclave est une instance smokeping normale configurée où la configuration provient du maître plutôt que d'un fichier de configuration local. L'esclave essaie de contacter le serveur maître après chaque série de sondages, en fournissant ses résultats. Si le serveur maître ne peut pas être atteint, les résultats seront envoyés au serveur avec la prochaine série de résultats. Les résultats seront stockés dans un fichier sous forme stockable par Perl, de sorte qu'ils survivent à un redémarrage de l'instance smokeping.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Configuration_du_maître'><a class='permalink' href='#Configuration_du_maître'>Configuration du maître</a></h2>
+<p class="Pp">Pour configurer une configuration maître/esclave, ajoutez une section slaves à votre fichier de configuration smokeping. Chaque esclave a une section dans la partie slaves du fichier de configuration maître. Le nom de la section doit correspondre au nom d'hôte de l'esclave. Si un paramètre de configuration doit être défini sur une valeur spéciale pour l'esclave, utilisez une section d'override pour cela.</p>
+<p class="Pp">Les noms d'esclaves doivent être les noms que les hôtes pensent avoir, pas leurs noms d'hôtes externes, leurs adresses IP ou quoi que ce soit d'autre. Lorsque l'esclave appelle le maître pour obtenir sa configuration ou rapporter ses mesures, il indique au maître son 'hostname'. Ceci, avec le secret partagé, est utilisé pour authentifier et identifier qui est qui.</p>
+<pre>*** Slaves ***
+secrets=/etc/smokeping/slavesecrets.conf 
++esclave1
+display_name=erul22
+location=Inde
+color=ff0000
+++override
+Probes.FPing.binary = /usr/bin/fping
+...</pre>
+<p class="Pp">Ensuite, dans la section targets, vous pouvez définir des esclaves à tous les niveaux. Encore une fois, les paramètres sont hérités par les cibles de niveau inférieur et peuvent être remplacés n'importe où dans l'arborescence.</p>
+<p class="Pp">Un esclave recevra alors la configuration appropriée attribuée par le serveur.</p>
+<pre>*** Targets ***
+slaves = esclave1 esclave2
+...
++dest1
+slaves =
+...
++dest2
+slaves = esclave1
+...
++dest3
+...</pre>
+<p class="Pp">Les données des esclaves seront stockées dans
+    <i>NomCible~NomEsclave.rrd</i>. Ainsi, l'exemple ci-dessus créerait les fichiers
+    suivants :</p>
+<pre>dest1.rrd
+dest2.rrd
+dest2~esclave1.rrd
+dest3.rrd
+dest3~esclave1.rrd
+dest3~esclave2.rrd</pre>
+<p class="Pp">Le fichier <i>slavesecrets.conf</i> contient une liste séparée par des deux-points de noms d'hôtes et de secrets.</p>
+<pre>host1:secret1
+host2:secret2</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Configuration_de_l_esclave'><a class='permalink' href='#Configuration_de_l_esclave'>Configuration de l'esclave</a></h2>
+<p class="Pp">Une configuration d'esclave smokeping n'a pas de fichier de configuration. Elle a juste besoin de savoir qu'elle fonctionne en mode esclave et connaître son secret. Le secret est stocké dans un fichier pour une protection optimale. Par défaut, le cache de données persistant sera situé dans
+    <i>/tmp/smokeping.$USER.cache</i>.</p>
+<pre>./smokeping --master-url=http://smokeping/smokeping.cgi \
+            --cache-dir=/var/smokeping/ \
+            --shared-secret=/var/smokeping/secret.txt</pre>
+<p class="Pp">Le fichier <i>secret.txt</i> contient un seul mot, le secret de cet
+    esclave. Ce n'est PAS le même que le fichier <i>slavesecrets.conf</i> utilisé par le maître.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONSIDÉRATIONS_DE_SÉCURITÉ'><a class='permalink' href='#CONSIDÉRATIONS_DE_SÉCURITÉ'>CONSIDÉRATIONS DE SÉCURITÉ</a></h1>
+<p class="Pp">Le maître a effectivement un accès complet aux hôtes esclaves en tant qu'utilisateur exécutant l'instance smokeping esclave. La configuration est transférée sous forme de code Perl qui est évalué sur l'esclave. Bien que cela soit fait à l'intérieur d'un compartiment restreint
+    <span class="Li">&quot;Safe&quot;</span>, il existe diverses façons pour un maître malveillant d'intégrer des commandes arbitraires dans la configuration et de les faire exécuter lorsque l'esclave sonde ses cibles.</p>
+<p class="Pp">La robustesse du secret partagé est donc d'une importance capitale. Le craquage du secret permettrait à un attaquant de s'interposer pour injecter une nouvelle configuration malveillante et compromettre l'esclave.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (c) 2007 par Tobias Oetiker, OETIKER+PARTNER AG. Tous droits réservés.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENCE'><a class='permalink' href='#LICENCE'>LICENCE</a></h1>
+<p class="Pp">Ce programme est un logiciel libre ; vous pouvez le redistribuer et/ou le modifier sous les termes de la Licence Publique Générale GNU telle que publiée par la Free Software Foundation ; soit la version 2 de la Licence, soit (à votre choix) toute version ultérieure.</p>
+<p class="Pp">Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE GARANTIE ; sans même la garantie implicite de COMMERCIALISABILITÉ ou d'ADÉQUATION À UN USAGE PARTICULIER. Voir la Licence Publique Générale GNU pour plus de détails.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale GNU avec ce programme ; sinon, écrivez à la Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Tobias Oetiker &lt;tobi@oetiker.ch&gt;</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-06-29</td>
+    <td class="foot-os">2.9.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/smokeping/">extra/smokeping</a></dd>
+        <dt>Version :</dt>
+        <dd>2.9.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://oss.oetiker.ch/smokeping/">https://oss.oetiker.ch/smokeping/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL2</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/smokeping/">/listing/extra/smokeping/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#APERÇU">APERÇU</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#CONSIDÉRATIONS_DE_SÉCURITÉ">CONSIDÉRATIONS DE SÉCURITÉ</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#LICENCE">LICENCE</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/smokeping_master_slave.7.fr.txt">txt</a>, 
+        
+            <a href="/man/smokeping_master_slave.7.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            <p>Propulsé par <a href="https://gitlab.archlinux.org
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>À propos d'Archman</title>
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        
+        <main>
+            <p>Archman est un projet communautaire qui vise à fournir une expérience Arch Linux plus conviviale et accessible.</p>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le package Arch Linux correspondant.
+            </p>
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le package Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

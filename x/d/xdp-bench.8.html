@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>xdp-bench(8) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">xdp-bench(8)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/xdp-tools/">xdp-tools</a></p>
+<p class="lic">Licences: GPL, LGPL, BSD2</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">xdp-bench(8)</td>
+    <td class="head-vol">Un outil simple de benchmarking XDP</td>
+    <td class="head-rtitle">xdp-bench(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">XDP-bench - un outil simple de benchmarking XDP</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPIS'><a class='permalink' href='#SYNOPIS'>SYNOPIS</a></h1>
+<p class="Pp">XDP-bench est un utilitaire de benchmarking destiné à tester les
+    différents modes de fonctionnement de XDP. Il est conçu pour être un programme
+    simple démontrant les divers modes de fonctionnement ; ceux-ci incluent le rejet
+    de paquets, le transfert en épingle à cheveux (hairpin forwarding) (en utilisant le
+    code de retour <i>XDP_TX</i>), et la redirection en utilisant les diverses
+    facilités de redirection de paquets du noyau.</p>
+<p class="Pp">Les modes de rejet et TX prennent en charge diverses options pour
+    contrôler si les données du paquet sont touchées (lues ou écrites) avant d'être
+    rejetées ou transmises. Les modes de redirection prennent en charge l'utilisation
+    de l'aide <i>bpf_redirect</i> basée sur l'index d'interface, l'aide
+    <i>bpf_redirect_map</i> utilisant un cpumap comme cible, l'aide
+    <i>bpf_redirect_map</i> utilisant un devmap comme cible, et le mode de diffusion
+    (broadcast) du devmap qui permet la redirection vers plusieurs interfaces.</p>
+<p class="Pp">Il y a plus d'informations sur la signification des résultats en mode
+    de sortie par défaut (succinct) et en mode étendu, dans la section <b>Description
+    du format de sortie</b> ci-dessous.</p>
+<section class="Ss">
+<h2 class="Ss" id='Exécution_de_xdp-bench'><a class='permalink' href='#Exécution_de_xdp-bench'>Exécution de xdp-bench</a></h2>
+<p class="Pp">La syntaxe pour exécuter xdp-bench est :</p>
+<div class="Bd-indent">
+<pre>Usage : xdp-bench COMMANDE [options]
+La COMMANDE peut être l'une des suivantes :
+       drop           - Rejeter tous les paquets sur une interface
+       pass           - Transmettre tous les paquets à la pile réseau
+       tx             - Transmettre les paquets en retour sur une interface (transfert en épingle à cheveux)
+       redirect       - Redirection XDP utilisant l'aide bpf_redirect()
+       redirect-cpu   - Redirection CPU XDP utilisant BPF_MAP_TYPE_CPUMAP
+       redirect-map   - Redirection XDP utilisant BPF_MAP_TYPE_DEVMAP
+       redirect-multi - Multi-redirection XDP utilisant BPF_MAP_TYPE_DEVMAP et le drapeau BPF_F_BROADCAST
+<b></b></pre>
+</div>
+<p class="Pp">Chaque commande et ses options sont expliquées ci-dessous. Ou utilisez
+    <i>xdp-bench COMMANDE</i> <i>--help</i> pour voir les options de chaque
+  commande.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_DROP'><a class='permalink' href='#La_commande_DROP'>La commande DROP</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> installe un programme XDP sur une
+    interface qui rejette simplement tous les paquets. Il existe des options pour
+    contrôler ce qu'il faut faire avec le paquet avant de le rejeter (toucher les
+    données du paquet ou non), ainsi que quelles statistiques collecter. C'est un benchmark
+    de base pour les performances de référence (cas le plus favorable) de XDP sur
+    une interface.</p>
+<p class="Pp">La syntaxe pour la commande <i>drop</i> est :</p>
+<p class="Pp"><i>xdp-bench drop [options] &lt;nom_if&gt;</i></p>
+<p class="Pp">Où <i>&lt;nom_if&gt;</i> est le nom de l'interface sur laquelle le
+    programme XDP doit être installé.</p>
+<p class="Pp">Les options prises en charge sont :</p>
+<section class="Ss">
+<h2 class="Ss">-p, --operation-paquet &lt;ACTION&gt;</h2>
+<p class="Pp">Spécifie quelle opération doit être effectuée sur le paquet avant
+    de le rejeter. Les actions suivantes sont disponibles :</p>
+<div class="Bd-indent">
+<pre>no-touch		- Rejeter le paquet sans toucher aux données du paquet
+read-data		- Lire un champ dans l'en-tête du paquet avant de rejeter
+parse-ip		- Analyser le champ d'en-tête IP avant de rejeter
+swap-macs		- Échanger les adresses MAC source et destination avant de rejeter
+<i></i></pre>
+</div>
+<p class="Pp">Si le paquet est touché avant d'être rejeté peut avoir un impact
+    significatif sur les performances car cela nécessite de charger les données du
+    paquet dans le cache CPU (et de le vider si écriture).</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>no-touch</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-l, --mode-chargement &lt;MODE&gt;</h2>
+<p class="Pp">Spécifie quel mécanisme xdp-bench doit utiliser pour charger (et
+    stocker) les données du paquet. Les modes suivants sont disponibles :</p>
+<div class="Bd-indent">
+<pre>dpa		- Utiliser l'accès direct aux paquets (Direct Packet Access) traditionnel depuis le programme XDP
+load-bytes	- Utiliser les fonctions d'aide xdp_load_bytes() et xdp_store_bytes()
+<i></i></pre>
+</div>
+<p class="Pp">Ceci peut être utilisé pour tester les différents modes d'accès aux
+    paquets pris en charge par le noyau.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>dpa</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-r, --stats-rxq</h2>
+<p class="Pp">Si défini, le programme XDP collectera également des statistiques sur
+    l'index de la file de réception sur laquelle chaque paquet a été reçu. Ceci est
+    affiché en mode de sortie étendu avec les données par CPU (qui, selon la
+    configuration matérielle, peuvent être équivalentes ou non).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDES&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour collecter toutes les
+    statistiques et les afficher en sortie. L'unité de l'intervalle est en secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Démarre xdp-bench en mode de sortie « étendu ». S'il n'est pas défini,
+    xdp-bench démarrera en mode « succinct ». Le mode de sortie peut être changé en
+    appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir également la
+    section <b>Description du format de sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et charger le programme de redirection en
+    mode skb n'est ni performant ni recommandé. Cependant, cette option est utile si
+    le pilote de l'interface ne prend pas en charge XDP nativement, ou simplement pour
+    tester l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournissez deux fois pour activer
+    la journalisation détaillée des bibliothèques sous-jacentes <i>libxdp</i> et
+    <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version'><a class='permalink' href='#--version'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_PASS'><a class='permalink' href='#La_commande_PASS'>La commande PASS</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> installe un programme XDP sur une
+    interface qui transmet tous les paquets à la pile réseau après les avoir
+    traités (en retournant <i>XDP_PASS</i>). Il existe des options pour contrôler
+    ce qu'il faut faire avec le paquet avant de le transmettre (toucher les données
+    du paquet ou non), ainsi que quelles statistiques collecter. C'est un benchmark
+    de base pour la surcharge de l'installation d'un programme XDP sur une interface
+    tout en exécutant la pile réseau régulière.</p>
+<p class="Pp">La syntaxe pour la commande <i>pass</i> est :</p>
+<p class="Pp"><i>xdp-bench pass [options] &lt;nom_if&gt;</i></p>
+<p class="Pp">Où <i>&lt;nom_if&gt;</i> est le nom de l'interface sur laquelle le
+    programme XDP doit être installé.</p>
+<p class="Pp">Les options prises en charge sont :</p>
+<section class="Ss">
+<h2 class="Ss">-p, --operation-paquet &lt;ACTION&gt;</h2>
+<p class="Pp">Spécifie quelle opération doit être effectuée sur le paquet avant
+    de le transmettre. Les actions suivantes sont disponibles :</p>
+<div class="Bd-indent">
+<pre>no-touch		- Transmettre le paquet sans toucher aux données du paquet
+read-data		- Lire un champ dans l'en-tête du paquet avant de transmettre
+parse-ip		- Analyser le champ d'en-tête IP avant de transmettre
+swap-macs		- Échanger les adresses MAC source et destination avant de transmettre
+<i></i></pre>
+</div>
+<p class="Pp">La valeur par défaut pour cette option est <i>no-touch</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-l, --mode-chargement &lt;MODE&gt;</h2>
+<p class="Pp">Spécifie quel mécanisme xdp-bench doit utiliser pour charger (et
+    stocker) les données du paquet. Les modes suivants sont disponibles :</p>
+<div class="Bd-indent">
+<pre>dpa		- Utiliser l'accès direct aux paquets (Direct Packet Access) traditionnel depuis le programme XDP
+load-bytes	- Utiliser les fonctions d'aide xdp_load_bytes() et xdp_store_bytes()
+<i></i></pre>
+</div>
+<p class="Pp">Ceci peut être utilisé pour tester les différents modes d'accès aux
+    paquets pris en charge par le noyau.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>dpa</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-r, --stats-rxq</h2>
+<p class="Pp">Si défini, le programme XDP collectera également des statistiques sur
+    l'index de la file de réception sur laquelle chaque paquet a été reçu. Ceci est
+    affiché en mode de sortie étendu avec les données par CPU (qui, selon la
+    configuration matérielle, peuvent être équivalentes ou non).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDES&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour collecter toutes les
+    statistiques et les afficher en sortie. L'unité de l'intervalle est en secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Démarre xdp-bench en mode de sortie « étendu ». S'il n'est pas défini,
+    xdp-bench démarrera en mode « succinct ». Le mode de sortie peut être changé en
+    appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir également la
+    section <b>Description du format de sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et charger le programme de redirection en
+    mode skb n'est ni performant ni recommandé. Cependant, cette option est utile si
+    le pilote de l'interface ne prend pas en charge XDP nativement, ou simplement pour
+    tester l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournissez deux fois pour activer
+    la journalisation détaillée de</p>
+les bibliothèques sous-jacentes <i>libxdp</i> et <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_2'><a class='permalink' href='#--version_2'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_TX'><a class='permalink' href='#La_commande_TX'>La commande TX</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> installe un programme XDP sur une
+    interface qui effectue ce qu'on appelle le « hairpin forwarding », ce
+    qui signifie que chaque paquet est retransmis sur la même interface (en
+    utilisant le code de retour <i>XDP_TX</i>). Il existe des options pour
+    contrôler ce qu'il faut faire du paquet avant de le transmettre (modifier ou
+    non les données du paquet), ainsi que quelles statistiques collecter.</p>
+<p class="Pp">La syntaxe de la commande <i>tx</i> est la suivante :</p>
+<p class="Pp"><i>xdp-bench tx [options] &lt;ifname&gt;</i></p>
+<p class="Pp">Où <i>&lt;ifname&gt;</i> est le nom de l'interface sur laquelle le
+    programme XDP doit être installé.</p>
+<p class="Pp">Les options prises en charge sont les suivantes :</p>
+<section class="Ss">
+<h2 class="Ss">-p, --packet-operation &lt;ACTION&gt;</h2>
+<p class="Pp">Spécifie quelle opération doit être effectuée sur le paquet avant
+    de le transmettre. Les actions suivantes sont disponibles :</p>
+<div class="Bd-indent">
+<pre>no-touch		- Transmettre le paquet sans toucher aux données du paquet
+read-data		- Lire un champ dans l'en-tête du paquet avant de transmettre
+parse-ip		- Analyser le champ d'en-tête IP avant de transmettre
+swap-macs		- Échanger les adresses MAC source et destination avant de transmettre
+<i></i></pre>
+</div>
+<p class="Pp">Pour que le paquet puisse être correctement retransmis à
+    l'expéditeur, les adresses MAC doivent être échangées, de sorte que la MAC
+    source corresponde au périphérique réseau. Cependant, l'échange entraîne une
+    surcharge de performance, cette option permet donc de désactiver cette
+    fonctionnalité.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>swap-macs</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-l, --load-mode &lt;MODE&gt;</h2>
+<p class="Pp">Spécifie quel mécanisme xdp-bench doit utiliser pour charger (et
+    stocker) les données des paquets. Les modes suivants sont disponibles :</p>
+<div class="Bd-indent">
+<pre>dpa		- Utiliser l'accès direct aux paquets traditionnel depuis le programme XDP
+load-bytes	- Utiliser les fonctions d'aide xdp_load_bytes() et xdp_store_bytes()
+<i></i></pre>
+</div>
+<p class="Pp">Ceci peut être utilisé pour évaluer les différents modes d'accès
+    aux paquets pris en charge par le noyau.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>dpa</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-r, --rxq-stats</h2>
+<p class="Pp">Si défini, le programme XDP collectera également des statistiques sur
+    l'indice de la file de réception sur laquelle chaque paquet a été reçu. Ceci
+    est affiché en mode de sortie étendu avec des données par CPU (qui, selon la
+    configuration matérielle, peuvent être équivalentes ou non).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDS&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour la collecte de toutes les
+    statistiques et leur affichage en sortie. L'unité de l'intervalle est en
+    secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Lance xdp-bench en mode de sortie « étendu ». Si non défini,
+    xdp-bench démarrera en mode « succinct ». Le mode de sortie peut être
+    changé en appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir
+    également la section <b>Description du Format de Sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et le chargement du programme de
+    redirection en mode skb n'est ni performant, ni recommandé. Cependant, cette
+    option est utile si le pilote de l'interface manque de support XDP natif, ou
+    lorsque vous testez simplement l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournissez deux fois pour activer
+    la journalisation détaillée des bibliothèques sous-jacentes
+    <i>libxdp</i> et <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_3'><a class='permalink' href='#--version_3'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_REDIRECT'><a class='permalink' href='#La_commande_REDIRECT'>La commande REDIRECT</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> configure la redirection de paquets
+    entre les deux interfaces fournies sur la ligne de commande en utilisant la
+    fonction d'aide BPF <i>bpf_redirect</i> déclenchée à la réception d'un
+    paquet sur l'interface d'entrée.</p>
+<p class="Pp">La syntaxe de la commande <i>redirect</i> est la suivante :</p>
+<p class="Pp"><i>xdp-bench redirect [options] &lt;ifname_in&gt;
+    &lt;ifname_out&gt;</i></p>
+<p class="Pp">Où <i>&lt;ifname_in&gt;</i> est le nom de l'interface d'entrée
+    depuis laquelle les paquets seront redirigés vers l'interface de sortie
+    <i>&lt;ifname_out&gt;</i>.</p>
+<p class="Pp">Les options prises en charge sont les suivantes :</p>
+<section class="Ss">
+<h2 class="Ss">-l, --load-mode &lt;MODE&gt;</h2>
+<p class="Pp">Spécifie quel mécanisme xdp-bench doit utiliser pour charger (et
+    stocker) les données des paquets. Les modes suivants sont disponibles :</p>
+<div class="Bd-indent">
+<pre>dpa		- Utiliser l'accès direct aux paquets traditionnel depuis le programme XDP
+load-bytes	- Utiliser les fonctions d'aide xdp_load_bytes() et xdp_store_bytes()
+<i></i></pre>
+</div>
+<p class="Pp">Ceci peut être utilisé pour évaluer les différents modes d'accès
+    aux paquets pris en charge par le noyau.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>dpa</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDS&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour la collecte de toutes les
+    statistiques et leur affichage en sortie. L'unité de l'intervalle est en
+    secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-s, --stats</h2>
+<p class="Pp">Active les statistiques pour la redirection réussie. Cette option
+    entraîne une surcharge de traçage par paquet, pour enregistrer toutes les
+    redirections réussies.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Lance xdp-bench en mode de sortie « étendu ». Si non défini,
+    xdp-bench démarrera en mode « succinct ». Le mode de sortie peut être
+    changé en appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir
+    également la section <b>Description du Format de Sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et le chargement du programme de
+    redirection en mode skb n'est ni performant, ni recommandé. Cependant, cette
+    option est utile si le pilote de l'interface manque de support XDP natif, ou
+    lorsque vous testez simplement l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournissez deux fois pour activer
+    la journalisation détaillée des bibliothèques sous-jacentes
+    <i>libxdp</i> et <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_4'><a class='permalink' href='#--version_4'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_REDIRECT-CPU'><a class='permalink' href='#La_commande_REDIRECT-CPU'>La commande REDIRECT-CPU</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> configure la redirection de paquets
+    en utilisant la fonction d'aide BPF <i>bpf_redirect_map</i> déclenchée à la
+    réception d'un paquet sur l'interface d'entrée, en utilisant un cpumap comme
+    cible. Par conséquent, cet outil peut être utilisé pour rediriger des
+    paquets sur une interface d'un CPU à un autre. En plus de cela, l'outil
+    permet ensuite de rediriger le paquet vers un autre périphérique de sortie
+    lorsqu'il est traité sur le CPU cible.</p>
+<p class="Pp">La syntaxe de la commande <i>redirect-cpu</i> est la suivante :</p>
+<p class="Pp"><i>xdp-bench redirect-cpu [options] &lt;ifname&gt; -c 0 ... -c
+    N</i></p>
+<p class="Pp">Où <i>&lt;ifname&gt;</i> est le nom de l'interface d'entrée
+    depuis laquelle les paquets seront redirigés vers la liste de CPU cibles
+    spécifiée avec <i>-c</i>.</p>
+<p class="Pp">Les options prises en charge sont les suivantes :</p>
+<section class="Ss">
+<h2 class="Ss" id='-c,_--cpu_&amp;lt;CPU&amp;gt;'><a class='permalink' href='#-c,_--cpu_&amp;lt;CPU&amp;gt;'>-c,   --cpu &lt;CPU&gt;</a></h2>
+<p class="Pp">Spécifie un indice de CPU cible possible. Cette option doit être
+    passée au moins une fois et peut être passée plusieurs fois pour spécifier une
+    liste de CPU. Le CPU choisi pour un paquet donné dépend de la valeur de
+    l'option <i>--program-mode</i>, décrite ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='-p,_--program-mode_&amp;lt;MODE&amp;gt;'><a class='permalink' href='#-p,_--program-mode_&amp;lt;MODE&amp;gt;'>-p,   --program-mode &lt;MODE&gt;</a></h2>
+<p class="Pp">Spécifie un programme qui intègre une politique prédéfinie décidant
+    comment les paquets sont redirigés vers différents CPU. Les options suivantes
+    sont disponibles :</p>
+<div class="Bd-indent">
+<pre>no-touch		- Rediriger sans toucher aux données du paquet
+touch		- Lire les données du paquet avant de rediriger
+round-robin	- Alterner entre les CPU cibles de manière cyclique (pour chaque paquet)
+l4-proto		- Choisir le CPU cible en fonction du protocole de couche 4 du paquet
+l4-filter		- Comme l4-proto, mais ignorer les paquets UDP avec port de destination 9 (utilisé par pktgen)
+l4-hash		- Utiliser le hachage des adresses IP source et destination pour choisir le CPU cible
+l4-sport		- Utiliser le modulo du port source pour choisir le CPU cible
+l4-dport		- Utiliser le modulo du port de destination pour choisir le CPU cible
+<i></i></pre>
+</div>
+<p class="Pp">Les modes <i>no-touch</i> et <i>touch</i> redirigent toujours les
+    paquets vers le même CPU (la première valeur fournie à <i>--cpu</i>). Les
+    modes <i>round-robin</i> et <i>l4-hash</i> distribuent les paquets entre tous
+    les CPU fournis comme arguments <i>--cpu</i>, tandis que <i>l4-proto</i> et
+    <i>l4-filter</i> envoient les paquets TCP et non reconnus à l'indice de CPU
+    0, les paquets UDP à l'indice de CPU 1 et les paquets ICMP à l'indice de CPU
+    2 (où l'indice fait référence à l'ordre dans lequel les CPU réels sont donnés
+    sur la ligne de commande).</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>l4-hash</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='-r_--remote-action_&amp;lt;ACTION&amp;gt;'><a class='permalink' href='#-r_--remote-action_&amp;lt;ACTION&amp;gt;'>-r   --remote-action &lt;ACTION&gt;</a></h2>
+<p class="Pp">Si cette option est définie, un programme séparé est installé dans le
+    cpumap, qui sera appelé sur le CPU distant après que le paquet y ait été
+    traité. L'action peut être <i>drop</i> (ignorer) ou <i>pass</i> (transmettre)
+    ce qui fera ignorer le paquet ou le transmettra à la pile réseau normale,
+    respectivement. Ou ce peut être <i>redirect</i>, ce qui entraînera la
+    redirection du paquet vers une autre interface et sa transmission hors de
+    cette interface sur le CPU distant. Si cette option est définie sur
+    <i>redirect</i>, le périphérique cible doit être spécifié en utilisant
+    <i>--redirect-device</i>.</p>
+<p class="Pp">La valeur par défaut pour cette option est <i>désactivé</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='-r,_--redirect-device_&amp;lt;IFNAME&amp;gt;'><a class='permalink' href='#-r,_--redirect-device_&amp;lt;IFNAME&amp;gt;'>-r,   --redirect-device &lt;IFNAME&gt;</a></h2>
+<p class="Pp">Spécifie le périphérique vers lequel le paquet doit être redirigé
+    lorsqu'il est reçu sur le CPU cible. Notez que cette option ne peut être
+    spécifiée qu'avec <i>--remote-action redirect</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='-q,_--qsize_&amp;lt;PACKETS&amp;gt;'><a class='permalink' href='#-q,_--qsize_&amp;lt;PACKETS&amp;gt;'>-q,   --qsize &lt;PAQUETS&gt;</a></h2>
+<section class="Sh">
+<h1 class="Sh" id='Options'><a class='permalink' href='#Options'>Options</a></h1>
+<p class="Pp">The following options are supported by all commands:</p>
+<section class="Ss">
+<h2 class="Ss" id='-q,_--qsize'><a class='permalink' href='#-q,_--qsize'>-q,   --qsize &lt;PAQUETS&gt;</a></h2>
+<p class="Pp">Définit la taille de la file d'attente pour le tampon circulaire
+    cpumap par CPU utilisé pour rediriger les paquets de plusieurs CPU vers un
+    seul CPU. La valeur par défaut est de 2048 paquets.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='-x,_--stress-mode'><a class='permalink' href='#-x,_--stress-mode'>-x,   --stress-mode</a></h2>
+<p class="Pp">Soumet l'implémentation cpumap à un stress en désallouant et en
+    réallouant le tampon circulaire cpumap à chaque intervalle d'interrogation.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDES&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour la collecte de toutes les
+    statistiques et leur affichage dans la sortie. L'unité de l'intervalle est
+    en secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-s, --stats</h2>
+<p class="Pp">Active les statistiques de redirection réussie. Cette option entraîne
+    un surcoût de suivi par paquet, pour enregistrer toutes les redirections
+    réussies.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Démarre xdp-bench en mode de sortie « étendu ». S'il n'est pas
+    défini, xdp-bench démarre en mode « concis ». Le mode de sortie peut être
+    changé en appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir
+    également la section <b>Description du format de sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et que le chargement du programme de
+    redirection en mode skb n'est ni performant ni recommandé. Cependant, cette
+    option est utile si le pilote de l'interface manque de support XDP natif,
+    ou lors de simples tests de l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournir deux fois pour activer la
+    journalisation détaillée des bibliothèques sous-jacentes <i>libxdp</i> et
+    <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_5'><a class='permalink' href='#--version_5'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_REDIRECT-MAP'><a class='permalink' href='#La_commande_REDIRECT-MAP'>La commande REDIRECT-MAP</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> configure la redirection de paquets
+    entre deux interfaces fournies en ligne de commande en utilisant l'aide BPF
+    <i>bpf_redirect_map()</i> déclenchée à la réception de paquets sur
+    l'interface d'entrée, en utilisant un devmap comme cible.</p>
+<p class="Pp">La syntaxe pour la commande <i>redirect-map</i> est :</p>
+<p class="Pp"><i>xdp-bench redirect-map [options] &lt;nom_if_in&gt;
+    &lt;nom_if_out&gt;</i></p>
+<p class="Pp">Où <i>&lt;nom_if_in&gt;</i> est le nom de l'interface d'entrée
+    depuis laquelle les paquets seront redirigés vers l'interface de sortie
+    <i>&lt;nom_if_out&gt;</i>.</p>
+<p class="Pp">Les options prises en charge sont les suivantes :</p>
+<section class="Ss">
+<h2 class="Ss">-X, --load-egress</h2>
+<p class="Pp">Charge un programme dans l'entrée devmap utilisée pour la redirection,
+    de sorte qu'il soit appelé après la redirection du paquet vers le périphérique
+    cible, avant sa transmission hors de l'interface de sortie. Le programme distant
+    mettra à jour les données du paquet afin que son adresse MAC source corresponde
+    à celle de l'interface de destination.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDES&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour la collecte de toutes les
+    statistiques et leur affichage dans la sortie. L'unité de l'intervalle est
+    en secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-s, --stats</h2>
+<p class="Pp">Active les statistiques de redirection réussie. Cette option entraîne
+    un surcoût de suivi par paquet, pour enregistrer toutes les redirections
+    réussies.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Démarre xdp-bench en mode de sortie « étendu ». S'il n'est pas
+    défini, xdp-bench démarre en mode « concis ». Le mode de sortie peut être
+    changé en appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir
+    également la section <b>Description du format de sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et que le chargement du programme de
+    redirection en mode skb n'est ni performant ni recommandé. Cependant, cette
+    option est utile si le pilote de l'interface manque de support XDP natif,
+    ou lors de simples tests de l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournir deux fois pour activer la
+    journalisation détaillée des bibliothèques sous-jacentes <i>libxdp</i> et
+    <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_6'><a class='permalink' href='#--version_6'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='La_commande_REDIRECT-MULTI'><a class='permalink' href='#La_commande_REDIRECT-MULTI'>La commande REDIRECT-MULTI</a></h1>
+<p class="Pp">Dans ce mode, <i>xdp-bench</i> configure la redirection de paquets
+    de un à plusieurs entre les interfaces fournies en ligne de commande, en
+    utilisant l'aide BPF <i>bpf_redirect_map</i> déclenchée à la réception de
+    paquets sur l'interface d'entrée, en utilisant un devmap comme cible. Le paquet
+    est diffusé à toutes les interfaces de sortie spécifiées en ligne de
+    commande, en utilisant la fonction de diffusion de paquets de devmap.</p>
+<p class="Pp">La syntaxe pour la commande <i>redirect-multi</i> est :</p>
+<p class="Pp"><i>xdp-bench redirect-multi [options] &lt;nom_if_in&gt;
+    &lt;nom_if_out1&gt; ... &lt;nom_if_outN&gt;</i></p>
+<p class="Pp">Où <i>&lt;nom_if_in&gt;</i> est le nom de l'interface d'entrée
+    depuis laquelle les paquets seront redirigés vers une ou plusieurs interfaces
+    de sortie.</p>
+<p class="Pp">Les options prises en charge sont les suivantes :</p>
+<section class="Ss">
+<h2 class="Ss">-X, --load-egress</h2>
+<p class="Pp">Charge un programme dans l'entrée devmap utilisée pour la redirection,
+    de sorte qu'il soit appelé après la redirection du paquet vers le périphérique
+    cible, avant sa transmission hors de l'interface de sortie. Le programme distant
+    mettra à jour les données du paquet afin que son adresse MAC source corresponde
+    à celle de l'interface de destination.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-i, --interval &lt;SECONDES&gt;</h2>
+<p class="Pp">Définit l'intervalle d'interrogation pour la collecte de toutes les
+    statistiques et leur affichage dans la sortie. L'unité de l'intervalle est
+    en secondes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-s, --stats</h2>
+<p class="Pp">Active les statistiques de redirection réussie. Cette option entraîne
+    un surcoût de suivi par paquet, pour enregistrer toutes les redirections
+    réussies.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-e, --extended</h2>
+<p class="Pp">Démarre xdp-bench en mode de sortie « étendu ». S'il n'est pas
+    défini, xdp-bench démarre en mode « concis ». Le mode de sortie peut être
+    changé en appuyant sur C-$&#x00A0;pendant que le programme s'exécute. Voir
+    également la section <b>Description du format de sortie</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-m, --mode</h2>
+<p class="Pp">Sélectionne le mode du programme XDP (natif ou skb). Notez que le mode
+    XDP natif est le mode par défaut, et que le chargement du programme de
+    redirection en mode skb n'est ni performant ni recommandé. Cependant, cette
+    option est utile si le pilote de l'interface manque de support XDP natif,
+    ou lors de simples tests de l'outil.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-v, --verbose</h2>
+<p class="Pp">Active la journalisation détaillée. Fournir deux fois pour activer la
+    journalisation détaillée des bibliothèques sous-jacentes <i>libxdp</i> et
+    <i>libbpf</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='--version_7'><a class='permalink' href='#--version_7'>--version</a></h2>
+<p class="Pp">Affiche la version de l'application et quitte.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">-h, --help</h2>
+<p class="Pp">Affiche un résumé des options disponibles</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Description_du_format_de_sortie'><a class='permalink' href='#Description_du_format_de_sortie'>Description du format de sortie</a></h1>
+<p class="Pp">Par défaut, les statistiques de succès de redirection sont désactivées,
+    utilisez <i>--stats</i> pour les activer. Le mode de sortie concis est le mode
+    par défaut, le mode de sortie étendu peut être activé à l'aide de l'option
+    de ligne de commande <i>--extended</i>.</p>
+<p class="Pp">SIGQUIT (Ctrl + \) peut être utilisé pour changer le mode
+    dynamiquement pendant l'exécution.</p>
+<p class="Pp">Le mode concis affiche au plus les champs suivants :</p>
+<div class="Bd-indent">
+<pre>rx/s		Nombre de paquets reçus par seconde
+redir/s	Nombre de paquets redirigés avec succès par seconde
+err,drop/s	Nombre agrégé d'erreurs par seconde (y compris les paquets abandonnés lorsque la commande drop n'est pas utilisée)
+xmit/s	Nombre de paquets transmis sur le périphérique de sortie par seconde
+<i></i></pre>
+</div>
+<p class="Pp">Le mode de sortie étendu affiche au plus les champs suivants :</p>
+<div class="Bd-indent">
+<pre>CHAMP		  DESCRIPTION
+receive	       Affiche le nombre de paquets reçus et les erreurs rencontrées
+                        Chaque fois qu'une erreur ou un abandon de paquet se produit, les détails des erreurs et des abandons par CPU
+                        sont développés en ligne dans le mode concis.
+                                        pkt/s		- Paquets reçus par seconde
+                                        drop/s		- Paquets abandonnés par seconde
+                                        error/s		- Erreurs rencontrées par seconde
+                                        redirect	- Affiche le nombre de paquets redirigés avec succès
+                       Les erreurs rencontrées sont développées sous le champ redirect_err
+                       Notez que passer -s pour l'activer a un surcoût par paquet
+                                        redir/s		- Paquets redirigés avec succès par seconde
+redirect_err	  Affiche le nombre de paquets dont la redirection a échoué
+                        L'errno est développé sous ce champ avec le compte par CPU
+                       Les erreurs reconnues sont :
+                                        EINVAL:		Redirection invalide
+                                        ENETDOWN:	Périphérique vers lequel la redirection est effectuée est arrêté
+                                        EMSGSIZE:	La taille du paquet est trop grande pour le périphérique
+                                        EOPNOTSUPP:	Opération non prise en charge
+                                        ENOSPC:		Pas d'espace dans le ptr_ring du kthread cpumap
+                                        error/s		- Paquets dont la redirection a échoué par seconde
+enqueue to cpu N Affiche le nombre de paquets mis en file d'attente dans la file d'attente groupée du CPU N
+                       Se développe en cpu:FROM-&gt;N pour afficher les statistiques de mise en file d'attente pour chaque CPU qui met en file d'attente vers le CPU N
+                       Les paquets reçus peuvent être associés au CPU vers lequel le programme de redirection met en file d'attente
+                       les paquets.
+                                        pkt/s		- Paquets mis en file d'attente par seconde depuis un autre CPU vers le CPU N
+                                        drop/s		- Paquets abandonnés lors de la tentative de mise en file d'attente vers le CPU N
+                                        bulk-avg	- Nombre moyen de paquets traités pour chaque événement
+kthread	       Affiche le nombre de paquets traités dans le kthread CPUMAP pour chaque CPU
+                       Les paquets consommés à partir du ptr_ring dans le kthread, et ses xdp_stats (après l'appel
+                       du programme BPF CPUMAP) sont développés sous celui-ci. Les xdp_stats sont développés en tant que total puis
+                       par CPU pour l'associer au kthread CPUMAP de chaque CPU.
+                                        pkt/s		- Paquets consommés par seconde à partir du ptr_ring
+                                        drop/s		- Paquets abandonnés par seconde dans le kthr
+</pre>
+</div>
+</section>
+ead
+                                        sched		- Nombre de fois que kthread a appelé schedule()
+                       xdp_stats (s'étend également aux comptages par CPU)
+                                        pass/s		- Compte XDP_PASS pour l'exécution du programme CPUMAP
+                                        drop/s		- Compte XDP_DROP pour l'exécution du programme CPUMAP
+                                        redir/s		- Compte XDP_REDIRECT pour l'exécution du programme CPUMAP
+xdp_exception	  Affiche les événements du point de trace xdp_exception
+                        Cela peut se produire en raison d'erreurs internes du pilote, d'actions XDP
+                       non reconnues et en raison d'un déclenchement utilisateur explicite par l'utilisation
+                       de XDP_ABORTED. Chaque action est développée sous ce champ avec son compte.
+                                        hit/s		- Nombre de fois que le point de trace a été atteint par seconde
+devmap_xmit      Affiche les événements du point de trace devmap_xmit
+                        Ce point de trace est appelé pour les transmissions réussies sur le périphérique de sortie,
+                       mais ces statistiques ne sont pas disponibles pour le mode XDP générique.
+                       Par conséquent, elles seront omises de la sortie lors de l'utilisation du mode SKB.
+                                        xmit/s		- Nombre de paquets transmis par seconde
+                                        drop/s		- Nombre de paquets dont la transmission a échoué par seconde
+                                        drv_err/s	- Nombre d'erreurs internes du pilote par seconde
+                                        bulk-avg	- Nombre moyen de paquets traités pour chaque événement
+<i></i></pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BUGS</a></h1>
+<p class="Pp">Veuillez signaler tout bug sur Github :
+    <a href='https://github.com/xdp-project/xdp-tools/issues'>https://github.com/xdp-project/xdp-tools/issues</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Les premiers outils xdp-redirect ont été écrits par Jesper Dangaard Brouer
+    et John Fastabend. Ils ont ensuite été réécrits pour prendre en charge plus de fonctionnalités par
+    Kumar Kartikeya Dwivedi, qui les a également portés vers xdp-tools avec
+    Toke H&#x00F8;iland-J&#x00F8;rgensen. Cette page de manuel a été écrite par Kumar
+    Kartikeya Dwivedi et Toke H&#x00F8;iland-J&#x00F8;rgensen.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">19 novembre 2024</td>
+    <td class="foot-os">V1.5.7</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/xdp-tools/">extra/xdp-tools</a></dd>
+        <dt>Version :</dt>
+        <dd>1.5.7-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/xdp-project/xdp-tools">https://github.com/xdp-project/xdp-tools</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL, LGPL, BSD2</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/xdp-tools/">/listing/extra/xdp-tools/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#The_DROP_command">La commande DROP</a></li>
+        
+            <li><a href="#The_PASS_command">La commande PASS</a></li>
+        
+            <li><a href="#The_TX_command">La commande TX</a></li>
+        
+            <li><a href="#The_REDIRECT_command">La commande REDIRECT</a></li>
+        
+            <li><a href="#The_REDIRECT-CPU_command">La commande REDIRECT-CPU</a></li>
+        
+            <li><a href="#The_REDIRECT-MAP_command">La commande REDIRECT-MAP</a></li>
+        
+            <li><a href="#The_REDIRECT-MULTI_command">La commande REDIRECT-MULTI</a></li>
+        
+            <li><a href="#Output_Format_Description">Description du format de sortie</a></li>
+        
+            <li><a href="#BUGS">BOGUES</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/xdp-bench.8.en.txt">txt</a>, 
+        
+            <a href="/man/xdp-bench.8.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

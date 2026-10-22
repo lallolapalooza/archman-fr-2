@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>lvmraid(7) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">lvmraid(7)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LVMRAID(7)</td>
+    <td class="head-vol">Informations diverses Manuel</td>
+    <td class="head-rtitle">LVMRAID(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NOM</a></h1>
+<p class="Pp">lvmraid &#x2014; LVM RAID</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp"><a href='/man/lvm.8.en'><span class="no-break">lvm(8)</span></a> RAID est une méthode pour créer un Volume Logique (LV) qui utilise plusieurs périphériques physiques pour améliorer les performances ou tolérer les pannes de périphériques. Dans LVM, les périphériques physiques sont des Périphériques Physiques (PV) au sein d'un seul Groupe de Volumes (VG).</p>
+<p class="Pp">La manière dont les blocs de données du LV sont placés sur les PV est déterminée par le niveau RAID. Les niveaux RAID sont couramment désignés par 'raid' suivi d'un nombre, par exemple raid1, raid5 ou raid6. La sélection d'un niveau RAID implique des compromis entre : les exigences en matière de périphériques physiques, la tolérance aux pannes et les performances. Une description des niveaux RAID peut être trouvée à :
+    <a class="Lk" href="https://www.snia.org/sites/default/files/SNIA_DDF_Technical_Position_v2.0.pdf">Technical_Position.pdf</a></p>
+<p class="Pp">LVM RAID utilise à la fois le Device Mapper (DM) et les pilotes Multiple Device (MD) du noyau Linux. DM est utilisé pour créer et gérer les périphériques LVM visibles, et MD est utilisé pour placer les données sur les périphériques physiques.</p>
+<p class="Pp">LVM crée des LV cachés (périphériques dm) superposés entre le LV visible et les périphériques physiques. Les LV dans les couches intermédiaires sont appelés sous-LV. Pour LVM raid, une paire de sous-LV pour stocker les données et les métadonnées (superbloc RAID et bitmap d'intention d'écriture) est créée par image/branche RAID (voir les exemples de commande <a href='/man/lvs.8.en'><span class="no-break">lvs(8)</span></a> ci-dessous).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="USAGE"><a class="permalink" href="#USAGE">UTILISATION</a></h1>
+<p class="Pp">Pour créer un LV RAID, utilisez lvcreate et spécifiez un type de LV. Le type de LV correspond à un niveau RAID. Les niveaux RAID de base qui peuvent être utilisés sont : <b>raid0</b>, <b>raid1</b>, <b>raid4</b>, <b>raid5</b>, <b>raid6</b>, <b>raid10</b>.</p>
+<p class="Pp"><b>lvcreate --type</b> <i>NiveauRaid</i> [<i>OPTIONS</i>]
+    <b>--name&#x00A0;</b><i>Nom</i> <b>--size&#x00A0;</b><i>Taille</i> <i>VG</i>
+    [<i>PVs</i>]</p>
+<p class="Pp">Pour afficher le type de LV d'un LV existant, exécutez :</p>
+<pre># lvs -o name,segtype LV</pre>
+<p class="Pp">(Le type de LV est également appelé « type de segment » ou « segtype ».)</p>
+<p class="Pp">Les LV peuvent être créés avec les types suivants :</p>
+<section class="Ss">
+<h2 class="Ss" id="raid0"><a class="permalink" href="#raid0">raid0</a></h2>
+<p class="Pp">Aussi appelé entrelacement (striping), raid0 répartit les données du LV sur plusieurs périphériques par unités de taille de bande. Ceci est utilisé pour augmenter les performances. Les données du LV seront perdues si l'un des périphériques tombe en panne.</p>
+<p class="Pp"><b>lvcreate --type raid0</b>
+    [<b>--stripes&#x00A0;</b><i>Nombre</i>
+    <b>--stripesize&#x00A0;</b><i>Taille</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="stripes"><a class="permalink" href="#stripes"><b>--stripes</b>
+    <i>Nombre</i></a></dt>
+  <dd>spécifie le <i>Nombre</i> de périphériques sur lesquels répartir le LV.</dd>
+  <dt id="stripesize"><a class="permalink" href="#stripesize"><b>--stripesize</b>
+    <i>Taille</i></a></dt>
+  <dd>spécifie la <i>Taille</i> de chaque bande en kilooctets. C'est la quantité de données qui est écrite sur un périphérique avant de passer au suivant.</dd>
+  <dt id="PVs"><a class="permalink" href="#PVs"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira <i>Nombre</i> périphériques, un pour chaque bande en fonction du nombre de PV disponibles ou fournis.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="raid1"><a class="permalink" href="#raid1">raid1</a></h2>
+<p class="Pp">Aussi appelé mise en miroir (mirroring), raid1 utilise plusieurs périphériques pour dupliquer les données du LV. Les données du LV restent disponibles si tous les périphériques sauf un tombent en panne. Le nombre minimum de périphériques (c'est-à-dire de paires de sous-LV) requis est de 2.</p>
+<p class="Pp"><b>lvcreate --type raid1</b>
+    [<b>--mirrors&#x00A0;</b><i>Nombre</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="mirrors"><a class="permalink" href="#mirrors"><b>--mirrors</b>
+    <i>Nombre</i></a></dt>
+  <dd>spécifie le <i>Nombre</i> d'images miroir en plus de l'image LV d'origine, par exemple --mirrors 1 signifie qu'il y a deux images des données, l'originale et une image miroir.</dd>
+  <dt id="PVs~2"><a class="permalink" href="#PVs~2"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira <i>Nombre</i> périphériques, un pour chaque image.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="raid4"><a class="permalink" href="#raid4">raid4</a></h2>
+<p class="Pp">raid4 est une forme d'entrelacement qui utilise un périphérique supplémentaire, le premier, dédié au stockage des blocs de parité. Les données du LV restent disponibles si un périphérique tombe en panne. La parité est utilisée pour recalculer les données perdues d'un seul périphérique. Le nombre minimum de périphériques requis est de 3.</p>
+<p class="Pp"><b>lvcreate --type raid4</b>
+    [<b>--stripes</b>&#x00A0;<i>Nombre</i>
+    <b>--stripesize</b>&#x00A0;<i>Taille</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="stripes~2"><a class="permalink" href="#stripes~2"><b>--stripes</b>
+    <i>Nombre</i></a></dt>
+  <dd>spécifie le <i>Nombre</i> de périphériques à utiliser pour les données du LV. Ceci n'inclut pas le périphérique supplémentaire que lvm ajoute pour stocker les blocs de parité. Un LV raid4 avec <i>Nombre</i> bandes nécessite <i>Nombre</i>+1 périphériques. <i>Nombre</i> doit être égal ou supérieur à 2.</dd>
+  <dt id="stripesize~2"><a class="permalink" href="#stripesize~2"><b>--stripesize</b>
+    <i>Taille</i></a></dt>
+  <dd>spécifie la <i>Taille</i> de chaque bande en kilooctets. C'est la quantité de données qui est écrite sur un périphérique avant de passer au suivant.</dd>
+  <dt id="PVs~3"><a class="permalink" href="#PVs~3"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira <i>Nombre</i>+1 périphériques distincts.</dd>
+</dl>
+<p class="Pp">raid4 est appelé parité non rotative car les blocs de parité sont toujours stockés sur le même périphérique.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="raid5"><a class="permalink" href="#raid5">raid5</a></h2>
+<p class="Pp">raid5 est une forme d'entrelacement qui utilise un périphérique supplémentaire pour stocker les blocs de parité. Les données du LV et les blocs de parité sont stockés sur chaque périphérique, généralement dans un schéma rotatif pour des raisons de performance. Les données du LV restent disponibles si un périphérique tombe en panne. La parité est utilisée pour recalculer les données perdues d'un seul périphérique. Le nombre minimum de périphériques requis est de 3 (sauf lors de la conversion d'un raid1 à 2 branches pour le remodeler en plus de bandes ; voir remodeler).</p>
+<p class="Pp"><b>lvcreate --type raid5</b>
+    [<b>--stripes</b>&#x00A0;<i>Nombre</i>
+    <b>--stripesize</b>&#x00A0;<i>Taille</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="stripes~3"><a class="permalink" href="#stripes~3"><b>--stripes</b>
+    <i>Nombre</i></a></dt>
+  <dd>spécifie le <i>Nombre</i> de périphériques à utiliser pour les données du LV. Ceci n'inclut pas le périphérique supplémentaire que lvm ajoute pour stocker les blocs de parité. Un LV raid5 avec <i>Nombre</i> bandes nécessite <i>Nombre</i>+1 périphériques. <i>Nombre</i> doit être égal ou supérieur à 2.</dd>
+  <dt id="stripesize~3"><a class="permalink" href="#stripesize~3"><b>--stripesize</b>
+    <i>Taille</i></a></dt>
+  <dd>spécifie la <i>Taille</i> de chaque bande en kilooctets. C'est la quantité de données qui est écrite sur un périphérique avant de passer au suivant.</dd>
+  <dt id="PVs~4"><a class="permalink" href="#PVs~4"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira <i>Nombre</i>+1 périphériques distincts.</dd>
+</dl>
+<p class="Pp">raid5 est appelé parité rotative car les blocs de parité sont placés sur différents périphériques selon une séquence circulaire. Il existe des variantes de raid5 avec différents algorithmes pour placer les blocs de parité. La variante par défaut est raid5_ls (raid5 left symmetric, qui est une parité rotative 0 avec redémarrage des données).
+  <br/>
+  Voir <b>VARIANTES RAID5</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="raid6"><a class="permalink" href="#raid6">raid6</a></h2>
+<p class="Pp">raid6 est une forme d'entrelacement comme raid5, mais utilise deux périphériques supplémentaires pour les blocs de parité. Les données du LV et les blocs de parité sont stockés sur chaque périphérique, généralement dans un schéma rotatif pour des raisons de performance. Les données du LV restent disponibles si jusqu'à deux périphériques tombent en panne. La parité est utilisée pour recalculer les données perdues d'un ou deux périphériques. Le nombre minimum de périphériques requis est de 5.</p>
+<p class="Pp"><b>lvcreate --type raid6</b>
+    [<b>--stripes</b>&#x00A0;<i>Nombre</i>
+    <b>--stripesize</b>&#x00A0;<i>Taille</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="stripes~4"><a class="permalink" href="#stripes~4"><b>--stripes</b>
+    <i>Nombre</i></a></dt>
+  <dd>spécifie le <i>Nombre</i> de périphériques à utiliser pour les données du LV. Ceci n'inclut pas les deux périphériques supplémentaires que lvm ajoute pour stocker les blocs de parité. Un LV raid6 avec <i>Nombre</i> bandes nécessite <i>Nombre</i>+2 périphériques. <i>Nombre</i> doit être égal ou supérieur à 3.</dd>
+  <dt id="stripesize~4"><a class="permalink" href="#stripesize~4"><b>--stripesize</b>
+    <i>Taille</i></a></dt>
+  <dd>spécifie la <i>Taille</i> de chaque bande en kilooctets. C'est la quantité de données qui est écrite sur un périphérique avant de passer au suivant.</dd>
+  <dt id="PVs~5"><a class="permalink" href="#PVs~5"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira <i>Nombre</i>+2 périphériques distincts.</dd>
+</dl>
+<p class="Pp">Comme raid5, il existe des variantes de raid6 avec différents algorithmes pour placer les blocs de parité. La variante par défaut est raid6_zr (raid6 zero restart, alias left symmetric, qui est une parité rotative 0 avec redémarrage des données.</p>
+</section>
+</div>
+</section>
+
+            </article>
+        </main>
+    </body>
+</html>
+rt).
+  <br/>
+  Voir <b>RAID6 VARIANTS</b> ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='raid10'><a class='permalink' href='#raid10'>raid10</a></h2>
+<p class="Pp">raid10 est une combinaison de raid1 et raid0, qui entrelace les données
+    sur des périphériques mis en miroir. Les données LV restent disponibles si un ou plusieurs périphériques restent dans chaque ensemble de miroir. Le nombre minimum de périphériques requis est de 4.</p>
+<p class="Pp"><b>lvcreate --type raid10</b>
+    [<b>--mirrors</b>&#x00A0;<i>NombreMiroirs</i>]
+    [<b>--stripes</b>&#x00A0;<i>NombreBandes</i>
+    <b>--stripesize</b>&#x00A0;<i>Taille</i>] <i>VG</i> [<i>PVs</i>]</p>
+<dl class="Bl-tag">
+  <dt id="mirrors~2"><a class="permalink" href="#mirrors~2"><b>--mirrors</b>
+    <i>NombreMiroirs</i></a></dt>
+  <dd>spécifie le nombre d'images miroir dans chaque bande. par exemple, --mirrors 1
+      signifie qu'il y a deux images des données, l'original et une image miroir.</dd>
+  <dt id="stripes~5"><a class="permalink" href="#stripes~5"><b>--stripes</b>
+    <i>NombreBandes</i></a></dt>
+  <dd>spécifie le nombre total de périphériques à utiliser dans toutes les images raid1 (pas le
+      nombre de périphériques raid1 sur lesquels répartir le LV, même si c'est le résultat effectif). Le nombre de périphériques dans chaque miroir raid1 sera
+      <i>NombreBandes</i>/(<i>NombreMiroirs</i>+1), par exemple, miroirs 1 et bandes
+      4 entrelaceront les données sur deux miroirs raid1, où chaque miroir contient
+      deux périphériques.</dd>
+  <dt id="stripesize~5"><a class="permalink" href="#stripesize~5"><b>--stripesize</b>
+    <i>Taille</i></a></dt>
+  <dd>spécifie la <i>Taille</i> de chaque bande en kilo-octets. C'est la quantité
+      de données qui est écrite sur un périphérique avant de passer au suivant.</dd>
+  <dt id="PVs~6"><a class="permalink" href="#PVs~6"><i>PVs</i></a></dt>
+  <dd>spécifie les périphériques à utiliser. S'il n'est pas spécifié, lvm choisira les
+      périphériques nécessaires. Les périphériques sont utilisés pour créer des miroirs dans l'ordre indiqué,
+      par exemple, pour des miroirs 1, bandes 2, lister PV1 PV2 PV3 PV4 résulte en miroirs
+      PV1/PV2 et PV3/PV4.</dd>
+</dl>
+<p class="Pp">RAID10 ne fait pas de mise en miroir par-dessus des bandes, ce qui serait RAID01,
+    qui est moins tolérant aux pannes de périphériques.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Configuration_Options'><a class='permalink' href='#Configuration_Options'>Options de configuration</a></h2>
+<p class="Pp">Il existe un certain nombre d'options dans le fichier de configuration
+    <a href='/man/lvm.conf.5.en'>lvm.conf(5)</a> qui affectent le comportement des LV RAID. Les options ajustables
+    sont listées ci-dessous. Une description détaillée de chacune se trouve dans
+    le fichier de configuration <a href='/man/lvm.conf.5.en'>lvm.conf(5)</a> lui-même.</p>
+<div class="Bd-indent"><b>global/mirror_segtype_default</b>
+<br/>
+<b>global/raid10_segtype_default</b>
+<br/>
+<b>activation/raid_region_size</b>
+<br/>
+<b>activation/raid_fault_policy</b>
+<br/>
+<b>activation/activation_mode</b></div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Monitoring'><a class='permalink' href='#Monitoring'>Surveillance</a></h2>
+<p class="Pp">Lorsqu'un LV RAID est activé, le processus <a href='/man/dmeventd.8.en'>dmeventd(8)</a>
+    est lancé pour surveiller la santé du LV. Divers événements détectés dans le
+    noyau peuvent entraîner l'envoi d'une notification du device-mapper au
+    processus de surveillance, y compris les pannes de périphériques et l'achèvement de la synchronisation
+    (par exemple, pour l'initialisation ou le nettoyage).</p>
+<p class="Pp">Le fichier de configuration LVM contient des options qui affectent la manière dont le
+    processus de surveillance répondra aux événements de défaillance (par exemple, raid_fault_policy).
+    Il est possible d'activer et de désactiver la surveillance avec lvchange, mais il n'est pas
+    recommandé de désactiver cela à moins d'avoir une connaissance approfondie des
+    conséquences.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Synchronization'><a class='permalink' href='#Synchronization'>Synchronisation</a></h2>
+<p class="Pp">La synchronisation est le processus qui rend tous les périphériques d'un
+    LV RAID cohérents entre eux.</p>
+<p class="Pp">Dans un LV RAID1, toutes les images miroir doivent contenir les mêmes données. Lorsqu'une
+    nouvelle image miroir est ajoutée, ou qu'une image miroir manque de données, les images
+    doivent être synchronisées. Des blocs de données sont copiés d'une image existante vers une
+    image nouvelle ou obsolète pour les faire correspondre.</p>
+<p class="Pp">Dans un LV RAID 4/5/6, les blocs de parité et les blocs de données doivent correspondre
+    en fonction du calcul de parité. Lorsque les périphériques d'un LV RAID changent, les
+    données et les blocs de parité peuvent devenir incohérents et nécessiter une synchronisation.
+    Les blocs corrects sont lus, la parité est calculée et les blocs recalculés sont écrits.</p>
+<p class="Pp">L'implémentation RAID garde une trace des parties d'un LV RAID qui sont synchronisées.
+    Lorsque un LV RAID est créé et activé pour la première fois, la première
+    synchronisation est appelée initialisation. Un pointeur stocké dans les métadonnées RAID
+    suit le processus d'initialisation, ce qui permet de le redémarrer après une désactivation
+    du RaidLV ou un crash. Toute écriture sur le RaidLV salit la région correspondante du bitmap
+    d'intention d'écriture, ce qui permet une récupération rapide des régions après un crash. Sans cela, le LV entier
+    devrait être synchronisé chaque fois qu'il serait activé.</p>
+<p class="Pp">La synchronisation automatique se produit lors de l'activation d'un LV RAID, mais
+    elle est généralement partielle car les bitmaps réduisent les zones qui sont vérifiées.
+    Une synchronisation complète devient nécessaire lorsque les périphériques du LV RAID sont remplacés.</p>
+<p class="Pp">L'état de synchronisation d'un LV RAID est rapporté par la commande suivante, où "Cpy%Sync" = "100%" signifie que la synchronisation est terminée :</p>
+<pre># lvs -a -o name,sync_percent</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Scrubbing'><a class='permalink' href='#Scrubbing'>Nettoyage</a></h2>
+<p class="Pp">Le nettoyage est un scan complet du LV RAID demandé par un utilisateur.
+    Le nettoyage peut trouver des problèmes qui sont manqués par la synchronisation partielle.</p>
+<p class="Pp">Le nettoyage suppose que les métadonnées RAID et les bitmaps peuvent être
+    inexacts, il vérifie donc toutes les métadonnées RAID, les données LV et les blocs de parité.
+    Le nettoyage peut trouver des incohérences causées par des erreurs matérielles ou une dégradation.
+    Ces types de problèmes peuvent être indétectables par la synchronisation automatique qui
+    exclut les zones en dehors du bitmap d'intention d'écriture RAID.</p>
+<p class="Pp">La commande pour nettoyer un LV RAID peut fonctionner dans deux modes différents :</p>
+<p class="Pp"><b>lvchange --syncaction</b> <b>check</b>|<b>repair</b>
+    <i>LV</i></p>
+<dl class="Bl-tag">
+  <dt id="check"><a class="permalink" href="#check"><b>check</b></a></dt>
+  <dd>Le mode de vérification est en lecture seule et ne détecte que les zones incohérentes dans le
+      LV RAID, il ne les corrige pas.</dd>
+  <dt id="repair"><a class="permalink" href="#repair"><b>repair</b></a></dt>
+  <dd>Le mode de réparation vérifie et écrit des blocs corrigés pour synchroniser les zones
+      incohérentes.</dd>
+</dl>
+<p class="Pp">Le nettoyage peut consommer beaucoup de bande passante et ralentir les E/S des applications
+    sur le LV RAID. Pour contrôler le taux d'E/S utilisé pour le nettoyage, utilisez :</p>
+<dl class="Bl-tag">
+  <dt id="maxrecoveryrate"><a class="permalink" href="#maxrecoveryrate"><b>--maxrecoveryrate</b>
+    <i>Taille</i>[k|UNIT]</a></dt>
+  <dd>Définit le taux de récupération maximum pour un LV RAID. La <i>Taille</i> est spécifiée comme
+      une quantité par seconde pour chaque périphérique du tableau. Si aucun suffixe n'est donné,
+      alors KiB/sec/périphérique est utilisé. Définir le taux de récupération à <b>0</b> signifie
+      qu'il sera illimité.</dd>
+  <dt id="minrecoveryrate"><a class="permalink" href="#minrecoveryrate"><b>--minrecoveryrate</b>
+    <i>Taille</i>[k|UNIT]</a></dt>
+  <dd>Définit le taux de récupération minimum pour un LV RAID. La <i>Taille</i> est spécifiée comme
+      une quantité par seconde pour chaque périphérique du tableau. Si aucun suffixe n'est donné,
+      alors KiB/sec/périphérique est utilisé. Définir le taux de récupération à <b>0</b> signifie
+      qu'il sera illimité.</dd>
+</dl>
+<p class="Pp">Pour afficher le nettoyage en cours sur un LV, y compris le mode syncaction et le pourcentage d'achèvement, exécutez :</p>
+<pre># lvs -a -o name,raid_sync_action,sync_percent</pre>
+<p class="Pp">Une fois le nettoyage terminé, pour afficher le nombre de blocs incohérents trouvés, exécutez :</p>
+<pre># lvs -o name,raid_mismatch_count</pre>
+<p class="Pp">De plus, si des incohérences ont été trouvées, le champ d'attributs de <a href='/man/lvs.8.en'>lvs(8)</a> affichera la lettre "m" (mismatch) dans la 9ème position, par exemple :</p>
+<pre># lvs -o name,vgname,segtype,attr vg/lv
+&#x00A0; LV VG   Type  Attr
+&#x00A0; lv vg   raid1 Rwi-a-r-m-</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Scrubbing_Limitations'><a class='permalink' href='#Scrubbing_Limitations'>Limitations du nettoyage</a></h2>
+<p class="Pp">Le mode <b>check</b> ne peut signaler que le nombre de blocs incohérents, il ne peut pas indiquer quels blocs sont incohérents. Il est donc impossible de savoir quel périphérique a des erreurs, ou si les erreurs affectent les données du système de fichiers, les métadonnées ou rien du tout.</p>
+<p class="Pp">Le mode <b>repair</b> peut rendre les données du LV RAID cohérentes, mais il ne sait pas quelles données sont correctes. Le résultat peut être des données cohérentes mais incorrectes. Lorsque deux blocs de données différents doivent être rendus cohérents, il choisit le bloc du périphérique qui serait utilisé lors de l'initialisation RAID. Cependant, si le PV contenant des données corrompues est connu, lvchange --rebuild peut être utilisé à la place du nettoyage pour reconstruire les données sur le périphérique défectueux.</p>
+<p class="Pp">Les développements futurs pourraient inclure :</p>
+<p class="Pp">Permettre à un utilisateur de choisir la version correcte des données lors de la réparation.</p>
+<p class="Pp">Utiliser une majorité de périphériques pour déterminer la version correcte des données à utiliser dans un RAID1 ou RAID6 à 3 voies.</p>
+<p class="Pp">Utiliser un périphérique de somme de contrôle pour identifier quand et où une erreur se produit, permettant ainsi de la réécrire.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SubLVs'><a class='permalink' href='#SubLVs'>Sous-LV</a></h2>
+<p class="Pp">Un LV est souvent une combinaison d'autres LV cachés appelés Sous-LV.
+    Les Sous-LV utilisent soit des périphériques physiques, soit sont construits à partir d'autres Sous-LV eux-mêmes. Les Sous-LV contiennent des blocs de données LV, des blocs de parité RAID et des métadonnées RAID. Les Sous-LV sont généralement cachés, donc l'option lvs -a est nécessaire pour les afficher :</p>
+<pre># lvs -a -o name,segtype,devices</pre>
+<p class="Pp">Les noms des Sous-LV commencent par le nom du LV visible et ont un suffixe automatique indiquant son rôle :</p>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les Sous-LV contenant des blocs de données ou de parité LV ont le suffixe _rimage_#.
+    <br/>
+    Ces Sous-LV sont parfois appelés DataLV.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les Sous-LV contenant des métadonnées RAID ont le suffixe _rmeta_#. Les métadonnées RAID
+      incluent les informations de superblock, le type RAID, le bitmap et les informations de santé des périphériques.
+    <br/>
+    Ces Sous-LV sont parfois appelés MetaLV.</dd>
+</dl>
+<p class="Pp">Les Sous-LV sont un détail d'implémentation interne de LVM. La manière dont ils
+    sont utilisés, construits et nommés peut changer.</p>
+<p class="Pp">Les exemples suivants montrent l'agencement des Sous-LV pour chacun des
+    types de LV RAID de base, en utilisant le nombre minimum de périphériques autorisé pour
+    chacun.</p>
+<p class="Pp"><i>Exemples</i></p>
+<p class="Pp"><b>raid0</b></p>
+<p class="Pp">Chaque Sous-LV rimage contient une partie des données LV. Aucune parité n'est utilisée.
+    Aucune métadonnée RAID n'est utilisée.</p>
+<pre># lvcreate --type raid0 --stripes 2 --name lvr0 ...
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr0            raid0  lvr0_rimage_0(0),lvr0_rimage_1(0)
+&#x00A0; [lvr0_rimage_0] linear /dev/sda(...)
+&#x00A0; [lvr0_rimage_1] linear /dev/sdb(...)</pre>
+<p class="Pp"><b>raid1</b></p>
+<p class="Pp">Chaque Sous-LV rimage contient une copie complète des données LV. Aucune parité n'est
+    utilisée. Chaque Sous-LV rmeta contient les métadonnées RAID.</p>
+<pre># lvcreate --type raid1 --mirrors 1 --name lvr1 ...
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr1            raid1  lvr1_rimage_0(0),lvr1_rimage_1(0)
+&#x00A0; [lvr1_rimage_0] linear /dev/sda(...)
+&#x00A0; [lvr1_rimage_1] linear /dev/sdb(...)
+&#x00A0; [lvr1</pre>_rmeta_0]  linéaire /dev/sda(...)
+&#x00A0; [lvr1_rmeta_1]  linéaire /dev/sdb(...)</pre>
+<p class="Pp"><b>raid4</b></p>
+<p class="Pp">Au moins trois sous-volumes logiques (SubLVs) d'image (rimage) contiennent chacun une partie des données du volume logique (LV) et un sous-volume logique d'image contient la parité. Chaque sous-volume logique de métadonnées (rmeta) contient les métadonnées RAID.</p>
+<pre># lvcreate --type raid4 --stripes 2 --name lvr4 ...
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr4            raid4  lvr4_rimage_0(0),\
+&#x00A0;                        lvr4_rimage_1(0),\
+&#x00A0;                        lvr4_rimage_2(0)
+&#x00A0; [lvr4_rimage_0] linéaire /dev/sda(...)
+&#x00A0; [lvr4_rimage_1] linéaire /dev/sdb(...)
+&#x00A0; [lvr4_rimage_2] linéaire /dev/sdc(...)
+&#x00A0; [lvr4_rmeta_0]  linéaire /dev/sda(...)
+&#x00A0; [lvr4_rmeta_1]  linéaire /dev/sdb(...)
+&#x00A0; [lvr4_rmeta_2]  linéaire /dev/sdc(...)</pre>
+<p class="Pp"><b>raid5</b></p>
+<p class="Pp">Au moins trois sous-volumes logiques d'image (rimage) contiennent typiquement chacun une partie des données du volume logique (LV) et la parité. (Voir la section sur <b>raid5</b>) Chaque sous-volume logique de métadonnées (rmeta) contient les métadonnées RAID.</p>
+<pre># lvcreate --type raid5 --stripes 2 --name lvr5 ...
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr5            raid5  lvr5_rimage_0(0),\
+&#x00A0;                        lvr5_rimage_1(0),\
+&#x00A0;                        lvr5_rimage_2(0)
+&#x00A0; [lvr5_rimage_0] linéaire /dev/sda(...)
+&#x00A0; [lvr5_rimage_1] linéaire /dev/sdb(...)
+&#x00A0; [lvr5_rimage_2] linéaire /dev/sdc(...)
+&#x00A0; [lvr5_rmeta_0]  linéaire /dev/sda(...)
+&#x00A0; [lvr5_rmeta_1]  linéaire /dev/sdb(...)
+&#x00A0; [lvr5_rmeta_2]  linéaire /dev/sdc(...)</pre>
+<p class="Pp"><b>raid6</b></p>
+<p class="Pp">Au moins cinq sous-volumes logiques d'image (rimage) contiennent typiquement chacun une partie des données du volume logique (LV) et la parité. (Voir la section sur <b>raid6</b>) Chaque sous-volume logique de métadonnées (rmeta) contient les métadonnées RAID.</p>
+<pre># lvcreate --type raid6 --stripes 3 --name lvr6
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr6            raid6  lvr6_rimage_0(0),\
+&#x00A0;                        lvr6_rimage_1(0),\
+&#x00A0;                        lvr6_rimage_2(0),\
+&#x00A0;                        lvr6_rimage_3(0),\
+&#x00A0;                        lvr6_rimage_4(0),\
+&#x00A0;                        lvr6_rimage_5(0)
+&#x00A0; [lvr6_rimage_0] linéaire /dev/sda(...)
+&#x00A0; [lvr6_rimage_1] linéaire /dev/sdb(...)
+&#x00A0; [lvr6_rimage_2] linéaire /dev/sdc(...)
+&#x00A0; [lvr6_rimage_3] linéaire /dev/sdd(...)
+&#x00A0; [lvr6_rimage_4] linéaire /dev/sde(...)
+&#x00A0; [lvr6_rimage_5] linéaire /dev/sdf(...)
+&#x00A0; [lvr6_rmeta_0]  linéaire /dev/sda(...)
+&#x00A0; [lvr6_rmeta_1]  linéaire /dev/sdb(...)
+&#x00A0; [lvr6_rmeta_2]  linéaire /dev/sdc(...)
+&#x00A0; [lvr6_rmeta_3]  linéaire /dev/sdd(...)
+&#x00A0; [lvr6_rmeta_4]  linéaire /dev/sde(...)
+&#x00A0; [lvr6_rmeta_5]  linéaire /dev/sdf(...)</pre>
+<p class="Pp"><b>raid10</b></p>
+<p class="Pp">Au moins quatre sous-volumes logiques d'image (rimage) contiennent chacun une partie des données du volume logique (LV). Aucune parité n'est utilisée. Chaque sous-volume logique de métadonnées (rmeta) contient les métadonnées RAID.</p>
+<pre># lvcreate --type raid10 --stripes 2 --mirrors 1 --name lvr10
+
+# lvs -a -o name,segtype,devices
+&#x00A0; lvr10            raid10 lvr10_rimage_0(0),\
+&#x00A0;                         lvr10_rimage_1(0),\
+&#x00A0;                         lvr10_rimage_2(0),\
+&#x00A0;                         lvr10_rimage_3(0)
+&#x00A0; [lvr10_rimage_0] linéaire /dev/sda(...)
+&#x00A0; [lvr10_rimage_1] linéaire /dev/sdb(...)
+&#x00A0; [lvr10_rimage_2] linéaire /dev/sdc(...)
+&#x00A0; [lvr10_rimage_3] linéaire /dev/sdd(...)
+&#x00A0; [lvr10_rmeta_0]  linéaire /dev/sda(...)
+&#x00A0; [lvr10_rmeta_1]  linéaire /dev/sdb(...)
+&#x00A0; [lvr10_rmeta_2]  linéaire /dev/sdc(...)
+&#x00A0; [lvr10_rmeta_3]  linéaire /dev/sdd(...)</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEFAILLANCE_DE_PERIPHERIQUE'><a class='permalink' href='#DEFAILLANCE_DE_PERIPHERIQUE'>DEFAILLANCE   DE PERIPHERIQUE</a></h1>
+<p class="Pp">Les périphériques physiques d'un LV RAID peuvent tomber en panne ou
+    être perdus pour plusieurs raisons. Un périphérique peut être déconnecté,
+    définitivement défaillant ou temporairement déconnecté. Le but des LVs RAID
+    (niveaux 1 et supérieurs) est de continuer à fonctionner en mode dégradé,
+    sans perte de données du LV, même après la défaillance d'un périphérique. Le
+    nombre de périphériques qui peuvent tomber en panne sans perte de données
+    du LV dépend du niveau RAID :</p>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les LVs RAID0 (en bande) ne peuvent tolérer la perte d'aucun périphérique.
+      Les données du LV seront perdues si un quelconque périphérique tombe en
+      panne.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les LVs RAID1 peuvent tolérer la perte de tous les périphériques sauf un
+      sans perte de données du LV.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les LVs RAID4 et RAID5 peuvent tolérer la perte d'un périphérique sans perte
+      de données du LV.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Les LVs RAID6 peuvent tolérer la perte de deux périphériques sans perte de
+      données du LV.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID10 est variable et dépend des périphériques perdus. Il répartit sur
+      plusieurs groupes miroirs avec une disposition raid1, donc il peut tolérer
+      la perte de tous les périphériques sauf un dans chacun de ces groupes sans
+      perte de données du LV.</dd>
+</dl>
+<p class="Pp">Si un LV RAID a des périphériques manquants, ou s'il présente
+    d'autres problèmes liés aux périphériques, <a href='/man/lvs.8.en'>lvs(8)</a> le signale dans les
+    champs health_status (et attr) :</p>
+<pre># lvs -o name,lv_health_status</pre>
+<dl class="Bl-tag">
+  <dt id="partiel"><a class="permalink" href="#partiel"><b>partiel</b></a></dt>
+  <dd>Des périphériques sont manquants dans le LV. Ceci est également indiqué
+      par la lettre « p » (partial) à la 9ème position du champ attr de
+        <a href='/man/lvs.8.en'>lvs(8)</a>.</dd>
+  <dt id="actualisation"><a class="permalink" href="#actualisation"><b>actualisation
+    nécessaire</b></a></dt>
+  <dd>Un périphérique était temporairement manquant mais est revenu. Le LV doit
+      être actualisé pour utiliser à nouveau le périphérique (ce qui nécessitera
+      généralement une synchronisation partielle). Ceci est également indiqué par
+      la lettre « r » (refresh needed) à la 9ème position du champ attr de
+        <a href='/man/lvs.8.en'>lvs(8)</a>. Voir <b>Actualisation d'un LV</b>.
+    <br/>
+    Ceci pourrait également indiquer un problème avec le périphérique, auquel cas
+      il devrait être remplacé, voir <b>Remplacement des périphériques</b>.</dd>
+  <dt id="incompatibilites"><a class="permalink" href="#incompatibilites"><b>incompatibilités
+    existantes</b></a></dt>
+  <dd>Voir <b>Nettoyage (Scrubbing)</b>.</dd>
+</dl>
+<p class="Pp">La plupart des commandes afficheront également un avertissement si
+    un périphérique est manquant, par ex.</p>
+<pre>AVERTISSEMENT : Périphérique pour PV uItL3Z-wBME-DQy0-... introuvable ou rejeté ...</pre>
+<p class="Pp">Cet avertissement disparaîtra si le périphérique revient ou est
+    retiré du VG.
+  <br/>
+  (Voir <a href='/man/vgreduce.8.en'>vgreduce(8)</a> <b>--removemissing</b>).</p>
+<section class="Ss">
+<h2 class="Ss" id='Activation_d_un_LV_avec_des_périphériques_manquants'><a class='permalink' href='#Activation_d_un_LV_avec_des_périphériques_manquants'>Activation   d'un LV avec des périphériques manquants</a></h2>
+<p class="Pp">Un LV RAID auquel il manque des périphériques peut être activé ou
+    non, en fonction du « mode d'activation » utilisé dans lvchange :</p>
+<p class="Pp"><b>lvchange -ay --activationmode</b>
+    <b>complete</b>|<b>degraded</b>|<b>partial</b> <i>LV</i></p>
+<dl class="Bl-tag">
+  <dt id="complet"><a class="permalink" href="#complet"><b>complete</b></a></dt>
+  <dd>Le LV n'est activé que si tous les périphériques sont présents.</dd>
+  <dt id="degrade"><a class="permalink" href="#degrade"><b>degraded</b></a></dt>
+  <dd>Le LV est activé avec des périphériques manquants si le niveau RAID peut
+      tolérer le nombre de périphériques manquants sans perte de données du LV.</dd>
+  <dt id="partiel~2"><a class="permalink" href="#partiel~2"><b>partial</b></a></dt>
+  <dd>Le LV est toujours activé, même si des parties des données du LV sont
+      manquantes en raison du(des) périphérique(s) manquant(s). Ceci ne devrait
+      être utilisé que pour effectuer des opérations de récupération ou de
+      réparation extrêmes.</dd>
+</dl>
+<p class="Pp">Mode d'activation par défaut lorsqu'il n'est pas spécifié par la
+    commande :
+  <br/>
+  <a href='/man/lvm.conf.5.en'>lvm.conf(5)</a> <b>activation/activation_mode</b></p>
+<p class="Pp">La valeur par défaut est affichée par :</p>
+<pre># lvmconfig --type default activation/activation_mode</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Remplacement_des_périphériques'><a class='permalink' href='#Remplacement_des_périphériques'>Remplacement   des périphériques</a></h2>
+<p class="Pp">Les périphériques d'un LV RAID peuvent être remplacés par d'autres
+    périphériques du VG. Lors du remplacement de périphériques qui ne sont plus
+    visibles sur le système, utilisez lvconvert --repair. Lors du remplacement de
+    périphériques encore visibles, utilisez lvconvert --replace. La commande de
+    remplacement peut être répétée pour remplacer plusieurs PV. Les périphériques
+    de remplacement peuvent être listés optionnellement avec l'une ou l'autre
+    option.</p>
+<p class="Pp"><b>lvconvert --repair</b> <i>LV</i> [<i>NouveauxPVs</i>]</p>
+<p class="Pp"><b>lvconvert --replace</b> <i>AncienPV</i> <i>LV</i>
+  [<i>NouveauPV</i>]</p>
+<p class="Pp"><b>lvconvert</b> <b>--replace</b>&#x00A0;<i>AncienPV1</i>
+    <b>--replace</b>&#x00A0;<i>AncienPV2</i> ... <i>LV</i> [<i>NouveauxPVs</i>]</p>
+<p class="Pp">Les nouveaux périphériques nécessitent une synchronisation avec les
+    périphériques existants.
+  <br/>
+  Voir <b>Synchronisation</b>.</p>
+<p class="Pp">Si l'intégrité est utilisée, elle devra être désactivée avant que les
+    commandes de réparation/remplacement puissent être utilisées (lvconvert
+    --raidintegrity n). L'intégrité pourra être réactivée par la suite
+    (lvconvert --raidintegrity y).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Actualisation_d_un_LV'><a class='permalink' href='#Actualisation_d_un_LV'>Actualisation   d'un LV</a></h2>
+<p class="Pp">L'actualisation d'un LV RAID efface toute défaillance transitoire de
+    périphérique (périphérique déconnecté temporairement) et ramène le LV à son
+    mode entièrement redondant. La restauration d'un périphérique nécessitera
+    généralement au moins une synchronisation partielle (Voir <b>Synchronisation</b>).
+    Si l'on ne parvient pas à effacer une défaillance transitoire, le LV RAID
+    fonctionnera en mode dégradé jusqu'à sa réactivation. Utilisez la commande
+    lvchange pour actualiser un LV :</p>
+<p class="Pp"><b>lvchange --refresh</b> <i>LV</i></p>
+<pre># lvs -o name,vgname,segtype,attr,size vg
+&#x00A0; LV   VG Type  Attr       LSize
+&#x00A0; lv   vg raid1 Rwi-a-r-r- 100.00g</pre>
+<pre># lvchange --refresh vg/lv</pre>
+<pre># lvs -o name,vgname,segtype,attr,size vg
+&#x00A0; LV   VG Type  Attr       LSize
+&#x00A0; lv   vg raid1 Rwi-a-r--- 100.00g</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Réparation_automatique'><a class='permalink' href='#Réparation_automatique'>Réparation   automatique</a></h2>
+<p class="Pp">Si un périphérique d'un LV RAID tombe en panne, le device-mapper du
+    noyau notifie le processus de surveillance <a href='/man/dmeventd.8.en'>dmeventd(8)</a> (Voir
+      <b>Surveillance</b>). dmeventd peut être configuré pour réagir
+    automatiquement en utilisant :
+  <br/>
+  <a href='/man/lvm.conf.5.en'>lvm.conf(5)</a> <b>activation/raid_fault_policy</b></p>
+<p class="Pp">Les paramètres possibles sont :</p>
+<dl class="Bl-tag">
+  <dt id="avertissement"><a class="permalink" href="#avertissement"><b>warn</b></a></dt>
+  <dd>Un avertissement est ajouté au journal système indiquant qu'un
+      périphérique est défaillant dans le LV RAID. Il appartient à l'utilisateur
+      de réparer le LV, par exemple en remplaçant les périphériques défaillants.</dd>
+  <dt id="allocation"><a class="permalink" href="#allocation"><b>allocate</b></a></dt>
+  <dd>dmeventd tente automatiquement de réparer le LV en utilisant des
+      périphériques de secours dans le VG. Notez que même une défaillance
+      transitoire est traitée comme une défaillance permanente dans ce paramètre.
+      Un nouveau périphérique est alloué et une synchronisation complète est
+      initiée.</dd>
+</dl>
+<p class="Pp">La commande spécifique exécutée par <a href='/man/dmeventd.8.en'>dmeventd(8)</a> pour
+    avertir ou réparer est :
+  <br/>
+  <b>lvconvert --repair --use-policies</b> <i>LV</i></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Données_corrompues'><a class='permalink' href='#Données_corrompues'>Données   corrompues</a></h2>
+<p class="Pp">Les données sur un périphérique peuvent être corrompues en raison
+    d'erreurs matérielles sans que le périphérique ne soit jamais déconnecté ou
+    qu'il y ait un défaut dans le logiciel. Ceci devrait être rare et peut être
+    détecté (Voir <b>Nettoyage (Scrubbing)</b>).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Reconstruire_des_PV_spécifiques'><a class='permalink' href='#Reconstruire_des_PV_spécifiques'>Reconstruire   des PV spécifiques</a></h2>
+<p class="Pp">Si des PV spécifiques dans un LV RAID sont connus pour contenir des
+    données corrompues, le</p>
+data on those PVs can be reconstructed with:</p>
+<p class="Pp"><b>lvchange --rebuild</b> <i>PV</i> <i>LV</i></p>
+<p class="Pp">The rebuild option can be repeated with different PVs to replace
+    the data on multiple PVs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Reactivating_arrays_after_temporary_device_loss'><a class='permalink' href='#Reactivating_arrays_after_temporary_device_loss'>Réactivation des grappes après perte temporaire de périphérique</a></h2>
+<p class="Pp">Lorsqu'une grappe RAID perd un nombre critique de périphériques, ce qui l'empêche de fonctionner de manière fiable, la grappe s'arrête et nécessite une réparation.</p>
+<p class="Pp">Lancez le processus de réparation avec cette commande :</p>
+<p class="Pp"><b>lvconvert --repair</b> <i>LV</i></p>
+<p class="Pp">Si les périphériques précédemment indisponibles redeviennent accessibles, ce processus de réparation mettra à jour leurs métadonnées et la grappe RAID pourra être réactivée.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DATA_INTEGRITY'><a class='permalink' href='#DATA_INTEGRITY'>INTÉGRITÉ DES DONNÉES</a></h1>
+<p class="Pp">La cible d'intégrité du device mapper peut être utilisée en combinaison avec les niveaux RAID 1,4,5,6,10 pour détecter et corriger la corruption des données dans les images RAID. Une couche dm-integrity est placée au-dessus de chaque image RAID, et un sous-LV supplémentaire est créé pour contenir les métadonnées d'intégrité (sommes de contrôle des données) pour chaque image RAID. Lorsque des données sont lues à partir d'une image, les sommes de contrôle d'intégrité sont utilisées pour détecter la corruption. Si elle est détectée, dm-raid lit les données d'une autre image (bonne) pour les renvoyer à l'appelant. dm-raid écrira également automatiquement les données correctes dans l'image contenant les données incorrectes pour corriger la corruption.</p>
+<p class="Pp">Lors de la création d'un LV RAID avec intégrité, ou de l'ajout d'intégrité, de l'espace est requis pour les métadonnées d'intégrité. Tous les 500 Mo de données LV nécessitent 4 Mo supplémentaires à allouer pour les métadonnées d'intégrité, pour chaque image RAID.</p>
+<p class="Pp">Créez un LV RAID avec intégrité :</p>
+<p class="Pp"><b>lvcreate --type raidN --raidintegrity y</b></p>
+<p class="Pp">Ajoutez de l'intégrité à un LV RAID existant :</p>
+<p class="Pp"><b>lvconvert --raidintegrity y</b> <i>LV</i></p>
+<p class="Pp">Supprimez l'intégrité d'un LV RAID :</p>
+<p class="Pp"><b>lvconvert --raidintegrity n</b> <i>LV</i></p>
+<section class="Ss">
+<h2 class="Ss" id='Integrity_options'><a class='permalink' href='#Integrity_options'>Options d'intégrité</a></h2>
+<dl class="Bl-tag">
+  <dt id="raidintegritymode"><a class="permalink" href="#raidintegritymode"><b>--raidintegritymode</b>
+    <b>journal</b>|<b>bitmap</b></a></dt>
+  <dd>Utilisez un journal (par défaut) ou une bitmap pour maintenir la cohérence des sommes de contrôle d'intégrité en cas de crash. Les zones de bitmap sont recalculées après un crash, donc la corruption dans ces zones ne serait pas détectée. Un journal n'a pas ce problème. Le mode journal double les écritures sur le stockage, mais peut améliorer les performances pour les écritures dispersées regroupées en une seule écriture de journal. Le mode bitmap peut en théorie atteindre le débit d'écriture complet du périphérique, mais ne bénéficierait pas de l'optimisation potentielle des écritures dispersées.</dd>
+  <dt id="raidintegrityblocksize"><a class="permalink" href="#raidintegrityblocksize"><b>--raidintegrityblocksize</b>
+    <b>512</b>|<b>1024</b>|<b>2048</b>|<b>4096</b></a></dt>
+  <dd>La taille de bloc à utiliser pour dm-integrity sur les images RAID. La taille de bloc d'intégrité doit généralement correspondre à la taille de bloc logique du périphérique, ou aux tailles de secteur/bloc du système de fichiers. Elle peut être inférieure à la taille de secteur/bloc du système de fichiers, mais pas inférieure à la taille de bloc logique du périphérique. Valeurs possibles : 512, 1024, 2048, 4096.</dd>
+  <dt id="integritysettings"><a class="permalink" href="#integritysettings"><b>--integritysettings</b>
+    <b>key=val</b></a></dt>
+  <dd>Les options ajustables du noyau dm-integrity peuvent être spécifiées ici. Les paramètres peuvent être inclus avec lvcreate ou lvconvert lors de l'activation initiale de l'intégrité, ou modifiés avec lvchange sur un LV inactif existant. Consultez la documentation du noyau pour les descriptions des options ajustables. Répétez l'option pour définir plusieurs valeurs. Utilisez lvs -a -o integritysettings VG/LV_rimage_N pour afficher les valeurs configurées. Utilisez lvchange --integritysettings &quot;&quot; pour effacer toutes les valeurs configurées (dm-integrity utilisera ses valeurs par défaut.)</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Integrity_initialization'><a class='permalink' href='#Integrity_initialization'>Initialisation de l'intégrité</a></h2>
+<p class="Pp">Lorsque l'intégrité est ajoutée à un LV, le noyau doit initialiser les métadonnées d'intégrité (sommes de contrôle crc32) pour tous les blocs du LV. La vérification de la corruption des données effectuée par dm-integrity ne s'appliquera qu'aux zones du LV qui sont déjà initialisées. La progression de l'initialisation de l'intégrité est signalée par le champ de rapport LV « syncpercent » (et sous la colonne Cpy%Sync de <a href='/man/lvs.8.en'>lvs(8)</a>).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Integrity_limitations'><a class='permalink' href='#Integrity_limitations'>Limitations de l'intégrité</a></h2>
+<p class="Pp">Pour contourner certaines limitations, il est possible de supprimer l'intégrité du LV, d'apporter la modification, puis de rajouter l'intégrité. (Les métadonnées d'intégrité devraient être initialisées lors de leur réajout.)</p>
+<p class="Pp">LVM doit pouvoir allouer le sous-LV de métadonnées d'intégrité sur un seul PV déjà utilisé par l'image RAID associée. Cela peut potentiellement poser un problème lors de l'extension de LV si le PV d'origine contenant l'image et les métadonnées d'intégrité est plein. Pour contourner cette limitation, supprimez l'intégrité, étendez le LV, puis ajoutez à nouveau l'intégrité.</p>
+<p class="Pp">Des images RAID supplémentaires peuvent être ajoutées aux LV raid1, mais pas aux autres niveaux RAID.</p>
+<p class="Pp">Un LV raid1 avec intégrité ne peut pas être converti en linéaire (supprimez l'intégrité pour le faire.)</p>
+<p class="Pp">Les LV RAID avec intégrité ne peuvent pas encore être utilisés comme sous-LV avec d'autres types de LV.</p>
+<p class="Pp">Les opérations suivantes ne sont pas encore autorisées sur les LV RAID avec intégrité : lvreduce, pvmove, lvconvert --splitmirrors, lvchange --rebuild.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RAID1_TUNING'><a class='permalink' href='#RAID1_TUNING'>RÉGLAGE FIN RAID1</a></h1>
+<p class="Pp">Un LV RAID1 peut être configuré de manière à ce que certains périphériques soient évités pour la lecture, tout en continuant à écrire sur tous les périphériques.</p>
+<p class="Pp"><b>lvchange --</b>[<b>raid</b>]<b>writemostly</b>
+    <i>PV</i>[<b>:y</b>|<b>n</b>|<b>t</b>] <i>LV</i></p>
+<p class="Pp">Le périphérique spécifié sera marqué comme « write mostly » (priorité à l'écriture), ce qui signifie que la lecture de ce périphérique sera évitée, et d'autres périphériques seront préférés pour la lecture (sauf si aucun autre périphérique n'est disponible). Cela minimise les E/S vers le périphérique spécifié.</p>
+<p class="Pp">Si le nom du PV n'a pas de suffixe, l'attribut write mostly est défini. Si le nom du PV a le suffixe <b>:n</b>, l'attribut write mostly est effacé, et le suffixe <b>:t</b> bascule l'état actuel.</p>
+<p class="Pp">L'option write mostly peut être répétée sur la ligne de commande pour modifier plusieurs périphériques à la fois.</p>
+<p class="Pp">Pour afficher le paramètre write mostly actuel, le champ attr de <a href='/man/lvs.8.en'>lvs(8)</a> affichera la lettre « w » en 9ème position lorsque write mostly est défini :</p>
+<p class="Pp"><b>lvs -a -o name,attr</b></p>
+<p class="Pp">Lorsqu'un périphérique est marqué comme write mostly, le nombre maximal d'écritures en attente vers ce périphérique peut être configuré. Une fois le maximum atteint, les écritures ultérieures deviennent synchrones. En mode synchrone, une écriture sur le LV ne sera pas terminée tant que les écritures sur toutes les images miroir ne seront pas terminées.</p>
+<p class="Pp"><b>lvchange --</b>[<b>raid</b>]<b>writebehind</b>
+    <i>Nombre</i> <i>LV</i></p>
+<p class="Pp">Pour afficher le paramètre write behind actuel, exécutez :</p>
+<p class="Pp"><b>lvs -o name,raid_write_behind</b></p>
+<p class="Pp">Lorsque write behind n'est pas configuré, ou est défini sur 0, toutes les écritures LV sont synchrones.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RAID_TAKEOVER'><a class='permalink' href='#RAID_TAKEOVER'>PRISE EN CHARGE RAID</a></h1>
+<p class="Pp">La prise en charge RAID consiste à convertir un LV RAID d'un niveau RAID à un autre, par exemple de raid5 à raid6. La modification du niveau RAID est généralement effectuée pour augmenter ou diminuer la résilience aux échecs de périphériques ou pour restriper les LV. Ceci est fait à l'aide de lvconvert en spécifiant le nouveau niveau RAID comme type de LV :</p>
+<p class="Pp"><b>lvconvert --type</b> <i>RaidLevel</i> <i>LV</i>
+    [<i>PVs</i>]</p>
+<p class="Pp">Les conversions de prise en charge RAID les plus courantes et recommandées sont :</p>
+<dl class="Bl-tag">
+  <dt id="linear"><a class="permalink" href="#linear"><b>linéaire</b> à
+    <b>raid1</b></a></dt>
+  <dd>Linéaire est une seule image des données LV, et sa conversion en raid1 ajoute une image miroir qui est une copie directe de l'image linéaire d'origine.</dd>
+  <dt id="striped"><a class="permalink" href="#striped"><b>stripé</b>/<b>raid0</b>
+    à <b>raid4</b>/<b>5</b>/<b>6</b></a></dt>
+  <dd>L'ajout de périphériques de parité à un volume stripé aboutit à raid4/5/6.</dd>
+</dl>
+<p class="Pp">Les conversions non naturelles qui ne sont pas recommandées incluent la conversion entre types stripés et non stripés. En effet, les systèmes de fichiers optimisent souvent les modèles d'E/S en fonction des valeurs de striping des périphériques. Si ces valeurs changent, cela peut réduire les performances.</p>
+<p class="Pp">La conversion vers un niveau RAID supérieur nécessite d'allouer de nouveaux sous-LV pour contenir les métadonnées RAID, et de nouveaux sous-LV pour contenir les blocs de parité des données LV. La conversion vers un niveau RAID inférieur supprime les sous-LV qui ne sont plus nécessaires.</p>
+<p class="Pp">La conversion nécessite souvent une synchronisation complète du LV RAID (voir <b>Synchronisation</b>). La conversion vers RAID1 nécessite la copie de tous les blocs de données LV vers N nouvelles images sur de nouveaux périphériques. La conversion vers un niveau RAID de parité nécessite la lecture de tous les blocs de données LV, le calcul de la parité et l'écriture des nouveaux blocs de parité. La synchronisation peut prendre beaucoup de temps en fonction du débit des périphériques utilisés et de la taille du RaidLV. Elle peut dégrader les performances. Les contrôles de débit s'appliquent également à la conversion ; voir
+    <b>--minrecoveryrate</b> et <b>--maxrecoveryrate</b>.</p>
+<p class="Pp">Attention : bien qu'il soit possible de créer des LV <b>stripés</b> avec jusqu'à 128 bandes, un maximum de 64 bandes peuvent être converties en <b>raid0</b>, 63 en <b>raid4/5</b> et 62 en <b>raid6</b> en raison des sous-LV de parité ajoutés. Un LV <b>stripé</b> avec un maximum de 32 bandes peut être converti en
+    <b>raid10</b>.</p>
+<p class="Pp">Les conversions de prise en charge suivantes sont actuellement possibles :</p>
+<p class="Pp"><b><br/>
+</b></p>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé et raid0.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre linéaire et raid1.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre miroir et raid1.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre raid1 avec deux images et raid4/5.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé/raid0 et raid4.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé/raid0 et raid5.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé/raid0 et raid6.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre raid4 et raid5.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre raid4/raid5 et raid6.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé/raid0 et raid10.</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>entre stripé et raid4.</dd>
+</dl>
+<section class="Ss">
+<h2 class="Ss" id='Indirect_conversions'><a class='permalink' href='#Indirect_conversions'>Conversions indirectes</a></h2>
+<p class="Pp">La conversion d'un niveau RAID à un autre peut nécessiter plusieurs étapes, en passant d'abord par des niveaux RAID intermédiaires.</p>
+<p class="Pp"><b>linéaire</b> à <b>raid6</b></p>
+<p class="Pp">Pour convertir un LV de linéaire à raid6 :</p>
+<p class="Pp">1. convertir en raid1 avec deux images</p>
+<p class="Pp">2. convertir en raid5 (interne raid5_ls) avec deux images</p>
+<p class="Pp">3. convertir en raid5 avec trois bandes ou plus</p>
+(reshape)
+  <br/>
+  4. convertir en raid6 (interne raid6_ls_6)
+  <br/>
+  5. convertir en raid6 (interne raid6_zr, reshape)</p>
+<p class="Pp">Les commandes pour effectuer les étapes ci-dessus sont :
+  <br/>
+  1. lvconvert --type raid1 --mirrors 1 LV
+  <br/>
+  2. lvconvert --type raid5 LV
+  <br/>
+  3. lvconvert --stripes 3 LV
+  <br/>
+  4. lvconvert --type raid6 LV
+  <br/>
+  5. lvconvert --type raid6 LV</p>
+<p class="Pp">La conversion finale de raid6_ls_6 vers raid6_zr est effectuée pour éviter
+    la réduction potentielle des performances d'écriture/récupération dans raid6_ls_6 en raison
+    du périphérique de parité dédié. raid6_zr fait pivoter les blocs de données et de parité pour éviter cela.</p>
+<p class="Pp"><b>linéaire</b> vers <b>stripé</b></p>
+<p class="Pp">Pour convertir un LV de linéaire vers stripé :
+  <br/>
+  1. convertir en raid1 avec deux images
+  <br/>
+  2. convertir en raid5_n
+  <br/>
+  3. convertir en raid5_n avec cinq bandes de 128k (reshape)
+  <br/>
+  4. convertir raid5_n en stripé</p>
+<p class="Pp">Les commandes pour effectuer les étapes ci-dessus sont :
+  <br/>
+  1. lvconvert --type raid1 --mirrors 1 LV
+  <br/>
+  2. lvconvert --type raid5_n LV
+  <br/>
+  3. lvconvert --stripes 5 --stripesize 128k LV
+  <br/>
+  4. lvconvert --type striped LV</p>
+<p class="Pp">Le type raid5_n à l'étape 2 est utilisé car il dispose de SubLVs de parité dédiés à la fin,
+    et peut être converti directement en stripé. La taille de bande est augmentée à l'étape 3 pour ajouter de l'espace supplémentaire pour le processus de conversion. Cette étape augmente la taille du LV d'un facteur cinq. Après conversion, cet espace supplémentaire peut être réduit (ou utilisé pour agrandir le système de fichiers en utilisant le LV).</p>
+<p class="Pp">L'inversion de ces étapes convertira un LV stripé en linéaire.</p>
+<p class="Pp"><b>raid6</b> vers <b>stripé</b></p>
+<p class="Pp">Pour convertir un LV de raid6_nr en stripé :
+  <br/>
+  1. convertir en raid6_n_6
+  <br/>
+  2. convertir en stripé</p>
+<p class="Pp">Les commandes pour effectuer les étapes ci-dessus sont :
+  <br/>
+  1. lvconvert --type raid6_n_6 LV
+  <br/>
+  2. lvconvert --type striped LV</p>
+<p class="Pp"><i>Exemples</i></p>
+<p class="Pp">Conversion d'un LV de <b>linéaire</b> vers <b>raid1</b>.</p>
+<pre># lvs -a -o name,segtype,size vg
+&#x00A0; LV   Type   LSize
+&#x00A0; lv   linear 300.00g</pre>
+<pre># lvconvert --type raid1 --mirrors 1 vg/lv</pre>
+<pre># lvs -a -o name,segtype,size vg
+&#x00A0; LV            Type   LSize
+&#x00A0; lv            raid1  300.00g
+&#x00A0; [lv_rimage_0] linear 300.00g
+&#x00A0; [lv_rimage_1] linear 300.00g
+&#x00A0; [lv_rmeta_0]  linear   3.00m
+&#x00A0; [lv_rmeta_1]  linear   3.00m</pre>
+<p class="Pp">Conversion d'un LV de <b>miroir</b> vers <b>raid1</b>.</p>
+<pre># lvs -a -o name,segtype,size vg
+&#x00A0; LV            Type   LSize
+&#x00A0; lv            mirror 100.00g
+&#x00A0; [lv_mimage_0] linear 100.00g
+&#x00A0; [lv_mimage_1] linear 100.00g
+&#x00A0; [lv_mlog]     linear   3.00m</pre>
+<pre># lvconvert --type raid1 vg/lv</pre>
+<pre># lvs -a -o name,segtype,size vg
+&#x00A0; LV            Type   LSize
+&#x00A0; lv            raid1  100.00g
+&#x00A0; [lv_rimage_0] linear 100.00g
+&#x00A0; [lv_rimage_1] linear 100.00g
+&#x00A0; [lv_rmeta_0]  linear   3.00m
+&#x00A0; [lv_rmeta_1]  linear   3.00m</pre>
+<p class="Pp">Conversion d'un LV de <b>linéaire</b> vers <b>raid1</b> (avec 3
+    images).</p>
+<pre># lvconvert --type raid1 --mirrors 2 vg/lv</pre>
+<p class="Pp">Conversion d'un LV de <b>stripé</b> (avec 4 bandes) vers
+    <b>raid6_n_6</b>.</p>
+<pre># lvcreate --stripes 4 -L64M -n lv vg</pre>
+<pre># lvconvert --type raid6 vg/lv</pre>
+<pre># lvs -a -o lv_name,segtype,sync_percent,data_copies
+&#x00A0; LV            Type      Cpy%Sync #Cpy
+&#x00A0; lv            raid6_n_6 100.00      3
+&#x00A0; [lv_rimage_0] linear
+&#x00A0; [lv_rimage_1] linear
+&#x00A0; [lv_rimage_2] linear
+&#x00A0; [lv_rimage_3] linear
+&#x00A0; [lv_rimage_4] linear
+&#x00A0; [lv_rimage_5] linear
+&#x00A0; [lv_rmeta_0]  linear
+&#x00A0; [lv_rmeta_1]  linear
+&#x00A0; [lv_rmeta_2]  linear
+&#x00A0; [lv_rmeta_3]  linear
+&#x00A0; [lv_rmeta_4]  linear
+&#x00A0; [lv_rmeta_5]  linear</pre>
+<p class="Pp">Cette conversion commence par allouer des MetaLVs (rmeta_#) pour chacun
+    des périphériques de bande existants. Elle crée ensuite 2 paires supplémentaires MetaLV/DataLV (rmeta_#/rimage_#) pour la parité raid6 dédiée.</p>
+<p class="Pp">Si la rotation des données/parité est requise, comme avec raid6_nr,
+    elle doit être effectuée par reshape (voir ci-dessous).</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RAID_RESHAPING'><a class='permalink' href='#RAID_RESHAPING'>RESHAPING RAID</a></h1>
+<p class="Pp">Le reshaping RAID consiste à modifier les attributs d'un LV RAID tout en conservant le même niveau RAID. Cela inclut la modification de la disposition RAID, de la taille de bande ou du nombre de bandes.</p>
+<p class="Pp">Lors de la modification de la disposition RAID ou de la taille de bande, aucun nouveau SubLV (MetaLV ou DataLV) n'a besoin d'être alloué, mais les DataLV sont étendus d'une petite quantité (généralement 1 extent). L'espace supplémentaire permet de mettre à jour en toute sécurité les blocs d'une bande, et de ne pas les corrompre en cas de crash. Si un crash survient, le reshaping peut simplement être redémarré.</p>
+<p class="Pp">(Si les blocs d'une bande étaient mis à jour sur place, un crash pourrait les laisser partiellement mis à jour et corrompus. Au lieu de cela, une bande existante est mise en veille, lue, modifiée dans sa disposition, et la nouvelle bande est écrite dans un espace libre. Une fois cela fait, la nouvelle bande est déverrouillée et utilisée.)</p>
+<p class="Pp"><i>Exemples</i></p>
+<p class="Pp">(La sortie de commande montrée dans les exemples peut changer.)</p>
+<p class="Pp">Conversion de raid6_n_6 en raid6_nr avec rotation des données/parité.</p>
+<p class="Pp">Cette conversion fait naturellement suite à une conversion précédente de stripé/raid0 vers raid6_n_6 (montrée ci-dessus). Elle complète la transition vers un RAID6 plus traditionnel.</p>
+<pre># lvs -o lv_name,segtype,sync_percent,data_copies
+&#x00A0; LV            Type      Cpy%Sync #Cpy
+&#x00A0; lv            raid6_n_6 100.00      3
+&#x00A0; [lv_rimage_0] linear
+&#x00A0; [lv_rimage_1] linear
+&#x00A0; [lv_rimage_2] linear
+&#x00A0; [lv_rimage_3] linear
+&#x00A0; [lv_rimage_4] linear
+&#x00A0; [lv_rimage_5] linear
+&#x00A0; [lv_rmeta_0]  linear
+&#x00A0; [lv_rmeta_1]  linear
+&#x00A0; [lv_rmeta_2]  linear
+&#x00A0; [lv_rmeta_3]  linear
+&#x00A0; [lv_rmeta_4]  linear
+&#x00A0; [lv_rmeta_5]  linear</pre>
+<pre># lvconvert --type raid6_nr vg/lv</pre>
+<pre># lvs -a -o lv_name,segtype,sync_percent,data_copies
+&#x00A0; LV            Type     Cpy%Sync #Cpy
+&#x00A0; lv            raid6_nr 100.00      3
+&#x00A0; [lv_rimage_0] linear
+&#x00A0; [lv_rimage_0] linear
+&#x00A0; [lv_rimage_1] linear
+&#x00A0; [lv_rimage_1] linear
+&#x00A0; [lv_rimage_2] linear
+&#x00A0; [lv_rimage_2] linear
+&#x00A0; [lv_rimage_3] linear
+&#x00A0; [lv_rimage_3] linear
+&#x00A0; [lv_rimage_4] linear
+&#x00A0; [lv_rimage_5] linear
+&#x00A0; [lv_rmeta_0]  linear
+&#x00A0; [lv_rmeta_1]  linear
+&#x00A0; [lv_rmeta_2]  linear
+&#x00A0; [lv_rmeta_3]  linear
+&#x00A0; [lv_rmeta_4]  linear
+&#x00A0; [lv_rmeta_5]  linear</pre>
+<p class="Pp">Les DataLVs sont plus grands (segment supplémentaire dans chacun) ce qui fournit de l'espace pour le reshaping hors place. Le résultat est :</p>
+<pre># lvs -a -o lv_name,segtype,seg_pe_ranges,dataoffset
+&#x00A0; LV            Type     PE Ranges          DOff
+&#x00A0; lv            raid6_nr lv_rimage_0:0-32 \
+&#x00A0;                        lv_rimage_1:0-32 \
+&#x00A0;                        lv_rimage_2:0-32 \
+&#x00A0;                        lv_rimage_3:0-32
+&#x00A0; [lv_rimage_0] linear   /dev/sda:0-31      2048
+&#x00A0; [lv_rimage_0] linear   /dev/sda:33-33
+&#x00A0; [lv_rimage_1] linear   /dev/sdaa:0-31     2048
+&#x00A0; [lv_rimage_1] linear   /dev/sdaa:33-33
+&#x00A0; [lv_rimage_2] linear   /dev/sdab:1-33     2048
+&#x00A0; [lv_rimage_3] linear   /dev/sdac:1-33     2048
+&#x00A0; [lv_rmeta_0]  linear   /dev/sda:32-32
+&#x00A0; [lv_rmeta_1]  linear   /dev/sdaa:32-32
+&#x00A0; [lv_rmeta_2]  linear   /dev/sdab:0-0
+&#x00A0; [lv_rmeta_3]  linear   /dev/sdac:0-0</pre>
+<p class="Pp">Tous les segments avec des plages PE '33-33' fournissent l'espace de reshaping hors place. La colonne dataoffset montre que les données ont été déplacées de l'offset initial 0 à 2048 secteurs sur chaque DataLV composant.</p>
+<p class="Pp">Pour des raisons de performance, le RaidLV raid6_nr peut être restripé.
+    Convertissez-le de stripé en 3 voies vers stripé en 5 voies.</p>
+<pre># lvconvert --stripes 5 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : L'ajout de bandes à un volume logique actif vg/lv va
+&#x00A0; l'agrandir de 99 à 165 extents !
+&#x00A0; Exécutez "lvresize -l99 vg/lv" pour le réduire ou utilisez la capacité
+&#x00A0; supplémentaire.
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs vg/lv
+&#x00A0; LV   VG     Attr       LSize   Cpy%Sync
+&#x00A0; lv   vg     rwi-a-r-s- 652.00m 52.94</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : Supprimer des bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Les bandes peuvent également être supprimées de raid5 et raid6. Convertir le LV raid6_nr stripé en 5 voies vers stripé en 4 voies. L'option force doit être utilisée, car la suppression de bandes (c'est-à-dire de SubLVs d'image) d'un RaidLV rétrécira sa taille.</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut de 64.00 KiB.
+&#x00A0; ATTENTION : La suppression de bandes d'un volume logique actif vg/lv va
+&#x00A0; le réduire de 660.00 MiB à 528.00 MiB !
+&#x00A0; CECI PEUT DETRUIRE (DES PARTIES DE) VOS DONNEES !
+&#x00A0; Si cela laisse le volume logique plus grand que 206 extents en raison
+&#x00A0; de l'arrondi des bandes,
+&#x00A0; vous pourriez vouloir agrandir le contenu par la suite (système de fichiers, etc.)
+&#x00A0; ATTENTION : pour supprimer les bandes libérées une fois la conversion terminée,
+&#x00A0; vous devez exécuter "lvconvert --stripes 4 vg/lv"
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r-s- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33 \
+&#x00A0;                                   lv_rimage_6:0-33   0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:0-32      0
+&#x00A0; [lv_rimage_0] Iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:0-32     0
+&#x00A0; [lv_rimage_1] Iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:0-32     0
+&#x00A0; [lv_rimage_2] Iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] Iwi-aor--- linear   /dev/sdac:1-34     0
+&#x00A0; [lv_rimage_4] Iwi-aor--- linear   /dev/sdad:1-34     0
+&#x00A0; [lv_rimage_5] Iwi-aor--- linear   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor--- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear   /dev/sdaf:0-0</pre>
+near   /dev/sdae:1-34     0
+&#x00A0; [lv_rimage_6] Iwi-aor-R- linear   /dev/sdaf:1-34     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor-R- linear   /dev/sdaf:0-0</pre>
+<p class="Pp">Le 's' dans la colonne 9 du champ d'attributs indique que le RaidLV
+    est en cours de remodelage. Le 'R' dans la même colonne du champ d'attributs
+    indique les sous-LVs d'image libérés qui devront être supprimés une fois le
+    remodelage terminé.</p>
+<pre># lvs -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV   Attr       Type     PE Ranges          DOff
+&#x00A0; lv   rwi-a-r-R- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                          lv_rimage_1:0-33 \
+&#x00A0;                          lv_rimage_2:0-33 ... \
+&#x00A0;                          lv_rimage_5:0-33 \
+&#x00A0;                          lv_rimage_6:0-33   8192</pre>
+<p class="Pp">Maintenant que le remodelage est terminé, l'attribut 'R' sur le
+    RaidLV indique que les images peuvent être supprimées.</p>
+<pre># lvs -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV   Attr       Type     PE Ranges          DOff
+&#x00A0; lv   rwi-a-r-R- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                          lv_rimage_1:0-33 \
+&#x00A0;                          lv_rimage_2:0-33 ... \
+&#x00A0;                          lv_rimage_5:0-33 \
+&#x00A0;                          lv_rimage_6:0-33   8192</pre>
+<p class="Pp">Ceci est réalisé en répétant la commande ("lvconvert --stripes 4
+    vg/lv" serait suffisant).</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut 64.00&#x00A0;KiB.
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV            Attr       Type     PE Ranges          DOff
+&#x00A0; lv            rwi-a-r--- raid6_nr lv_rimage_0:0-33 \
+&#x00A0;                                   lv_rimage_1:0-33 \
+&#x00A0;                                   lv_rimage_2:0-33 ... \
+&#x00A0;                                   lv_rimage_5:0-33   8192
+&#x00A0; [lv_rimage_0] iwi-aor--- linear   /dev/sda:0-32      8192
+&#x00A0; [lv_rimage_0] iwi-aor--- linear   /dev/sda:34-34
+&#x00A0; [lv_rimage_1] iwi-aor--- linear   /dev/sdaa:0-32     8192
+&#x00A0; [lv_rimage_1] iwi-aor--- linear   /dev/sdaa:34-34
+&#x00A0; [lv_rimage_2] iwi-aor--- linear   /dev/sdab:0-32     8192
+&#x00A0; [lv_rimage_2] iwi-aor--- linear   /dev/sdab:34-34
+&#x00A0; [lv_rimage_3] iwi-aor--- linear   /dev/sdac:1-34     8192
+&#x00A0; [lv_rimage_4] iwi-aor--- linear   /dev/sdad:1-34     8192
+&#x00A0; [lv_rimage_5] iwi-aor--- linear   /dev/sdae:1-34     8192
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear   /dev/sda:33-33
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear   /dev/sdaa:33-33
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear   /dev/sdab:33-33
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear   /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear   /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear   /dev/sdae:0-0</pre>
+<pre># lvs -a -o lv_name,attr,segtype,reshapelen vg
+&#x00A0; LV            Attr       Type     RSize
+&#x00A0; lv            rwi-a-r--- raid6_nr 24.00m
+&#x00A0; [lv_rimage_0] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rimage_0] iwi-aor--- linear
+&#x00A0; [lv_rimage_1] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rimage_1] iwi-aor--- linear
+&#x00A0; [lv_rimage_2] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rimage_2] iwi-aor--- linear
+&#x00A0; [lv_rimage_3] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rimage_4] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rimage_5] iwi-aor--- linear    4.00m
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear</pre>
+<p class="Pp">Les développements futurs pourraient inclure la suppression
+    automatique des images libérées.</p>
+<p class="Pp">Si l'espace de remodelage doit être supprimé, toute commande
+    lvconvert ne modifiant pas la disposition peut être utilisée :</p>
+<pre># lvconvert --stripes 4 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut 64.00&#x00A0;KiB.
+&#x00A0; Aucune modification dans la disposition du LV RAID vg/lv, libération de l'espace de remodelage.
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o lv_name,attr,segtype,reshapelen vg
+&#x00A0; LV            Attr       Type     RSize
+&#x00A0; lv            rwi-a-r--- raid6_nr    0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear      0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear
+&#x00A0; [lv_rimage_1] iwi-aor--- linear      0
+&#x00A0; [lv_rimage_1] iwi-aor--- linear
+&#x00A0; [lv_rimage_2] iwi-aor--- linear      0
+&#x00A0; [lv_rimage_2] iwi-aor--- linear
+&#x00A0; [lv_rimage_3] iwi-aor--- linear      0
+&#x00A0; [lv_rimage_4] iwi-aor--- linear      0
+&#x00A0; [lv_rimage_5] iwi-aor--- linear      0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear</pre>
+<p class="Pp">Dans le cas où le RaidLV devrait être converti en strié :</p>
+<pre># lvconvert --type striped vg/lv
+&#x00A0; Impossible de convertir le LV vg/lv de raid6_nr en strié.
+&#x00A0; La conversion du LV vg/lv de raid6_nr est directement possible vers les \
+&#x00A0; dispositions suivantes :
+&#x00A0;   raid6_nc
+&#x00A0;   raid6_zr
+&#x00A0;   raid6_la_6
+&#x00A0;   raid6_ls_6
+&#x00A0;   raid6_ra_6
+&#x00A0;   raid6_rs_6
+&#x00A0;   raid6_n_6</pre>
+<p class="Pp">Une conversion directe n'est pas possible, le commande a donc informé
+    des conversions possibles. raid6_n_6 convient pour convertir en strié, donc
+    convertissez d'abord vers celui-ci (il s'agit d'un remodelage qui change la
+    disposition raid6 de raid6_nr à raid6_n_6).</p>
+<pre># lvconvert --type raid6_n_6
+&#x00A0; Utilisation de la taille de bande par défaut 64.00&#x00A0;KiB.
+&#x00A0; Conversion du LV raid6_nr vg/lv en raid6_n_6.
+Voulez-vous vraiment convertir le LV raid6_nr vg/lv ? [y/n] : y
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<p class="Pp">Attendez que le remodelage se termine.</p>
+<pre># lvconvert --type striped vg/lv
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV   Attr       Type    PE Ranges  DOff
+&#x00A0; lv   -wi-a----- striped /dev/sda:2-32 \
+&#x00A0;                         /dev/sdaa:2-32 \
+&#x00A0;                         /dev/sdab:2-32 \
+&#x00A0;                         /dev/sdac:3-33
+&#x00A0; lv   -wi-a----- striped /dev/sda:34-35 \
+&#x00A0;                         /dev/sdaa:34-35 \
+&#x00A0;                         /dev/sdab:34-35 \
+&#x00A0;                         /dev/sdac:34-35</pre>
+<p class="Pp">Depuis strié, nous pouvons convertir en raid10.</p>
+<pre># lvconvert --type raid10 vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut 64.00&#x00A0;KiB.
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; LV   Attr       Type   PE Ranges          DOff
+&#x00A0; lv   rwi-a-r--- raid10 lv_rimage_0:0-32 \
+&#x00A0;                        lv_rimage_4:0-32 \
+&#x00A0;                        lv_rimage_1:0-32 ... \
+&#x00A0;                        lv_rimage_3:0-32 \
+&#x00A0;                        lv_rimage_7:0-32   0</pre>
+<pre># lvs -a -o lv_name,attr,segtype,seg_pe_ranges,dataoffset vg
+&#x00A0; ATTENTION : Impossible de trouver le segment strié correspondant pour vg/lv_rimage_3.
+&#x00A0; LV            Attr       Type   PE Ranges          DOff
+&#x00A0; lv            rwi-a-r--- raid10 lv_rimage_0:0-32 \
+&#x00A0;                                 lv_rimage_4:0-32 \
+&#x00A0;                                 lv_rimage_1:0-32 ... \
+&#x00A0;                                 lv_rimage_3:0-32 \
+&#x00A0;                                 lv_rimage_7:0-32   0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear /dev/sda:2-32      0
+&#x00A0; [lv_rimage_0] iwi-aor--- linear /dev/sda:34-35
+&#x00A0; [lv_rimage_1] iwi-aor--- linear /dev/sdaa:2-32     0
+&#x00A0; [lv_rimage_1] iwi-aor--- linear /dev/sdaa:34-35
+&#x00A0; [lv_rimage_2] iwi-aor--- linear /dev/sdab:2-32     0
+&#x00A0; [lv_rimage_2] iwi-aor--- linear /dev/sdab:34-35
+&#x00A0; [lv_rimage_3] iwi-XXr--- linear /dev/sdac:3-35     0
+&#x00A0; [lv_rimage_4] iwi-aor--- linear /dev/sdad:1-33     0
+&#x00A0; [lv_rimage_5] iwi-aor--- linear /dev/sdae:1-33     0
+&#x00A0; [lv_rimage_6] iwi-aor--- linear /dev/sdaf:1-33     0
+&#x00A0; [lv_rimage_7] iwi-aor--- linear /dev/sdag:1-33     0
+&#x00A0; [lv_rmeta_0]  ewi-aor--- linear /dev/sda:0-0
+&#x00A0; [lv_rmeta_1]  ewi-aor--- linear /dev/sdaa:0-0
+&#x00A0; [lv_rmeta_2]  ewi-aor--- linear /dev/sdab:0-0
+&#x00A0; [lv_rmeta_3]  ewi-aor--- linear /dev/sdac:0-0
+&#x00A0; [lv_rmeta_4]  ewi-aor--- linear /dev/sdad:0-0
+&#x00A0; [lv_rmeta_5]  ewi-aor--- linear /dev/sdae:0-0
+&#x00A0; [lv_rmeta_6]  ewi-aor--- linear /dev/sdaf:0-0
+&#x00A0; [lv_rmeta_7]  ewi-aor--- linear /dev/sdag:0-0</pre>
+<p class="Pp">raid10 permet d'ajouter des bandes mais ne peut pas en supprimer.</p>
+<p class="Pp">Un exemple plus élaboré pour convertir de linéaire en strié avec des
+    conversions intermédiaires vers raid1 puis raid5 suivi d'un restripe (4
+    étapes).</p>
+<p class="Pp">Nous commençons avec le LV linéaire.</p>
+<pre># lvs -a -o name,size,segtype,syncpercent,datastripes,\
+&#x00A0;           stripesize,reshapelenle,devices vg
+&#x00A0; LV   LSize   Type   Cpy%Sync #DStr Stripe RSize Devices
+&#x00A0; lv   128.00m linear              1     0        /dev/sda(0)</pre>
+<p class="Pp">Ensuite, convertissez-le en raid1 à 2 voies.</p>
+<pre># lvconvert --mirrors 1 vg/lv
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o name,size,segtype,datastripes,\
+&#x00A0;           stripesize,reshapelenle,devices vg
+&#x00A0; LV            LSize   Type   #DStr Stripe RSize Devices
+&#x00A0; lv            128.00m raid1      2     0        lv_rimage_0(0),\
+&#x00A0;                                                 lv_rimage_1(0)
+&#x00A0; [lv_rimage_0] 128.00m linear     1     0        /dev/sda(0)
+&#x00A0; [lv_rimage_1] 128.00m linear     1     0        /dev/sdhx(1)
+&#x00A0; [lv_rmeta_0]    4.00m linear     1     0        /dev/sda(32)
+&#x00A0; [lv_rmeta_1]    4.00m linear     1     0        /dev/sdhx(0)</pre>
+<p class="Pp">Une fois que le LV raid1 est entièrement synchronisé, nous le convertissons
+    en raid5_n (seuls les LVs raid1 à 2 voies peuvent être convertis en raid5).
+    Nous sélectionnons raid5_n ici car il possède des sous-LVs de parité dédiés
+    à la fin et peut être converti directement en strié sans conversion
+    supplémentaire.</p>
+<pre># lvconvert --type raid5_n vg/lv
+&#x00A0; Utilisation de la taille de bande par défaut 64.00&#x00A0;KiB.
+&#x00A0; Volume logique vg/lv converti avec succès.</pre>
+<pre># lvs -a -o name,size,segtype,syncpercent,datastripes,\
+&#x00A0;           stripesize,reshapelenle,devices vg
+&#x00A0; LV            LSize   Type    #DStr Stripe RSize Devices
+&#x00A0; lv            128.00m raid5_n     1 64.00k     0 lv_rimage_0(0),\
+&#x00A0;                                                  lv_rimage_1(0)
+&#x00A0; [lv_rimage_0] 128.00m linear      1     0      0 /dev/sda(0)
+&#x00A0; [lv_rimage_1] 128.00m linear      1     0      0 /dev/sdhx(1)
+&#x00A0; [lv_rmeta_0]    4.00m linear      1     0        /dev/sda(32)
+&#x00A0; [lv_rmeta_1]    4.00m linear      1     0        /dev/sdhx(0)</pre>
+<p class="Pp">Maintenant, nous allons changer le nombre de bandes de données de 1 à 5
+    et demander une taille de bande de 128K en une seule commande. Cela augmentera
+    la taille du LV d'un facteur 5 (nous ajoutons 4 bandes de données à celle
+    fournie). Cet espace supplémentaire peut être utilisé, par exemple, en
+    agrandissant tout système de fichiers contenu ou le LV peut être réduit en
+    taille une fois la conversion de remodelage terminée.</p>
+<pre># lvconvert --stripesize 128k --stripes 5 vg/lv
+&#x00A0; Conversion de la taille de bande 64.00&#x00A0;KiB du LV raid5_n vg/lv à 128.00&#x00A0;KiB.
+&#x00A0; ATTENTION : L'ajout de bandes au volume logique actif vg/lv va le faire grandir</pre><!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="/css/main.css" />
+    <title>lvconvert(8) — LVM Tools — French Manual</title>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row flex-nowrap">
+            <div class="col-auto col-md-3 col-xl-2 px-sm-2 px-0 bg-dark">
+                <div class="d-flex flex-column align-items-center align-items-sm-start px-3 pt-2 text-white min-vh-100">
+                    <a href="/" class="d-flex align-items-center pb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+                        <span class="fs-5 d-none d-sm-inline">Manuel LVM</span>
+                    </a>
+                    <ul class="nav nav-pills flex-column mb-sm-auto mb-0 align-items-center align-items-sm-start" id="menu">
+                        <li class="nav-item">
+                            <a href="/" class="nav-link px-0 align-middle text-white">
+                                <i class="fs-4 bi-house"></i> <span class="ms-1 d-none d-sm-inline">Accueil</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#submenu" data-bs-toggle="collapse" class="nav-link px-0 align-middle collapsed text-white">
+                                <i class="fs-4 bi-list"></i> <span class="ms-1 d-none d-sm-inline">Manuel</span>
+                            </a>
+                            <ul class="collapse nav flex-column ms-1" id="submenu" data-bs-parent="#menu">
+                                <li class="w-100">
+                                    <a href="/man/lvm.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvm(8)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/lvm.conf.5.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvm.conf(5)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/lvcreate.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvcreate(8)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/lvconvert.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvconvert(8)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/lvchange.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvchange(8)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/lvextend.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">lvextend(8)</span></a>
+                                </li>
+                                <li class="w-100">
+                                    <a href="/man/dmeventd.8.en" class="nav-link px-0 text-white"> <span class="d-none d-sm-inline">dmeventd(8)</span></a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col ps-md-2 pt-2">
+                <article>
+                    
+
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<p class="Nd">lvconvert — Convert LVM logical volumes between various on-disk
+  layouts</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">This command can convert between different on-disk layouts for
+  logical volumes. This includes converting linear mode volumes to RAID1, RAID5,
+  RAID6, RAID10, RAID1E, RAID0, or striped volumes. It can also convert RAID
+  volumes back to linear or mirror modes. It can also convert between different
+  RAID types (e.g. RAID5 to RAID6).</p>
+<p class="Pp">The conversion process can take a significant amount of time and
+  may impact system performance during the operation.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="USAGE"><a class="permalink" href="#USAGE">USAGE</a></h1>
+<pre>
+lvconvert [options] LogicalVolumePath
+lvconvert [options] LogicalVolumePath?LogicalVolumePath [...]
+</pre>
+<p class="Pp">The command can be used to convert various volume types. The options
+  depend on the source and target volume types.</p>
+<p class="Pp">Below are some common examples of conversion:</p>
+<pre># lvconvert --type raid1 vg/lv
+&#x00A0; Logical volume vg/lv successfully converted.
+</pre>
+<p class="Pp">This converts a linear logical volume `vg/lv` to a RAID1 mirrored
+  logical volume. If the source volume is already active, LVM will attempt to
+  perform an online conversion, which may be slower and more resource-intensive.
+  If the source volume is inactive, LVM will perform an offline conversion.</p>
+<pre># lvconvert --type mirror --mirrortype sync vg/lv
+&#x00A0; Logical volume vg/lv successfully converted.
+</pre>
+<p class="Pp">This converts a linear logical volume `vg/lv` to a mirrored logical
+  volume using synchronous mirroring. This is identical to the previous example,
+  as synchronous mirroring is the default for RAID1.</p>
+<pre># lvconvert --type raid5 --stripes 3 --poolmetadatasize 128m vg/lv
+&#x00A0; Round down to nearest allocation unit.
+&#x00A0; Logical volume vg/lv successfully converted.
+</pre>
+<p class="Pp">This converts a linear logical volume `vg/lv` to RAID5 with 3 data
+  stripes (meaning 4 total devices, 3 data + 1 parity). A pool metadata size is
+  specified to manage the metadata for the RAID conversion. The size is rounded
+  down to the nearest allocation unit.</p>
+<pre># lvconvert --type raid5_ls --stripes 5 vg/lv
+&#x00A0; This will convert the volume to RAID5 left symmetric with 5 data stripes.
+&#x00A0; It requires 6 devices (5 data + 1 parity).
+&#x00A0; If you have fewer devices, the conversion may fail or require resizing.
+&#x00A0; Logical volume vg/lv successfully converted.
+</pre>
+<p class="Pp">This example converts a volume to RAID5 left symmetric with 5 data
+  stripes. The command implicitly checks the number of available devices. It will
+  inform the user if the required number of devices is not available.</p>
+<p class="Pp">Let's assume we have a RAID5 logical volume that we want to convert
+  to a striped logical volume. The following shows an example of converting a
+  RAID5 logical volume to a striped logical volume. The RAID5 logical volume has
+  6 extents that LVM could use, but it is currently configured to use only 32
+  extents. The conversion will extend the volume to 160 extents.</p>
+<pre># lvs -a -o name,size,segtype,stripes,devices vg/lv
+&#x00A0; LV   LSize   Type    #Str Devices
+&#x00A0; lv   640.00m raid5_n     5 lv_rimage_0(0),lv_rimage_1(0),lv_rimage_2(0),lv_rimage_3(0),lv_rimage_4(0),lv_rimage_5(0)
+&#x00A0; [lv_rimage_0] 132.00m linear      1 /dev/sda(0)
+&#x00A0; [lv_rimage_1] 132.00m linear      1 /dev/sdhx(1)
+&#x00A0; [lv_rimage_2] 132.00m linear      1 /dev/sdhw(1)
+&#x00A0; [lv_rimage_3] 132.00m linear      1 /dev/sdhv(1)
+&#x00A0; [lv_rimage_4] 132.00m linear      1 /dev/sdhu(1)
+&#x00A0; [lv_rimage_5] 132.00m linear      1 /dev/sdht(1)
+&#x00A0; [lv_rmeta_0]    4.00m linear      1 /dev/sda(32)
+&#x00A0; [lv_rmeta_1]    4.00m linear      1 /dev/sdhx(0)
+&#x00A0; [lv_rmeta_2]    4.00m linear      1 /dev/sdhw(0)
+&#x00A0; [lv_rmeta_3]    4.00m linear      1 /dev/sdhv(0)
+&#x00A0; [lv_rmeta_4]    4.00m linear      1 /dev/sdhu(0)
+&#x00A0; [lv_rmeta_5]    4.00m linear      1 /dev/sdht(0)
+</pre>
+<p class="Pp">Note that the original RAID5 volume uses 6 devices, but the display
+  shows it as having only 5 stripes. This is because the last device is used for
+  parity. The logical volume has a size of 640MB, and the underlying physical
+  devices are 132MB each. The metadata is 4MB.</p>
+<pre># lvconvert --type striped --stripes 5 vg/lv
+&#x00A0; It from 32 to 160 extents!
+&#x00A0; Run &quot;lvresize -l32 vg/lv&quot; to shrink it or use the additional capacity.
+&#x00A0; Logical volume vg/lv successfully converted.</pre>
+<pre># lvs -a -o name,size,segtype,datastripes,\
+&#x00A0;           stripesize,reshapelenle,devices
+&#x00A0; LV            LSize   Type    #DStr Stripe  RSize Devices
+&#x00A0; lv            640.00m raid5_n     5 128.00k     6 lv_rimage_0(0),\
+&#x00A0;                                                   lv_rimage_1(0),\
+&#x00A0;                                                   lv_rimage_2(0),\
+&#x00A0;                                                   lv_rimage_3(0),\
+&#x00A0;                                                   lv_rimage_4(0),\
+&#x00A0;                                                   lv_rimage_5(0)
+&#x00A0; [lv_rimage_0] 132.00m linear      1      0      1 /dev/sda(33)
+&#x00A0; [lv_rimage_0] 132.00m linear      1      0        /dev/sda(0)
+&#x00A0; [lv_rimage_1] 132.00m linear      1      0      1 /dev/sdhx(33)
+&#x00A0; [lv_rimage_1] 132.00m linear      1      0        /dev/sdhx(1)
+&#x00A0; [lv_rimage_2] 132.00m linear      1      0      1 /dev/sdhw(33)
+&#x00A0; [lv_rimage_2] 132.00m linear      1      0        /dev/sdhw(1)
+&#x00A0; [lv_rimage_3] 132.00m linear      1      0      1 /dev/sdhv(33)
+&#x00A0; [lv_rimage_3] 132.00m linear      1      0        /dev/sdhv(1)
+&#x00A0; [lv_rimage_4] 132.00m linear      1      0      1 /dev/sdhu(33)
+&#x00A0; [lv_rimage_4] 132.00m linear      1      0        /dev/sdhu(1)
+&#x00A0; [lv_rimage_5] 132.00m linear      1      0      1 /dev/sdht(33)
+&#x00A0; [lv_rimage_5] 132.00m linear      1      0        /dev/sdht(1)
+&#x00A0; [lv_rmeta_0]    4.00m linear      1      0        /dev/sda(32)
+&#x00A0; [lv_rmeta_1]    4.00m linear      1      0        /dev/sdhx(0)
+&#x00A0; [lv_rmeta_2]    4.00m linear      1      0        /dev/sdhw(0)
+&#x00A0; [lv_rmeta_3]    4.00m linear      1      0        /dev/sdhv(0)
+&#x00A0; [lv_rmeta_4]    4.00m linear      1      0        /dev/sdhu(0)
+&#x00A0; [lv_rmeta_5]    4.00m linear      1      0        /dev/sdht(0)</pre>
+<p class="Pp">Once the conversion has finished we can convert to striped.</p>
+<pre># lvconvert --type striped vg/lv
+&#x00A0; Logical volume vg/lv successfully converted.</pre>
+<pre># lvs -a -o name,size,segtype,datastripes,\
+&#x00A0;           stripesize,reshapelenle,devices vg
+&#x00A0; LV   LSize   Type    #DStr Stripe  RSize Devices
+&#x00A0; lv   640.00m striped     5 128.00k       /dev/sda(33),\
+&#x00A0;                                          /dev/sdhx(33),\
+&#x00A0;                                          /dev/sdhw(33),\
+&#x00A0;                                          /dev/sdhv(33),\
+&#x00A0;                                          /dev/sdhu(33)
+&#x00A0; lv   640.00m striped     5 128.00k       /dev/sda(0),\
+&#x00A0;                                          /dev/sdhx(1),\
+&#x00A0;                                          /dev/sdhw(1),\
+&#x00A0;                                          /dev/sdhv(1),\
+&#x00A0;                                          /dev/sdhu(1)</pre>
+<p class="Pp">Reversing these steps will convert a given striped LV to
+  linear.</p>
+<p class="Pp">Mind the facts that stripes are removed thus the capacity of the
+    RaidLV will shrink and that changing the RaidLV layout will influence its
+    performance.</p>
+<p class="Pp">&quot;lvconvert --stripes 1 vg/lv&quot; for converting to 1 stripe
+    will inform upfront about the reduced size to allow for resizing the content
+    or growing the RaidLV before actually converting to 1 stripe. The
+    <b>--force</b> option is needed to allow stripe removing conversions to
+    prevent data loss.</p>
+<p class="Pp">Of course any interim step can be the intended last one (e.g.
+    striped &#x2192; raid1).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="RAID5_VARIANTS"><a class="permalink" href="#RAID5_VARIANTS">RAID5   VARIANTS</a></h1>
+<dl class="Bl-tag">
+  <dt id="raid5_ls"><a class="permalink" href="#raid5_ls">raid5_ls</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID5 left symmetric</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity N with data restart</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid5_la"><a class="permalink" href="#raid5_la">raid5_la</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID5 left asymmetric</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity N with data continuation</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid5_rs"><a class="permalink" href="#raid5_rs">raid5_rs</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID5 right symmetric</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity 0 with data restart</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid5_ra"><a class="permalink" href="#raid5_ra">raid5_ra</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID5 right asymmetric</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity 0 with data continuation</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid5_n"><a class="permalink" href="#raid5_n">raid5_n</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID5 parity n</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Dedicated parity device n used for striped/raid0 conversions</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="RAID6_VARIANTS"><a class="permalink" href="#RAID6_VARIANTS">RAID6   VARIANTS</a></h1>
+<dl class="Bl-tag">
+  <dt>raid6&#x00A0;.br</dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 zero restart (aka left symmetric)</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity 0 with data restart</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Same as raid6_zr</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_zr"><a class="permalink" href="#raid6_zr">raid6_zr</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 zero restart (aka left symmetric)</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity 0 with data restart</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_nr"><a class="permalink" href="#raid6_nr">raid6_nr</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N restart (aka right symmetric)</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity N with data restart</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_nc"><a class="permalink" href="#raid6_nc">raid6_nc</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N continue</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Rotating parity N with data continuation</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_n_6"><a class="permalink" href="#raid6_n_6">raid6_n_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 last parity devices</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Fixed dedicated last devices (P-Syndrome N-1 and Q-Syndrome N) with
+      striped data used for striped/raid0 conversions</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6__ls,rs,la,ra__6"><a class="permalink" href="#raid6__ls,rs,la,ra__6">raid6_{ls,rs,la,ra}_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 last parity device</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Dedicated last parity device used for conversions from/to
+      raid5_{ls,rs,la,ra}</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_ls_6"><a class="permalink" href="#raid6_ls_6">raid6_ls_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N continue</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Same as raid5_ls for N-1 devices with fixed Q-Syndrome N</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_la_6"><a class="permalink" href="#raid6_la_6">raid6_la_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N continue</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Same as raid5_la for N-1 devices with fixed Q-Syndrome N</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_rs_6"><a class="permalink" href="#raid6_rs_6">raid6_rs_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N continue</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Same as raid5_rs for N-1 devices with fixed Q-Syndrome N</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="raid6_ra_6"><a class="permalink" href="#raid6_ra_6">raid6_ra_6</a></dt>
+  <dd></dd>
+</dl>
+<dl class="Bl-tag">
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>RAID6 N continue</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Same as raid5_ra for N-1 devices with fixed Q-Syndrome N</dd>
+  <dt>&#x00A0;&#x2022;</dt>
+  <dd>Used for RAID Takeover</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="HISTORY"><a class="permalink" href="#HISTORY">HISTORY</a></h1>
+<p class="Pp">The 2.6.38-rc1 version of the Linux kernel introduced a
+    device-mapper target to interface with the software RAID (MD) personalities.
+    This provided device-mapper with RAID 4/5/6 capabilities and a larger
+    development community. Later, support for RAID1, RAID10, and RAID1E (RAID10
+    variants) were added. Support for these new kernel RAID targets was added to
+    LVM version 2.02.87. The capabilities of the LVM <b>raid1</b> type have
+    surpassed the old <b>mirror</b> type. raid1 is now recommended instead of
+    mirror. raid1 became the default for mirroring in LVM version 2.02.100.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE   ALSO</a></h1>
+<p class="Pp"><a href="/man/lvm.8.en">lvm(8)</a>, <a href="/man/lvm.conf.5.en">lvm.conf(5)</a>, <a href="/man/lvcreate.8.en">lvcreate(8)</a>,
+    <a href="/man/lvconvert.8.en">lvconvert(8)</a>, <a href="/man/lvchange.8.en">lvchange(8)</a>, <a href="/man/lvextend.8.en">lvextend(8)</a>,
+    <a href="/man/dmeventd.8.en">dmeventd(8)</a></p>
+<p class="Pp"><a class="Lk" href="https://www.snia.org/sites/default/files/SNIA_DDF_Technical_Position_v2.0.pdf">Technical_Position.pdf</a></p>
+</section>
+                </article>
+                <footer class="foot">
+                    <p><small>LVM TOOLS 2.03.37(2) (2025-11-21)</small></p>
+                    <p><small>Red Hat, Inc.</small></p>
+                </footer>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/main.js"></script>
+</body>
+</html>
+HAPING</a></li>
+        
+            <li><a href="#RAID5_VARIANTS">VARIANTES RAID5</a></li>
+        
+            <li><a href="#RAID6_VARIANTS">VARIANTES RAID6</a></li>
+        
+            <li><a href="#HISTORY">HISTORIQUE</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/lvmraid.7.en.txt">txt</a>, 
+        
+            <a href="/man/lvmraid.7.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

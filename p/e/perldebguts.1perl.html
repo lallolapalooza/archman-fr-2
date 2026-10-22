@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perldebguts(1perl) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perldebguts.1perl</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLDEBGUTS(1perl)</td>
+    <td class="head-vol">Guide de référence du programmeur Perl</td>
+    <td class="head-rtitle">PERLDEBGUTS(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perldebguts - Détails internes du débogage Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ceci n'est pas perldebug, qui explique comment utiliser le débogueur.
+    Cette page de manuel décrit des détails de bas niveau concernant les
+    mécanismes internes du débogueur, qui sont difficiles voire impossibles à
+    comprendre pour quiconque n'est pas extrêmement familier avec les entrailles
+    de Perl. Lecteur, prends garde.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTERNES_DU_DEBOGUEUR'><a class='permalink' href='#INTERNES_DU_DEBOGUEUR'>Internes du débogueur</a></h1>
+<p class="Pp">Perl dispose de crochets de débogage spéciaux au moment de la
+    compilation et de l'exécution utilisés pour créer des environnements de
+    débogage. Ces crochets ne doivent pas être confondus avec la commande
+    <i>perl -Dxxx</i> décrite dans perlrun, qui ne peut être utilisée que si une
+    version spéciale de Perl est compilée conformément aux instructions du
+    fichier <i>INSTALL</i> dans l'arborescence source de Perl.</p>
+<p class="Pp">Par exemple, chaque fois que vous appelez la fonction intégrée de
+    Perl <span class="Li">&quot;caller&quot;</span> depuis le paquet
+    <span class="Li">&quot;DB&quot;</span>, les arguments avec lesquels la frame de
+    pile correspondante a été appelée sont copiés dans le tableau
+    <span class="Li">@DB::args</span>. Ces mécanismes sont activés en appelant Perl
+    avec le commutateur <b>-d</b>. Spécifiquement, les fonctionnalités
+    supplémentaires suivantes sont activées (cf. &quot;$^P&quot; dans perlvar)
+    :</p>
+<ul class="Bl-bullet">
+  <li>Perl insère le contenu de <span class="Li">$ENV{PERL5DB}</span> (ou
+      <span class="Li">&quot;BEGIN {require</span>
+      <span class="Li">'perl5db.pl'}&quot;</span> s'il est absent) avant la
+      première ligne de votre programme.</li>
+  <li>Si le commutateur
+      <span class="Li">&quot;-dt&quot;</span> est fourni,
+      <span class="Li">&quot;PERL5DB_THREADED=1&quot;</span> est défini dans
+      l'environnement. <span class="Li">&quot;perl5db.pl&quot;</span> ou votre
+      débogueur personnalisé peuvent l'utiliser pour activer la prise en charge
+      des threads.</li>
+  <li>Chaque tableau
+      <span class="Li">&quot;@{&quot;_&lt;$filename&quot;}&quot;</span> contient
+      les lignes de <span class="Li">$filename</span> pour un fichier compilé par
+      Perl. Il en va de même pour les chaînes
+      <span class="Li">&quot;eval&quot;</span>nées qui contiennent des
+      sous-programmes, ou qui sont en cours d'exécution. Le
+      <span class="Li">$filename</span> pour les chaînes
+      <span class="Li">&quot;eval&quot;</span>nées ressemble à
+      <span class="Li">&quot;(eval 34)&quot;</span>.
+    <p class="Pp">Les valeurs de ce tableau sont magiques en contexte numérique :
+        elles sont égales à zéro uniquement si la ligne n'est pas un point
+        d'arrêt.</p>
+  </li>
+  <li>Chaque hachage
+      <span class="Li">&quot;%{&quot;_&lt;$filename&quot;}&quot;</span> contient
+      des points d'arrêt et des actions indexés par numéro de ligne. Les entrées
+      individuelles (par opposition à l'ensemble du hachage) sont paramétrables.
+      Perl ne se soucie que de la valeur booléenne vraie ici, bien que les valeurs
+      utilisées par <i>perl5db.pl</i> aient la forme
+      <span class="Li">&quot;$break_condition\0$action&quot;</span>.
+    <p class="Pp">Il en va de même pour les chaînes évaluées qui contiennent des
+        sous-programmes, ou qui sont en cours d'exécution. Le
+        <span class="Li">$filename</span> pour les chaînes
+        <span class="Li">&quot;eval&quot;</span>nées ressemble à
+        <span class="Li">&quot;(eval 34)&quot;</span>.</p>
+  </li>
+  <li>Chaque scalaire
+      <span class="Li">&quot;${&quot;_&lt;$filename&quot;}&quot;</span> contient
+      <span class="Li">$filename</span>. C'est aussi le cas pour les chaînes
+      évaluées qui contiennent des sous-programmes, ou qui sont en cours
+      d'exécution. Le <span class="Li">$filename</span> pour les chaînes
+      <span class="Li">&quot;eval&quot;</span>nées ressemble à
+      <span class="Li">&quot;(eval 34)&quot;</span>.</li>
+  <li>Après la compilation de chaque fichier
+      <span class="Li">&quot;require&quot;</span>d, mais avant son exécution,
+      <span class="Li">DB::postponed(*{&quot;_&lt;$filename&quot;})</span> est
+      appelé si le sous-programme <span class="Li">&quot;DB::postponed&quot;</span>
+      existe. Ici, <span class="Li">$filename</span> est le nom développé du
+      fichier <span class="Li">&quot;require&quot;</span>d, tel qu'on le trouve
+      dans les valeurs de <span class="Li">%INC</span>.</li>
+  <li>Après la compilation de chaque sous-programme
+      <span class="Li">&quot;subname&quot;</span>, l'existence de
+      <span class="Li">$DB::postponed{subname}</span> est vérifiée. Si cette
+      clé existe, <span class="Li">DB::postponed(subname)</span> est appelée si
+      le sous-programme <span class="Li">&quot;DB::postponed&quot;</span> existe
+      également.</li>
+  <li>Un hachage <span class="Li">%DB::sub</span> est maintenu, dont les clés
+      sont les noms des sous-programmes et dont les valeurs ont la forme
+      <span class="Li">&quot;nom_fichier:ligne_début-ligne_fin&quot;</span>.
+      <span class="Li">&quot;nom_fichier&quot;</span> a la forme
+      <span class="Li">&quot;(eval 34)&quot;</span> pour les sous-programmes
+      définis à l'intérieur des <span class="Li">&quot;eval&quot;</span>s.</li>
+  <li>Lorsque l'exécution de votre programme atteint un point qui peut contenir
+      un point d'arrêt, le sous-programme
+      <span class="Li">DB::DB()</span> est appelé si l'une des variables
+      <span class="Li">$DB::trace</span>, <span class="Li">$DB::single</span> ou
+      <span class="Li">$DB::signal</span> est vraie. Ces variables ne sont pas
+      <span class="Li">&quot;local&quot;</span>isables. Cette fonctionnalité est
+      désactivée lors de l'exécution à l'intérieur de
+      <span class="Li">DB::DB()</span>, y compris les fonctions qui en sont
+      appelées, sauf si <span class="Li">&quot;$^D &amp;
+      (1&lt;&lt;30)&quot;</span> est vraie.</li>
+  <li>Lorsque l'exécution du programme atteint un appel de sous-programme, un
+      appel à <span class="Li">&amp;DB::sub</span>(<i>arguments</i>) est fait à la
+      place, avec <span class="Li">$DB::sub</span> défini pour identifier le
+      sous-programme appelé. (Cela ne se produit pas si le sous-programme appelant
+      a été compilé dans le paquet <span class="Li">&quot;DB&quot;</span>.)
+      <span class="Li">$DB::sub</span> contient normalement le nom du
+      sous-programme appelé, s'il a un nom par lequel il peut être recherché.
+      Sinon, <span class="Li">$DB::sub</span> contiendra une référence au
+      sous-programme appelé. Dans les deux cas, le sous-programme
+      <span class="Li">&amp;DB::sub</span> peut utiliser <span class="Li">$DB::sub</span>
+      comme référence pour appeler le sous-programme appelé, ce qu'il voudra
+      normalement faire.
+    <p class="Pp">Si l'appel est fait à un sous-programme lvalue (lvalue
+        subroutine), et que <span class="Li">&amp;DB::lsub</span> est défini,
+        <span class="Li">&amp;DB::lsub</span>(<i>arguments</i>) est appelé à la
+        place, sinon on se rabat sur <span class="Li">&amp;DB::sub</span>(<i>arguments</i>).</p>
+  </li>
+  <li>Lorsque l'exécution du programme utilise
+      <span class="Li">&quot;goto&quot;</span> pour entrer dans un sous-programme
+      non-XS et que le bit 0x80 est défini dans <span class="Li">$^P</span>, un
+      appel à <span class="Li">&amp;DB::goto</span> est effectué, avec
+      <span class="Li">$DB::sub</span> défini pour identifier le sous-programme
+      dans lequel on entre. L'appel à <span class="Li">&amp;DB::goto</span> ne
+      remplace pas le <span class="Li">&quot;goto&quot;</span> ; le sous-programme
+      demandé sera toujours entré une fois que <span class="Li">&amp;DB::goto</span>
+      aura retourné.
+      <span class="Li">$DB::sub</span> contient normalement le nom du
+      sous-programme dans lequel on entre, s'il en a un. Sinon,
+      <span class="Li">$DB::sub</span> contiendra une référence au
+      sous-programme dans lequel on entre. Contrairement à l'appel de
+      <span class="Li">&amp;DB::sub</span>, il n'est pas garanti que
+      <span class="Li">$DB::sub</span> puisse être utilisé comme référence pour
+      opérer sur le sous-programme dans lequel on entre.</li>
+</ul>
+<p class="Pp">Notez que si <span class="Li">&amp;DB::sub</span> a besoin de données
+    externes pour fonctionner, aucun appel de sous-programme n'est possible sans
+    cela. À titre d'exemple, le débogueur standard <span class="Li">&amp;DB::sub</span>
+    dépend de la variable <span class="Li">$DB::deep</span> (elle définit combien
+    de niveaux de récursion dans le débogueur vous pouvez descendre avant un point
+    d'arrêt obligatoire). Si <span class="Li">$DB::deep</span> n'est pas défini,
+    les appels de sous-programmes ne sont pas possibles, même si
+    <span class="Li">&amp;DB::sub</span> existe.</p>
+<section class="Ss">
+<h2 class="Ss" id='ECRIRE_VOTRE_PROPRE_DEBOGUEUR'><a class='permalink' href='#ECRIRE_VOTRE_PROPRE_DEBOGUEUR'>Écrire votre propre débogueur</a></h2>
+<p class="Pp"><i>Variables d'environnement</i></p>
+<p class="Pp">La variable d'environnement <span class="Li">&quot;PERL5DB&quot;</span>
+    peut être utilisée pour définir un débogueur. Par exemple, le débogueur
+    minimal &quot;fonctionnel&quot; (il ne fait en réalité rien) se compose d'une
+    seule ligne :</p>
+<pre>sub DB::DB {}</pre>
+<p class="Pp">Il peut facilement être défini comme ceci :</p>
+<pre>$ PERL5DB=&quot;sub DB::DB {}&quot; perl -d votre-script</pre>
+<p class="Pp">Un autre débogueur bref, légèrement plus utile, peut être créé avec
+    seulement la ligne :</p>
+<pre>sub DB::DB {print ++$i; scalar &lt;STDIN&gt;}</pre>
+<p class="Pp">Ce débogueur imprime un numéro qui s'incrémente pour chaque instruction
+    rencontrée et attend que vous appuyiez sur une nouvelle ligne avant de passer
+    à l'instruction suivante.</p>
+<p class="Pp">Le débogueur suivant est réellement utile :</p>
+<pre>{
+  package DB;
+  sub DB  {}
+  sub sub {print ++$i, &quot; $sub\n&quot;; &amp;$sub}
+}</pre>
+<p class="Pp">Il imprime le numéro de séquence de chaque appel de sous-programme et
+    le nom du sous-programme appelé. Notez que <span class="Li">&amp;DB::sub</span>
+    est compilé dans le paquet <span class="Li">&quot;DB&quot;</span> par
+    l'utilisation de la directive <span class="Li">&quot;package&quot;</span>.</p>
+<p class=</p>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+"Pp">Au démarrage, le débogueur lit votre fichier rc (<i>./.perldb</i>
+    ou <i>~/.perldb</i> sous Unix), qui peut définir des options importantes. (Une
+    sous-routine (<span class="Li">&amp;afterinit</span>) peut également y être définie ;
+    elle est exécutée après que le débogueur ait terminé sa propre
+  initialisation.)</p>
+<p class="Pp">Après la lecture du fichier rc, le débogueur lit la variable d'environnement PERLDB_OPTS
+    et l'utilise pour définir les options du débogueur. Le contenu de
+    cette variable est traité comme s'il s'agissait de l'argument d'une
+    commande du débogueur <span class="Li">&quot;o ...&quot;</span> (voir dans
+    &quot;Options configurables&quot; dans perldebug).</p>
+<p class="Pp"><i>Variables internes du débogueur</i></p>
+<p class="Pp">En plus des variables relatives aux fichiers et aux sous-routines mentionnées ci-dessus,
+    le débogueur maintient également diverses variables internes magiques.</p>
+<ul class="Bl-bullet">
+  <li><span class="Li">@DB::dbline</span> est un alias pour
+      <span class="Li">&quot;@{&quot;::_&lt;fichier_courant&quot;}&quot;</span>,
+      qui contient les lignes du fichier actuellement sélectionné (compilé par Perl),
+      soit explicitement choisi avec la commande
+      <span class="Li">&quot;f&quot;</span> du débogueur, soit implicitement par le flux
+      d'exécution.
+    <p class="Pp">Les valeurs de ce tableau sont magiques dans un contexte numérique : elles ne sont égales à zéro que si la ligne n'est pas susceptible de provoquer un point d'arrêt.</p>
+  </li>
+  <li><span class="Li">%DB::dbline</span> est un alias pour
+      <span class="Li">&quot;%{&quot;::_&lt;fichier_courant&quot;}&quot;</span>,
+      qui contient les points d'arrêt et les actions indexés par numéro de ligne dans le
+      fichier actuellement sélectionné, soit explicitement choisi avec la commande
+      <span class="Li">&quot;f&quot;</span> du débogueur, soit implicitement par le flux
+      d'exécution.
+    <p class="Pp">Comme mentionné précédemment, les entrées individuelles (par opposition à l'ensemble de la table de hachage) peuvent être définies. Perl ne se soucie que de la valeur booléenne vraie ici, bien que les valeurs utilisées par <i>perl5db.pl</i> aient la forme
+        <span class="Li">&quot;$condition_arret\0$action&quot;</span>.</p>
+  </li>
+</ul>
+<p class="Pp"><i>Fonctions de personnalisation du débogueur</i></p>
+<p class="Pp">Certaines fonctions sont fournies pour simplifier la personnalisation.</p>
+<ul class="Bl-bullet">
+  <li>Voir &quot;Options configurables&quot; dans perldebug pour une description des
+      options analysées par <span class="Li">DB::parse_options(chaîne)</span>.</li>
+  <li><span class="Li">&quot;DB::dump_trace(saut[,compte])&quot;</span> saute le
+      nombre spécifié d'images et renvoie une liste contenant des informations sur les images appelantes (toutes, si
+      <span class="Li">&quot;compte&quot;</span> est manquant). Chaque entrée est une
+      référence vers une table de hachage avec les clés <span class="Li">&quot;contexte&quot;</span>
+      (soit <span class="Li">&quot;.&quot;</span>,
+      <span class="Li">&quot;$&quot;</span>, ou
+      <span class="Li">&quot;@&quot;</span>),
+      <span class="Li">&quot;sous&quot;</span> (nom de la sous-routine, ou informations sur
+      <span class="Li">&quot;eval&quot;</span>),
+      <span class="Li">&quot;args&quot;</span>
+      (<span class="Li">&quot;undef&quot;</span> ou une référence vers un tableau),
+      <span class="Li">&quot;fichier&quot;</span>, et
+      <span class="Li">&quot;ligne&quot;</span>.</li>
+  <li><span class="Li">&quot;DB::print_trace(FH, saut[, compte[,
+      court]])&quot;</span> imprime des informations formatées sur les images appelantes. Les deux dernières
+      fonctions peuvent être utiles comme arguments des commandes
+      <span class="Li">&quot;&lt;&quot;</span>,
+      <span class="Li">&quot;&lt;&lt;&quot;</span>.</li>
+</ul>
+<p class="Pp">Notez que toutes les variables et fonctions qui ne sont pas documentées dans ces pages de manuel (ou dans perldebug) sont considérées comme réservées à un usage interne et sont donc susceptibles d'être modifiées sans préavis.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Exemples_de_sortie_de_listage_d_images'><a class='permalink' href='#Exemples_de_sortie_de_listage_d_images'>Exemples de   listage de sortie des images</a></h1>
+<p class="Pp">L'option <span class="Li">&quot;frame&quot;</span> peut être utilisée
+    pour contrôler la sortie des informations d'image. Par exemple, comparez ce trace d'expression :</p>
+<pre>$ perl -de 42
+Stack dump during die enabled outside of evals.
+Loading DB routines from perl5db.pl patch level 0.94
+Emacs support available.
+Enter h or 'h h' for help.
+main::(-e:1):   0
+  DB&lt;1&gt; sub foo { 14 }
+  DB&lt;2&gt; sub bar { 3 }
+  DB&lt;3&gt; t print foo() * bar()
+main::((eval 172):3):   print foo() + bar();
+main::foo((eval 168):2):
+main::bar((eval 170):2):
+42</pre>
+<p class="Pp">avec ceci, une fois que l'option <span class="Li">&quot;o&quot;</span>
+    <span class="Li">&quot;frame=2&quot;</span> a été définie :</p>
+<pre>  DB&lt;4&gt; o f=2
+               frame = '2'
+  DB&lt;5&gt; t print foo() * bar()
+3:      foo() * bar()
+entering main::foo
+ 2:     sub foo { 14 };
+exited main::foo
+entering main::bar
+ 2:     sub bar { 3 };
+exited main::bar
+42</pre>
+<p class="Pp">À titre de démonstration, nous présentons ci-dessous un listage laborieux résultant de la définition de votre variable d'environnement <span class="Li">&quot;PERLDB_OPTS&quot;</span> à la valeur <span class="Li">&quot;f=n N&quot;</span>, et de l'exécution de <i>perl -d -V</i> depuis la ligne de commande. Des exemples utilisant diverses valeurs de
+    <span class="Li">&quot;n&quot;</span> sont présentés pour vous donner une idée de la différence entre les réglages. Bien que long, il ne s'agit pas d'un listage complet, mais seulement d'extraits.</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>
+    <pre>entering main::BEGIN
+ entering Config::BEGIN
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ Package lib/Config.pm.
+ entering Config::TIEHASH
+ entering Exporter::import
+  entering Exporter::export
+entering Config::myconfig
+ entering Config::FETCH
+ entering Config::FETCH
+ entering Config::FETCH
+ entering Config::FETCH
+</pre>
+  </dd>
+  <dt>2.</dt>
+  <dd>
+    <pre>entering main::BEGIN
+ entering Config::BEGIN
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ exited Config::BEGIN
+ Package lib/Config.pm.
+ entering Config::TIEHASH
+ exited Config::TIEHASH
+ entering Exporter::import
+  entering Exporter::export
+  exited Exporter::export
+ exited Exporter::import
+exited main::BEGIN
+entering Config::myconfig
+ entering Config::FETCH
+ exited Config::FETCH
+ entering Config::FETCH
+ exited Config::FETCH
+ entering Config::FETCH
+</pre>
+  </dd>
+  <dt>3.</dt>
+  <dd>
+    <pre>in  $=main::BEGIN() from /dev/null:0
+ in  $=Config::BEGIN() from lib/Config.pm:2
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ Package lib/Config.pm.
+ in  $=Config::TIEHASH('Config') from lib/Config.pm:644
+ in  $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+  in  $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from li
+in  @=Config::myconfig() from /dev/null:0
+ in  $=Config::FETCH(ref(Config), 'package') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'baserev') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'PERL_VERSION') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'PERL_SUBVERSION') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'osname') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'osvers') from lib/Config.pm:574
+</pre>
+  </dd>
+  <dt>4.</dt>
+  <dd>
+    <pre>in  $=main::BEGIN() from /dev/null:0
+ in  $=Config::BEGIN() from lib/Config.pm:2
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ out $=Config::BEGIN() from lib/Config.pm:0
+ Package lib/Config.pm.
+ in  $=Config::TIEHASH('Config') from lib/Config.pm:644
+ out $=Config::TIEHASH('Config') from lib/Config.pm:644
+ in  $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+  in  $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/
+  out $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/
+ out $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+out $=main::BEGIN() from /dev/null:0
+in  @=Config::myconfig() from /dev/null:0
+ in  $=Config::FETCH(ref(Config), 'package') from lib/Config.pm:574
+ out $=Config::FETCH(ref(Config), 'package') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'baserev') from lib/Config.pm:574
+ out $=Config::FETCH(ref(Config), 'baserev') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'PERL_VERSION') from lib/Config.pm:574
+ out $=Config::FETCH(ref(Config), 'PERL_VERSION') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'PERL_SUBVERSION') from lib/Config.pm:574
+</pre>
+  </dd>
+  <dt>5.</dt>
+  <dd>
+    <pre>in  $=main::BEGIN() from /dev/null:0
+ in  $=Config::BEGIN() from lib/Config.pm:2
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ out $=Config::BEGIN() from lib/Config.pm:0
+ Package lib/Config.pm.
+ in  $=Config::TIEHASH('Config') from lib/Config.pm:644
+ out $=Config::TIEHASH('Config') from lib/Config.pm:644
+ in  $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+  in  $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/
+  out $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/
+ out $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+out $=main::BEGIN() from /dev/null:0
+in  @=Config::myconfig() from /dev/null:0
+ in  $=Config::FETCH(ref(Config), 'package') from lib/Config.pm:574
+ out $=Config::FETCH(ref(Config), 'package') from lib/Config.pm:574
+ in  $=Config::FETCH(ref(Config), 'baserev') from lib/Config.pm:574
+ out $=Config::FETCH(ref(Config), 'baserev') from lib/Config.pm:574
+</pre>
+  </dd>
+  <dt>6.</dt>
+  <dd>
+    <pre>in  $=main::BEGIN() from /dev/null:0
+ in  $=Config::BEGIN() from lib/Config.pm:2
+  Package lib/Exporter.pm.
+  Package lib/Carp.pm.
+ out $=Config::BEGIN() from lib/Config.pm:0
+ Package lib/Config.pm.
+ in  $=Config::TIEHASH('Config') from lib/Config.pm:628
+ out $=Config::TIEHASH('Config') from lib/Config.pm:628
+ scalar context return from Config::TIEHASH:   empty hash
+ in  $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+  in  $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/Exporter.pm:171
+  out $=Exporter::export('Config', 'main', 'myconfig', 'config_vars') from lib/Exporter.pm:171
+  scalar context return from Exporter::export: ''
+ out $=Exporter::import('Config', 'myconfig', 'config_vars') from /dev/null:0
+ scalar context return from Exporter::import: ''
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Dans tous les cas présentés ci-dessus, l'indentation de la ligne montre l'arbre d'appels. Si le bit 2 de <span class="Li">&quot;frame&quot;</span> est défini, une ligne est également imprimée à la sortie d'une sous-routine. Si le bit 4 est défini, les arguments sont imprimés avec les informations de l'appelant. Si le bit 8 est défini, les arguments sont imprimés même s'ils sont liés ou des références. Si le bit 16 est défini, la valeur de retour est également imprimée.</p>
+<p class="Pp">Lorsqu'un package est compilé, une ligne comme celle-ci</p>
+<pre>Package lib/Carp.pm.</pre>
+<p class="Pp">est imprimée avec une indentation appropriée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Débogage_des_expressions_régulières'><a class='permalink' href='#Débogage_des_expressions_régulières'>Débogage   des expressions régulières</a></h1>
+<p class="Pp">Il existe deux méthodes pour activer la sortie de débogage pour les expressions régulières.</p>
+<p class="Pp">Si votre perl est compilé avec
+    <span class="Li">&quot;-DDEBUGGING&quot;</span>, vous pouvez utiliser l'indicateur <b>-Dr</b>
+    sur la ligne de commande, et <span class="Li">&quot;-Drv&quot;</span> pour des informations plus détaillées.</p>
+<p class="Pp">Sinon, on peut utiliser <span class="Li">&quot;use re
+    'debug'&quot;</span>, ce qui a des effets à la fois au moment de la compilation et à l'exécution.
+    Depuis Perl 5.9.5, ce pragma est délimité lexicalement.</p>
+<section class="Ss">
+<h2 class="Ss" id='Sortie_au_moment_de_la_compilation'><a class='permalink' href='#Sortie_au_moment_de_la_compilation'>Sortie au moment de la   compilation</a></h2>
+<p class="Pp">La sortie de débogage au moment de la compilation ressemble à ceci :</p>
+<pre>Compiling REx '[bc]d(ef*g)+h[ij]k$'
+size 45 Got 364 bytes for offset annotations.
+first</pre> at 1
+rarest char g at 0
+rarest char d at 0
+   1: ANYOF[bc](12)
+  12: EXACT &lt;d&gt;(14)
+  14: CURLYX[0] {1,32767}(28)
+  16:   OPEN1(18)
+  18:     EXACT &lt;e&gt;(20)
+  20:     STAR(23)
+  21:       EXACT &lt;f&gt;(0)
+  23:     EXACT &lt;g&gt;(25)
+  25:   CLOSE1(27)
+  27:   WHILEM[1/1](0)
+  28: NOTHING(29)
+  29: EXACT &lt;h&gt;(31)
+  31: ANYOF[ij](42)
+  42: EXACT &lt;k&gt;(44)
+  44: EOL(45)
+  45: END(0)
+anchored 'de' at 1 floating 'gh' at 3..2147483647 (checking floating) 
+      stclass 'ANYOF[bc]' minlen 7 
+Offsets: [45]
+      1[4] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 5[1]
+      0[0] 12[1] 0[0] 6[1] 0[0] 7[1] 0[0] 9[1] 8[1] 0[0] 10[1] 0[0]
+      11[1] 0[0] 12[0] 12[0] 13[1] 0[0] 14[4] 0[0] 0[0] 0[0] 0[0]
+      0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 18[1] 0[0] 19[1] 20[0]  
+Omitting $` $&amp; $' support.</pre>
+<p class="Pp">La première ligne montre la forme pré-compilée de l'expression régulière.
+    La seconde montre la taille de la forme compilée (en unités arbitraires,
+    généralement des mots de 4 octets) et le nombre total d'octets alloués pour
+    la table des décalages/longueurs, généralement 4 + <span class="Li">&quot;taille&quot;</span>*8.
+    La ligne suivante montre l'identifiant (<i>id</i>) du premier nœud qui
+    effectue une correspondance.</p>
+<p class="Pp">La ligne</p>
+<pre>anchored 'de' at 1 floating 'gh' at 3..2147483647 (checking floating) 
+      stclass 'ANYOF[bc]' minlen 7</pre>
+<p class="Pp">(divisée en deux lignes ci-dessus) contient des informations de l'optimiseur.
+    Dans l'exemple montré, l'optimiseur a constaté que la correspondance devait
+    contenir une sous-chaîne <span class="Li">&quot;de&quot;</span> au décalage 1,
+    plus une sous-chaîne <span class="Li">&quot;gh&quot;</span> à un décalage
+    compris entre 3 et l'infini. De plus, lors de la vérification de ces
+    sous-chaînes (pour abandonner rapidement les correspondances impossibles),
+    Perl vérifiera la sous-chaîne <span class="Li">&quot;gh&quot;</span> avant de
+    vérifier la sous-chaîne <span class="Li">&quot;de&quot;</span>. L'optimiseur
+    peut également utiliser le fait que la correspondance commence (au
+    <i>id</i> <span class="Li">&quot;first&quot;</span>) par une classe de caractères,
+    et qu'aucune chaîne de moins de 7 caractères ne peut correspondre.</p>
+<p class="Pp">Les champs d'intérêt qui peuvent apparaître dans cette ligne sont</p>
+<dl class="Bl-tag">
+  <dt>&quot;anchored&quot; <i>STRING</i> &quot;at&quot; <i>POS</i></dt>
+  <dd></dd>
+  <dt>&quot;floating&quot; <i>STRING</i> &quot;at&quot; <i>POS1..POS2</i></dt>
+  <dd>Voir ci-dessus.</dd>
+  <dt>&quot;matching floating/anchored&quot;</dt>
+  <dd>Quelle sous-chaîne vérifier en premier.</dd>
+  <dt>&quot;minlen&quot;</dt>
+  <dd>La longueur minimale de la correspondance.</dd>
+  <dt>&quot;stclass&quot; <i>TYPE</i></dt>
+  <dd>Type du premier nœud correspondant.</dd>
+  <dt>&quot;noscan&quot;</dt>
+  <dd>Ne pas scanner pour les sous-chaînes trouvées.</dd>
+  <dt>&quot;isall&quot;</dt>
+  <dd>Indique que les informations de l'optimiseur sont tout ce que contient
+      l'expression régulière, et donc qu'il n'est pas nécessaire d'entrer dans
+      le moteur d'expressions régulières.</dd>
+  <dt>&quot;GPOS&quot;</dt>
+  <dd>Défini si le motif contient <span class="Li">&quot;\G&quot;</span>.</dd>
+  <dt>&quot;plus&quot;</dt>
+  <dd>Défini si le motif commence par un caractère répété (comme dans
+      <span class="Li">&quot;x+y&quot;</span>).</dd>
+  <dt>&quot;implicit&quot;</dt>
+  <dd>Défini si le motif commence par
+      <span class="Li">&quot;.*&quot;</span>.</dd>
+  <dt>&quot;with eval&quot;</dt>
+  <dd>Défini si le motif contient des groupes d'évaluation, tels que
+      <span class="Li">&quot;(?{ code })&quot;</span> et
+      <span class="Li">&quot;(??{ code })&quot;</span>.</dd>
+  <dt id="anchored(TYPE)"><a class="permalink" href="#anchored(TYPE)">anchored(TYPE)</a></dt>
+  <dd>Si le motif ne peut correspondre qu'à quelques endroits,
+      <span class="Li">&quot;TYPE&quot;</span> étant
+      <span class="Li">&quot;SBOL&quot;</span>,
+      <span class="Li">&quot;MBOL&quot;</span>, ou
+      <span class="Li">&quot;GPOS&quot;</span>. Voir le tableau ci-dessous.</dd>
+</dl>
+<p class="Pp">Si une sous-chaîne est connue pour correspondre uniquement en fin de
+    ligne, elle peut être suivie de <span class="Li">&quot;$</span>&quot;, comme
+    dans <span class="Li">&quot;floating 'k'$&quot;</span>.</p>
+<p class="Pp">Les informations spécifiques à l'optimiseur sont utilisées pour éviter
+    d'entrer dans un moteur d'expressions régulières (lent) sur des chaînes qui ne
+    correspondent pas définitivement. Si le drapeau <span class="Li">&quot;isall&quot;</span>
+    est défini, un appel au moteur d'expressions régulières peut être évité même
+    lorsque l'optimiseur a trouvé un endroit approprié pour la correspondance.</p>
+<p class="Pp">Au-dessus de la section de l'optimiseur se trouve la liste des
+    <i>nœuds</i> de la forme compilée de l'expression régulière. Chaque ligne a le
+    format</p>
+<p class="Pp"><span class="Li">&quot; &quot;</span><i>id</i>: <i>TYPE</i>
+    <i>OPTIONAL-INFO</i> (<i>next-id</i>)</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Types_des_Nœuds'><a class='permalink' href='#Types_des_Nœuds'>Types des Nœuds</a></h2>
+<p class="Pp">Voici les types possibles actuels, avec de courtes descriptions :</p>
+<pre># TYPE arg-description [regnode-struct-suffix] [longjump-len] DESCRIPTION
+# Points de sortie
+END              no         Fin du programme.
+SUCCEED          no         Retour d'une sous-routine, en gros.
+# Ancres de début de ligne :
+SBOL             no         Correspond &quot;&quot; au début de la ligne : /^/, /\A/
+MBOL             no         Idem, en supposant le mode multiligne : /^/m
+# Ancres de fin de ligne :
+SEOL             no         Correspond &quot;&quot; à la fin de la ligne : /$/
+MEOL             no         Idem, en supposant le mode multiligne : /$/m
+EOS              no         Correspond &quot;&quot; à la fin de la chaîne : /\z/
+# Ancres de début de correspondance :
+GPOS             no         Correspond là où le dernier m//g s'est arrêté.
+# Opérateurs de limite de mot :
+BOUND            no         Comme BOUNDA pour le non-utf8, sinon comme
+                            BOUNDU
+BOUNDL           no         Comme BOUND/BOUNDU, mais \w et \W sont
+                            définis par la locale actuelle
+BOUNDU           no         Correspond &quot;&quot; à n'importe quelle limite d'un type donné
+                            en utilisant les règles /u.
+BOUNDA           no         Correspond &quot;&quot; à n'importe quelle limite entre \w\W ou
+                            \W\w, où \w est [_a-zA-Z0-9]
+NBOUND           no         Comme NBOUNDA pour le non-utf8, sinon comme
+                            BOUNDU
+NBOUNDL          no         Comme NBOUND/NBOUNDU, mais \w et \W sont
+                            définis par la locale actuelle
+NBOUNDU          no         Correspond &quot;&quot; à n'importe quelle non-limite d'un type donné
+                            en utilisant les règles /u.
+NBOUNDA          no         Correspond &quot;&quot; entre n'importe quel \w\w ou \W\W, où \w
+                            est [_a-zA-Z0-9]
+# Alternatives [spéciales] :
+REG_ANY          no         Correspond à n'importe quel caractère (sauf la nouvelle ligne).
+SANY             no         Correspond à n'importe quel caractère.
+ANYOF            sv         Correspond à un caractère de cette classe (ou non),
+                 charclass  correspondance d'un seul caractère seulement
+ANYOFD           sv         Comme ANYOF, mais /d est en vigueur
+                 charclass
+ANYOFL           sv         Comme ANYOF, mais /l est en vigueur
+                 charclass
+ANYOFPOSIXL      sv         Comme ANYOFL, mais correspond à [[:posix:]]
+                 charclass_ classes
+                 posixl
+ANYOFH           sv 1       Comme ANYOF, mais n'a que des correspondances "Hautes",
+                            aucune dans le bitmap ; le champ flags
+                            contient le premier octet de départ UTF-8 correspondable
+ANYOFHb          sv 1       Comme ANYOFH, mais toutes les correspondances partagent le même
+                            octet de départ UTF-8, donné dans le champ flags
+ANYOFHr          sv 1       Comme ANYOFH, mais le champ flags contient
+                            des bornes packées pour tous les octets de départ UTF-8 correspondables.
+ANYOFHs          sv:str 1   Comme ANYOFHb, mais a un champ chaîne qui
+                            donne les octets de départ UTF-8 correspondables ;
+                            le champ flags est la longueur
+ANYOFR           packed 1   Correspond à n'importe quel caractère dans la plage donnée par
+                            ses arguments packés : 12 bits supérieurs représentent le max
+                            delta par rapport aux 20 bits inférieurs ; le champ flags
+                            contient le premier octet de départ UTF-8 correspondable
+ANYOFRb          packed 1   Comme ANYOFR, mais toutes les correspondances partagent le même
+                            octet de départ UTF-8, donné dans le champ flags
+ANYOFHbbm        none bbm   Comme ANYOFHb, mais uniquement pour les caractères UTF-8
+                            à 2 octets ; utilise un bitmap pour correspondre à
+                            l'octet de continuation
+ANYOFM           byte 1     Comme ANYOF, mais correspond à un octet invariant
+                            tel que déterminé par le masque et l'argument
+NANYOFM          byte 1     complément de ANYOFM
+# Classes de Caractères POSIX :
+POSIXD           none       Certaines [[:class:]] sous /d ; le champ FLAGS
+                            indique laquelle
+POSIXL           none       Certaines [[:class:]] sous /l ; le champ FLAGS
+                            indique laquelle
+POSIXU           none       Certaines [[:class:]] sous /u ; le champ FLAGS
+                            indique laquelle
+POSIXA           none       Certaines [[:class:]] sous /a ; le champ FLAGS
+                            indique laquelle
+NPOSIXD          none       complément de POSIXD, [[:^class:]]
+NPOSIXL          none       complément de POSIXL, [[:^class:]]
+NPOSIXU          none       complément de POSIXU, [[:^class:]]
+NPOSIXA          none       complément de POSIXA, [[:^class:]]
+CLUMP            no         Correspond à une séquence de cluster graphique étendu
+# Alternance
+# BRANCH        L'ensemble des branches constituant un seul choix sont
+#               reliées entre elles par leurs pointeurs &quot;next&quot;, car
+#               la précédence empêche quoi que ce soit d'être concaténé à
+#               une branche individuelle. Le pointeur &quot;next&quot; de la dernière
+#               BRANCH d'un choix pointe vers la chose qui suit le
+#               choix entier. C'est aussi là que pointe le pointeur
+#               &quot;next&quot; final de chaque branche individuelle ; chaque branche
+#               commence par le nœud opérande d'un nœud BRANCH.
+#
+BRANCH           node 1     Correspond à cette alternative, ou la suivante...
+# Littéraux
+EXACT            str        Correspond à cette chaîne (le champ flags est la
+                            longueur).
+# Dans un nœud de chaîne longue, l'argument U32 est la longueur, et est
+# immédiatement suivi par la chaîne.
+LEXACT           len:str 1  Correspond à cette longue chaîne (précédée de la longueur ;
+                            flags inutilisés).
+EXACTL           str        Comme EXACT, mais /l est en vigueur (utilisé pour
+                            pouvoir vérifier les avertissements liés à la locale)
+EXACTF           str        Comme EXACT, mais correspond en utilisant les règles /id ;
+                            (chaîne non UTF-8, insensible à la casse ; non-ASCII
+                            pas affecté)
+EXACTFL          str        Comme EXACT, mais correspond en utilisant les règles /il ;
+                            (chaîne pas susceptible d'être insensible à la casse)
+EXACTFU          str        Comme EXACT, mais correspond en utilisant les règles /iu ;
+                            (chaîne insensible à la casse)
+EXACTFAA         str        Comme EXACT, mais correspond en utilisant les règles /iaa ;
+                            (chaîne insensible à la casse sauf MICRO en mode non-UTF8 ;
+                            ne contient pas SHARP S sauf si UTF-8 ; longueur insensible
+                            à la casse <= longueur sensible à la casse)
+EXACTFAA_NO_TRIE str        Comme EXACTFAA, (chaîne non UTF-8, insensible à la casse sauf :
+                            MICRO, SHARP S ; longueur insensible à la casse <=
+                            longueur sensible à la casse, non triable actuellement)
+EXACTFUP         str        Comme EXACT, mais correspond en utilisant les règles /iu ;
+                            (chaîne non UTF-8, insensible à la casse sauf MICRO :
+                            donc problématique)
+EXACTFLU8        str        Comme EXACTFU, mais utilise /il, UTF-8, (la chaîne
+                            est insensible à la casse, et tout ce qu'elle contient est supérieur
+                            à 255
+EXACT_REQ8       str        Comme EXACT, mais seules les cibles codées en UTF-8
+                            peuvent correspondre
+LEXACT_REQ8      len:str 1  Comme LEXACT, mais seulement les cibles codées en UTF-8
+</pre>
+8 cibles encodées
+                            peuvent correspondre
+EXACTFU_REQ8     str        Comme EXACTFU, mais seules les cibles encodées
+                            en UTF-8 peuvent correspondre
+EXACTFU_S_EDGE   str        Règles /di, mais rien ne préclut /ui,
+                            sauf commence et/ou finit par [Ss] ;
+                            (chaîne non UTF-8 ; uniquement à la compilation)
+# Nouveaux motifs de classes de caractères
+LNBREAK          none       motif de saut de ligne générique
+# Lié au Trie
+# Se comporte de la même manière que A|LIST|OF|WORDS. Les variantes '..C'
+# ont des données de classe de caractères en ligne (ASCII uniquement), les 'C' les stockent dans la
+# structure.
+TRIE             trie 1     Correspond à plusieurs EXACT(F[ALU]?)? à la fois.
+                            flags==type
+TRIEC            trie       Identique à TRIE, mais avec des données de classe de caractères
+                 charclass  intégrées
+AHOCORASICK      trie 1     Classe de caractères Aho Corasick. flags==type
+AHOCORASICKC     trie       Identique à AHOCORASICK, mais avec des données de classe de caractères
+                 charclass  intégrées
+# Types qui ne font rien
+NOTHING          no         Correspond à la chaîne vide.
+# Une variante de ce qui précède qui délimite un groupe, arrêtant ainsi les optimisations
+TAIL             no         Correspond à la chaîne vide. Peut y sauter depuis
+                            l'extérieur.
+# Boucles
+# STAR,PLUS    '?', et les '*' et '+' complexes, sont implémentés comme des structures
+#               de BRANCH circulaires. Les cas simples
+#               (un caractère par correspondance) sont implémentés avec STAR
+#               et PLUS pour la vitesse et pour minimiser les plongements récursifs.
+#
+STAR             node       Correspond à cette chose (simple) 0 ou plusieurs fois :
+                            /A{0,}B/ où A a une largeur de 1 caractère
+PLUS             node       Correspond à cette chose (simple) 1 ou plusieurs fois :
+                            /A{1,}B/ où A a une largeur de 1 caractère
+CURLY            sv 3       Correspond à cette chose (simple) {n,m} fois :
+                            /A{m,n}B/ où A a une largeur de 1 caractère
+CURLYN           no 3       Capture la chose simple suivante :
+                            /(A){m,n}B/ où A a une largeur de 1 caractère
+CURLYM           no 3       Capture cette chose moyennement complexe {n,m}
+                            fois : /(A){m,n}B/ où A a une longueur fixe
+CURLYX           sv 3       Correspond/Capture cette chose complexe {n,m}
+                            fois.
+# Ce terminateur crée une structure de boucle pour CURLYX
+WHILEM           no         Effectue le traitement curly et vérifie si le reste
+                            correspond.
+# Lié au tampon
+# OPEN,CLOSE,GROUPP     ...sont numérotés à la compilation.
+OPEN             num 1      Marque ce point dans l'entrée comme début de #n.
+CLOSE            num 1      Ferme l'OPEN correspondant de #n.
+SROPEN           none       Identique à OPEN, mais pour le déroulement du script
+SRCLOSE          none       Ferme le SROPEN précédent
+REF              num 2      Correspond à une chaîne déjà correspondue
+REFF             num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /di.
+REFFL            num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /li.
+REFFU            num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /ui.
+REFFA            num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /aai.
+# Références nommées. Le code dans regcomp.c suppose que toutes celles-ci sont après
+# les références numérotées
+REFN             no-sv 2    Correspond à une chaîne déjà correspondue
+REFFN            no-sv 2    Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /di.
+REFFLN           no-sv 2    Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /li.
+REFFUN           num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /ui.
+REFFAN           num 2      Correspond à une chaîne déjà correspondue, en utilisant les règles
+                            /aai.
+# Support pour les longues expressions régulières
+LONGJMP          off 1 1    Saut lointain.
+BRANCHJ          off 2 1    BRANCH avec un décalage long.
+# Cas spéciaux d'opérations
+IFMATCH          off 1 1    Réussit si ce qui suit correspond ; drapeaux non nuls
+                            "f", next_off "o" signifie une assertion de lookbehind
+                            commençant à "f..(f-o)" caractères
+                            avant l'actuel
+UNLESSM          off 1 1    Échoue si ce qui suit correspond ; drapeaux non nuls
+                            "f", next_off "o" signifie une assertion de lookbehind
+                            commençant à "f..(f-o)" caractères
+                            avant l'actuel
+SUSPEND          off 1 1    Sous-RE "indépendant".
+IFTHEN           off 1 1    Commutateur, devrait être précédé par un commutateur.
+GROUPP           num 1      Si le groupe a correspondu.
+# Le gros travailleur
+EVAL             evl/flags  Exécute du code Perl.
+                 2
+# Modificateurs
+MINMOD           no         L'opérateur suivant n'est pas gourmand.
+LOGICAL          no         L'opcode suivant doit seulement définir le drapeau.
+# Ceci n'est pas encore utilisé
+RENUM            off 1 1    Groupe avec des parenthèses numérotées indépendamment.
+# Sous-programmes d'expressions régulières
+GOSUB            num/ofs 2  Récursion vers l'argument parenthèse arg1 à l'ofs (signé) arg2
+# Conditionnelles spéciales
+GROUPPN          no-sv 1    Si le groupe a correspondu.
+INSUBP           num 1      Si nous sommes dans une récursion spécifique.
+DEFINEP          none 1     Ne jamais exécuter directement.
+# Verbes de retour arrière
+ENDLIKE          none       Utilisé uniquement pour le champ type des verbes
+OPFAIL           no-sv 1    Identique à (?!), mais avec un argument de verbe
+ACCEPT           no-sv/num  Accepte la chaîne actuellement correspondue, avec
+                 2          verbe
+# Verbes avec arguments
+VERB             no-sv 1    Utilisé uniquement pour le champ type des verbes
+PRUNE            no-sv 1    L'échec du motif à ce point de départ si non-
+                            retour arrière à travers ceci
+MARKPOINT        no-sv 1    Pousse l'emplacement actuel pour un rollback par
+                            coupure.
+SKIP             no-sv 1    En cas d'échec, saute vers l'avant (vers la marque)
+                            avant de réessayer
+COMMIT           no-sv 1    Le motif échoue catégoriquement en cas de retour arrière
+                            à travers ceci
+CUTGROUP         no-sv 1    En cas d'échec, passe à la prochaine alternance dans
+                            le groupe
+# Contrôle ce qui est conservé dans $&amp;.
+KEEPS            no         $&amp; commence ici.
+# Valide que IFMATCH et UNLESSM de lookbehind se terminent au bon endroit
+LOOKBEHIND_END   no         Retourne du lookbehind (IFMATCH/UNLESSM)
+                            et valide la position
+# OPÉRATIONS SPÉCIALES D'EXPRESSIONS RÉGULIÈRES
+# Ce n'est pas vraiment un nœud, mais une partie d'un nœud "long" optimisée
+# L'objectif est de simplifier la sortie de débogage, nous le marquons comme s'il s'agissait d'un nœud
+OPTIMIZED        off        Espace réservé pour le dump.
+# Opération spéciale avec la propriété qu'aucun opcode dans un programme compilé
+# ne sera jamais de ce type. Il peut donc être utilisé comme valeur de drapeau qu'aucun
+# autre opcode n'a jamais vu. END est utilisé de manière similaire, en ce sens qu'un
+# nœud END ne peut pas être optimisé. END implique donc "non optimisable" et PSEUDO
+# signifie "rien d'optimisable encore vu".
+PSEUDO           off        Opcode fictif pour usage interne.
+REGEX_SET        depth p    Ensemble d'expressions régulières, nœud temporaire utilisé dans la pré-
+                            compilation d'optimisation
+</pre>
+<p class="Pp">Après les informations de l'optimiseur, suit une vidange de la table
+    des décalages/longueurs, ici divisée en plusieurs lignes :</p>
+<pre>Offsets: [45]
+      1[4] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 5[1]
+      0[0] 12[1] 0[0] 6[1] 0[0] 7[1] 0[0] 9[1] 8[1] 0[0] 10[1] 0[0]
+      11[1] 0[0] 12[0] 12[0] 13[1] 0[0] 14[4] 0[0] 0[0] 0[0] 0[0]
+      0[0] 0[0] 0[0] 0[0] 0[0] 0[0] 18[1] 0[0] 19[1] 20[0]</pre>
+<p class="Pp">La première ligne ici indique que la table des décalages/longueurs
+    contient 45 entrées. Chaque entrée est une paire d'entiers, désignée par
+    <span class="Li">&quot;offset[length]&quot;</span>. Les entrées sont numérotées
+    à partir de 1, donc l'entrée #1 ici est
+    <span class="Li">&quot;1[4]&quot;</span> et l'entrée #12 est
+    <span class="Li">&quot;5[1]&quot;</span>.
+    <span class="Li">&quot;1[4]&quot;</span> indique que le nœud étiqueté
+    <span class="Li">&quot;1:&quot;</span> (le <span class="Li">&quot;1:
+    ANYOF[bc]&quot;</span>) commence à la position de caractère 1 dans la forme pré-compilée
+    de l'expression régulière, et a une longueur de 4 caractères.
+    <span class="Li">&quot;5[1]&quot;</span> en position 12 indique que le
+    nœud étiqueté <span class="Li">&quot;12:&quot;</span> (le
+    <span class="Li">&quot;12: EXACT &lt;d&gt;&quot;</span>) commence à la position de caractère
+    5 dans la forme pré-compilée de l'expression régulière, et a une longueur de 1
+    caractère. <span class="Li">&quot;12[1]&quot;</span> en position 14
+    indique que le nœud étiqueté <span class="Li">&quot;14:&quot;</span> (le
+    <span class="Li">&quot;14: CURLYX[0] {1,32767}&quot;</span>) commence à la position de caractère
+    12 dans la forme pré-compilée de l'expression régulière, et a une longueur de 1
+    caractère — c'est-à-dire qu'il correspond au symbole
+    <span class="Li">&quot;+&quot;</span> dans l'expression régulière précompilée.</p>
+<p class="Pp"><span class="Li">&quot;0[0]&quot;</span> les éléments indiquent qu'il n'y a pas de nœud
+    correspondant.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sortie-d%27exécution'><a class='permalink' href='#Sortie-d%27exécution'>Sortie d'exécution</a></h2>
+<p class="Pp">Tout d'abord, lors d'une correspondance, il est possible de ne recevoir
+    aucune sortie d'exécution même si le débogage est activé. Cela signifie que le
+    moteur d'expressions régulières n'a jamais été entré et que tout le travail a
+    donc été effectué par l'optimiseur.</p>
+<p class="Pp">Si le moteur d'expressions régulières a été entré, la sortie peut
+    ressembler à ceci :</p>
+<pre>Matching '[bc]d(ef*g)+h[ij]k$' against 'abcdefg__gh__'
+  Setting an EVAL scope, savestack=3
+   2 &lt;ab&gt; &lt;cdefg__gh_&gt;    |  1: ANYOF
+   3 &lt;abc&gt; &lt;defg__gh_&gt;    | 11: EXACT &lt;d&gt;
+   4 &lt;abcd&gt; &lt;efg__gh_&gt;    | 13: CURLYX {1,32767}
+   4 &lt;abcd&gt; &lt;efg__gh_&gt;    | 26:   WHILEM
+                              0 out of 1..32767  cc=effff31c
+   4 &lt;abcd&gt; &lt;efg__gh_&gt;    | 15:     OPEN1
+   4 &lt;abcd&gt; &lt;efg__gh_&gt;    | 17:     EXACT &lt;e&gt;
+   5 &lt;abcde&gt; &lt;fg__gh_&gt;    | 19:     STAR
+                           EXACT &lt;f&gt; can match 1 times out of 32767...
+  Setting an EVAL scope, savestack=3
+   6 &lt;bcdef&gt; &lt;g__gh__&gt;    | 22:       EXACT &lt;g&gt;
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 24:       CLOSE1
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 26:       WHILEM
+                                  1 out of 1..32767  cc=effff31c
+  Setting an EVAL scope, savestack=12
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 15:         OPEN1
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 17:         EXACT &lt;e&gt;
+     restoring \1 to 4(4)..7
+                                  failed, try continuation...
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 27:         NOTHING
+   7 &lt;bcdefg&gt; &lt;__gh__&gt;    | 28:         EXACT &lt;h&gt;
+                                  failed...
+                              failed...</pre>
+<p class="Pp">L'information la plus significative dans la sortie concerne le
+    <i>nœud</i> particulier de l'expression régulière compilée qui est actuellement
+    testé contre la chaîne cible. Le format de ces lignes est</p>
+<p class="Pp"><span class="Li">&quot; &quot;</span><i>DÉCALAGE-CHAÎNE</i>
+    &lt;<i>PRÉ-CHAÎNE</i>&gt; &lt;<i>POST-CHAÎNE</i>&gt; |<i>ID</i>:
+  <i>TYPE</i></p>
+<p class="Pp">L'information <i>TYPE</i> est indentée par rapport au niveau de retour
+    arrière. D'autres informations incidentes apparaissent intercalées.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Débogage-de-l%27utilisation-de-la-mémoire-de-Perl'><a class='permalink' href='#Débogage-de-l%27utilisation-de-la-mémoire-de-Perl'>Débogage de l'utilisation de la mémoire de Perl</a></h1>
+<p class="Pp">Perl est un gaspilleur prodigue en matière d'utilisation de la mémoire. Il
+    existe un dicton qui dit que pour estimer l'utilisation de la mémoire de Perl,
+    il faut supposer un algorithme raisonnable d'allocation de mémoire, multiplier
+    cette estimation par 10, et bien qu'on puisse toujours manquer la cible, au
+    moins on ne sera pas aussi étonné. Ce n'est pas absolument vrai, mais cela peut
+    donner une bonne idée de ce qui se passe.</p>
+<p class="Pp">Supposons qu'un entier ne puisse pas prendre moins de</p>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>perldebguts - Débogage interne de Perl</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/man.css">
+    <link rel="canonical" href="/man/perldebguts.1perl.fr.html">
+</head>
+<body>
+    
+    <main>
+        <article>
+            <p class="Pp">Ce document explique certaines des structures de données internes de Perl et les raisons pour lesquelles le code Perl peut sembler s'amplifier en taille lorsqu'il est compilé.</p>
+
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<p class="Pp">perldebguts - Débogage interne de Perl</p>
+</section>
+
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">Le débogueur Perl peut être une aide précieuse pour comprendre le flux d'exécution de votre programme, mais il peut aussi vous donner un aperçu de la façon dont Perl gère la mémoire.</p>
+
+<section class="Ss">
+<h2 class="Ss" id="Memory_Usage"><a class="permalink" href="#Memory_Usage">Utilisation de la mémoire</a></h2>
+<p class="Pp">L'amplification du code source est un phénomène connu. Une simple déclaration scalaire peut prendre plus de 20 octets de mémoire, un flottant ne peut pas prendre moins de 24 octets, une chaîne ne peut pas prendre moins de 32 octets (tous ces exemples supposent des architectures 32 bits, les résultats sont un peu pires sur les architectures 64 bits). Si une variable est accédée de deux des trois manières différentes (qui nécessitent un entier, un flottant ou une chaîne), l'empreinte mémoire peut augmenter encore de 20 octets. Une implémentation négligente de <a href='/man/malloc.3.en'>malloc(3)</a> peut gonfler ces chiffres de manière spectaculaire.</p>
+<p class="Pp">À l'autre extrémité de l'échelle, une déclaration comme</p>
+<pre>sub foo;</pre>
+<p class="Pp">peut occuper jusqu'à 500 octets de mémoire, selon la version de Perl que vous utilisez.</p>
+<p class="Pp">Des estimations anecdotiques de l'amplification du code source vers le code compilé suggèrent un décuplement. Cela signifie que la forme compilée d'un code raisonnable (normalement commenté, correctement indenté, etc.) prendra environ huit fois plus d'espace en mémoire que le code ne prenait sur disque.</p>
+<p class="Pp">Le commutateur de ligne de commande <b>-DL</b> est obsolète depuis environ Perl 5.6.0 (il n'était disponible que si Perl était construit avec <span class="Li">&quot;-DDEBUGGING&quot;</span>). Ce commutateur était utilisé pour suivre les allocations mémoire de Perl et les fuites de mémoire possibles. De nos jours, l'utilisation d'outils de débogage malloc tels que <i>Purify</i> ou <i>valgrind</i> est suggérée à la place. Voir aussi &quot;PERL_MEM_LOG&quot; dans perlhacktips.</p>
+<p class="Pp">Une façon de découvrir combien de mémoire est utilisée par les structures de données Perl est d'installer le module Devel::Size à partir de CPAN : il vous donne le nombre minimum d'octets requis pour stocker une structure de données particulière. Veuillez tenir compte de la différence entre <b>size()</b> et <b>total_size()</b>.</p>
+<p class="Pp">Si Perl a été compilé en utilisant le malloc de Perl, vous pouvez analyser l'utilisation de la mémoire de Perl en définissant <span class="Li">$ENV</span>{PERL_DEBUG_MSTATS}.</p>
+</section>
+
+<section class="Ss">
+<h2 class="Ss" id="Using_$ENV{PERL_DEBUG_MSTATS}"><a class='permalink' href='#Using_$ENV{PERL_DEBUG_MSTATS}'>Utilisation de $ENV{PERL_DEBUG_MSTATS}</a></h2>
+<p class="Pp">Si votre perl utilise le <b>malloc()</b> de Perl et a été compilé avec les commutateurs nécessaires (ce qui est le cas par défaut), alors il imprimera des statistiques d'utilisation de la mémoire après la compilation de votre code lorsque <span class="Li">&quot;$ENV{PERL_DEBUG_MSTATS} &gt; 1&quot;</span>, et avant la terminaison du programme lorsque <span class="Li">&quot;$ENV{PERL_DEBUG_MSTATS} &gt;= 1&quot;</span>. Le format du rapport est similaire à l'exemple suivant :</p>
+<pre>$ PERL_DEBUG_MSTATS=2 perl -e &quot;require Carp&quot;
+Memory allocation statistics after compilation: (buckets 4(4)..8188(8192)
+   14216 free:   130   117    28     7     9   0   2     2   1 0 0
+               437    61    36     0     5
+   60924 used:   125   137   161    55     7   8   6    16   2 0 1
+                74   109   304    84    20
+Total sbrk(): 77824/21:119. Odd ends: pad+heads+chain+tail: 0+636+0+2048.
+Memory allocation statistics after execution:   (buckets 4(4)..8188(8192)
+   30888 free:   245    78    85    13     6   2   1     3   2 0 1
+               315   162    39    42    11
+  175816 used:   265   176  1112   111    26  22  11    27   2 1 1
+               196   178  1066   798    39
+Total sbrk(): 215040/47:145. Odd ends: pad+heads+chain+tail: 0+2192+0+6144.</pre>
+<p class="Pp">Il est possible de demander une telle statistique à des points arbitraires de votre exécution en utilisant la fonction <b>mstat()</b> du module standard Devel::Peek.</p>
+<p class="Pp">Voici une explication de ce format :</p>
+<dl class="Bl-tag">
+  <dt>&quot;buckets SMALLEST(APPROX)..GREATEST(APPROX)&quot;</dt>
+  <dd>Le <b>malloc()</b> de Perl utilise des allocations par blocs (buckets). Chaque requête est arrondie à la taille de bloc disponible la plus proche, et un bloc est pris dans le pool de blocs de cette taille.
+    <p class="Pp">La ligne ci-dessus décrit les limites des blocs actuellement utilisés. Chaque bloc a deux tailles : l'empreinte mémoire et la taille maximale de données utilisateur qui peuvent tenir dans ce bloc. Supposons dans l'exemple ci-dessus que le plus petit bloc était de taille 4. Le plus grand bloc aurait une taille utilisable de 8188, et l'empreinte mémoire serait de 8192.</p>
+    <p class="Pp">Dans une version de Perl compilée pour le débogage, certains blocs peuvent avoir une taille utilisable négative. Cela signifie que ces blocs ne peuvent pas (et ne seront pas) utilisés. Pour les blocs plus grands, l'empreinte mémoire peut être supérieure d'une page à une puissance de 2. Si c'est le cas, la puissance de deux correspondante est imprimée dans le champ <span class="Li">&quot;APPROX&quot;</span> ci-dessus.</p>
+  </dd>
+  <dt id="Free/Used"><a class="permalink" href="#Free/Used">Libre/Utilisé</a></dt>
+  <dd>Les 1 ou 2 rangées de nombres qui suivent correspondent au nombre de blocs de chaque taille entre <span class="Li">&quot;SMALLEST&quot;</span> et <span class="Li">&quot;GREATEST&quot;</span>. Dans la première rangée, les tailles (empreintes mémoire) des blocs sont des puissances de deux - ou potentiellement une page de plus. Dans la deuxième rangée, si elle est présente, les empreintes mémoire des blocs se situent entre les empreintes mémoire de deux blocs &quot;au-dessus&quot;.
+    <p class="Pp">Par exemple, supposons que dans l'exemple précédent, les empreintes mémoire étaient</p>
+        <pre>free:    8     16    32    64    128  256 512 1024 2048 4096 8192
+        4     12    24    48    80
+</pre>
+    <p class="Pp">Avec un perl non-<span class="Li">&quot;DEBUGGING&quot;</span>, les blocs à partir de <span class="Li">128</span> ont une surcharge de 4 octets, et donc un bloc de 8192 octets peut prendre des allocations jusqu'à 8188 octets.</p>
+  </dd>
+  <dt>&quot;Total sbrk(): SBRKed/SBRKs:CONTINUOUS&quot;</dt>
+  <dd>Les deux premiers champs donnent le montant total de mémoire que perl a <a href='/man/sbrk.2.en'>sbrk(2)</a>é (ess-broken? :-) et le nombre de <a href='/man/sbrk.2.en'>sbrk(2)</a>s utilisés. Le troisième nombre est ce que perl pense de la continuité des morceaux retournés. Tant que ce nombre est positif, <b>malloc()</b> supposera qu'il est probable que <a href='/man/sbrk.2.en'>sbrk(2)</a> fournira de la mémoire continue.
+    <p class="Pp">La mémoire allouée par les bibliothèques externes n'est pas comptée.</p>
+  </dd>
+  <dt>&quot;pad: 0&quot;</dt>
+  <dd>La quantité de mémoire <a href='/man/sbrk.2.en'>sbrk(2)</a>ée nécessaire pour maintenir l'alignement des blocs.</dd>
+  <dt>&quot;heads: 2192&quot;</dt>
+  <dd>Bien que la surcharge mémoire des blocs plus grands soit conservée à l'intérieur du bloc, pour les blocs plus petits, elle est conservée dans des zones séparées. Ce champ donne la taille totale de ces zones.</dd>
+  <dt>&quot;chain: 0&quot;</dt>
+  <dd><b>malloc()</b> peut vouloir subdiviser un bloc plus grand en blocs plus petits. Si seule une partie du bloc décédé reste non subdivisée, le reste est conservé comme un élément d'une liste chaînée. Ce champ donne la taille totale de ces morceaux.</dd>
+  <dt>&quot;tail: 6144&quot;</dt>
+  <dd>Pour minimiser le nombre de <a href='/man/sbrk.2.en'>sbrk(2)</a>s, <b>malloc()</b> demande plus de mémoire. Ce champ donne la taille de la partie encore inutilisée, qui a été <a href='/man/sbrk.2.en'>sbrk(2)</a>ée, mais jamais touchée.</dd>
+</dl>
+</section>
+</section>
+
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">VOIR AUSSI</a></h1>
+<p class="Pp">perldebug, perl5db.pl, perlguts, perlrun, re, et Devel::DProf.</p>
+</section>
+        </article>
+        <footer>
+            <p>Page mise à jour le 2025-07-13</p>
+            <p>Pour Perl v5.42.0</p>
+        </footer>
+    </main>
+</body>
+</html>

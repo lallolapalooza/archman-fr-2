@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>statd(8) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+        <link rel="alternate" href="/man/statd.8.en" hreflang="en">
+    
+        <link rel="alternate" href="/man/statd.8.ro" hreflang="ro">
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">statd(8)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">RPC.STATD(8)</td>
+    <td class="head-vol">Manuel du gestionnaire système</td>
+    <td class="head-rtitle">RPC.STATD(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">rpc.statd — démon du service NSM</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp"><b>rpc.statd [-dh?FLNvV] [-H </b><i>prog</i><b>] [-n </b><i>mon-nom</i><b>] [-o </b><i>port-sortie</i><b>]</b> <b>[-p </b><i>port-écoute</i><b>] [-P </b><i>chemin</i><b>]</b> <b>[--nlm-port </b><i>port</i><b>] [--nlm-udp-port </b><i>port</i><b>]</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Les verrous de fichiers ne font pas partie de l'état persistant du système de fichiers. L'état des verrous est donc perdu lorsqu'un hôte redémarre.</p>
+<p class="Pp">Les systèmes de fichiers réseau doivent également détecter la perte de l'état des verrous lorsqu'un hôte distant redémarre. Après le redémarrage d'un client NFS, un serveur NFS doit libérer tous les verrous de fichiers détenus par les applications qui s'exécutaient sur ce client. Après le redémarrage d'un serveur, un client doit rappeler au serveur les verrous de fichiers détenus par les applications qui s'exécutaient sur ce client.</p>
+<p class="Pp">Pour la version 2 [RFC1094] et la version 3 [RFC1813] de NFS, le protocole *Network Status Monitor* (NSM) est utilisé pour notifier les pairs NFS des redémarrages. Sous Linux, deux composants distincts en espace utilisateur constituent le service NSM :</p>
+<dl class="Bl-tag">
+  <dt id="rpc.statd-1"><a class="permalink" href="#rpc.statd-1"><b>rpc.statd</b></a></dt>
+  <dd>Un démon qui écoute les notifications de redémarrage des autres hôtes et gère la liste des hôtes à notifier lorsque le système local redémarre.</dd>
+  <dt id="sm-notify"><a class="permalink" href="#sm-notify"><b>sm-notify</b></a></dt>
+  <dd>Un programme auxiliaire qui notifie les pairs NFS après le redémarrage du système local.</dd>
+</dl>
+<p class="Pp">Le gestionnaire de verrous NFS local alerte son <b>rpc.statd</b> local de chaque pair distant à surveiller. Lorsque le système local redémarre, la commande <b>sm-notify</b> notifie le service NSM des pairs surveillés du redémarrage. Lorsqu'un pair distant redémarre, ce pair notifie le <b>rpc.statd</b> local, qui transmet à son tour la notification de redémarrage au gestionnaire de verrous NFS local.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="FONCTIONNEMENT_DU_NSM_EN_DÉTAIL"><a class='permalink' href='#FONCTIONNEMENT_DU_NSM_EN_DÉTAIL'>FONCTIONNEMENT DU NSM EN DÉTAIL</a></h1>
+<p class="Pp">La première interaction de verrouillage de fichier entre un client NFS et un serveur entraîne le contact des gestionnaires de verrous NFS des deux pairs avec leur service NSM local pour stocker des informations sur le pair opposé. Sous Linux, le gestionnaire de verrous local contacte <b>rpc.statd</b>.</p>
+<p class="Pp"><b>rpc.statd</b> enregistre des informations sur chaque pair NFS surveillé sur un stockage persistant. Ces informations décrivent comment contacter un pair distant au cas où le système local redémarrerait, comment reconnaître quel pair surveillé signale un redémarrage et comment notifier le gestionnaire de verrous local lorsqu'un pair surveillé indique qu'il a redémarré.</p>
+<p class="Pp">Un client NFS envoie un nom d'hôte, appelé <i>caller_name</i> du client, dans chaque requête de verrouillage de fichier. Un serveur NFS peut utiliser ce nom d'hôte pour envoyer des appels GRANT asynchrones à un client, ou pour notifier le client qu'il a redémarré.</p>
+<p class="Pp">Le serveur NFS Linux peut fournir le <i>caller_name</i> du client ou l'adresse réseau du client à <b>rpc.statd</b>. Aux fins du protocole NSM, ce nom ou cette adresse est connu sous le nom de <i>mon_name</i> du pair surveillé. De plus, le gestionnaire de verrous local indique à <b>rpc.statd</b> quel est, selon lui, son propre nom d'hôte. Aux fins du protocole NSM, ce nom d'hôte est connu sous le nom de <i>my_name</i>.</p>
+<p class="Pp">Il n'y a pas d'interaction équivalente entre un serveur NFS et un client pour informer le client du <i>caller_name</i> du serveur. Par conséquent, les clients NFS ne savent pas réellement quel <i>mon_name</i> un serveur NFS pourrait utiliser dans une requête SM_NOTIFY. Le client NFS Linux utilise le nom d'hôte du serveur de la commande mount pour identifier les serveurs NFS en cours de redémarrage.</p>
+<section class="Ss">
+<h2 class="Ss" id="Notification_de_redémarrage"><a class='permalink' href='#Notification_de_redémarrage'>Notification de redémarrage</a></h2>
+<p class="Pp">Lorsque le système local redémarre, la commande <b>sm-notify</b> lit la liste des pairs surveillés à partir du stockage persistant et envoie une requête SM_NOTIFY au service NSM de chaque pair distant listé. Elle utilise la chaîne <i>mon_name</i> comme destination. Pour identifier quel hôte a redémarré, la commande <b>sm-notify</b> envoie la chaîne <i>my_name</i> enregistrée lors de la surveillance de ce pair distant. Le <b>rpc.statd</b> distant fait correspondre les requêtes SM_NOTIFY entrantes à l'aide de cette chaîne, ou de l'adresse réseau de l'appelant, à un ou plusieurs pairs de sa propre liste de surveillance.</p>
+<p class="Pp">Si <b>rpc.statd</b> ne trouve aucun pair dans sa liste de surveillance qui corresponde à une requête SM_NOTIFY entrante, la notification n'est pas transmise au gestionnaire de verrous local. De plus, chaque pair a son propre <i>numéro d'état NSM</i>, un entier de 32 bits qui est incrémenté après chaque redémarrage par la commande <b>sm-notify</b>. <b>rpc.statd</b> utilise ce numéro pour distinguer les redémarrages réels des notifications rejouées.</p>
+<p class="Pp">Une partie de la récupération des verrous NFS consiste à redécouvrir quels pairs doivent être surveillés à nouveau. La commande <b>sm-notify</b> efface la liste de surveillance sur le stockage persistant après chaque redémarrage.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="OPTIONS"><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<dl class="Bl-tag">
+  <dt id="d-1"><a class="permalink" href="#d-1"><b>-d</b>,<b> --no-syslog</b></a></dt>
+  <dd>Fait en sorte que <b>rpc.statd</b> écrive les messages de journalisation sur <i>stderr</i> au lieu du journal système, si l'option <b>-F</b> a également été spécifiée.</dd>
+  <dt id="F-1"><a class="permalink" href="#F-1"><b>-F</b>,<b> --foreground</b></a></dt>
+  <dd>Maintient <b>rpc.statd</b> attaché à son terminal de contrôle afin que le fonctionnement du NSM puisse être surveillé directement ou exécuté sous un débogueur. Si cette option n'est pas spécifiée, <b>rpc.statd</b> se détache bientôt après son démarrage.</dd>
+  <dt id="h-1"><a class="permalink" href="#h-1"><b>-h</b>,<b> -?</b>,<b> --help</b></a></dt>
+  <dd>Fait afficher à <b>rpc.statd</b> des informations d'utilisation sur <i>stderr</i>, puis quitte.</dd>
+  <dt id="H-1"><a class="permalink" href="#H-1"><b>-H,</b><i></i><b> --ha-callout </b><i>prog</i></a></dt>
+  <dd>Spécifie un programme de rappel de haute disponibilité. Si cette option n'est pas spécifiée, aucun rappel n'est effectué. Voir la section <b>Rappels de haute disponibilité</b> ci-dessous pour plus de détails.</dd>
+  <dt id="L-1"><a class="permalink" href="#L-1"><b>-L</b>,<b> --no-notify</b></a></dt>
+  <dd>Empêche <b>rpc.statd</b> d'exécuter la commande <b>sm-notify</b> lors de son démarrage, préservant ainsi le numéro d'état NSM et la liste de surveillance existants.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>Note : la commande <b>sm-notify</b> contient une vérification pour s'assurer qu'elle ne s'exécute qu'une seule fois après chaque redémarrage du système. Cela évite les notifications de redémarrage erronées si <b>rpc.statd</b> redémarre sans l'option <b>-L</b>.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="n-1"><a class="permalink" href="#n-1"><b>-n, </b><i></i><b>--name </b><i>ipaddr</i><b> | </b><i>hostname</i></a></dt>
+  <dd>Cette chaîne n'est utilisée que par la commande <b>sm-notify</b> comme adresse source à partir de laquelle envoyer les requêtes de notification de redémarrage.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>La forme <i>ipaddr</i> peut être exprimée sous forme d'adresse de présentation IPv4 ou IPv6. Si cette option n'est pas spécifiée, <b>rpc.statd</b> utilise une adresse wildcard comme adresse de liaison de transport. Voir <a href='/man/sm-notify.8.fr'>sm-notify(8)</a> pour plus de détails.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="N-1"><a class="permalink" href="#N-1"><b>-N</b></a></dt>
+  <dd>Fait en sorte que <b>rpc.statd</b> exécute la commande <b>sm-notify</b>, puis quitte. Comme la commande <b>sm-notify</b> peut également être exécutée directement, cette option est obsolète.</dd>
+  <dt id="o-1"><a class="permalink" href="#o-1"><b>-o,</b><i></i><b> --outgoing-port </b><i>port</i></a></dt>
+  <dd>Spécifie le numéro de port source que la commande <b>sm-notify</b> doit utiliser lors de l'envoi des notifications de redémarrage. Voir <a href='/man/sm-notify.8.fr'>sm-notify(8)</a> pour plus de détails.</dd>
+  <dt id="p-1"><a class="permalink" href="#p-1"><b>-p,</b><i></i><b> --port </b><i>port</i></a></dt>
+  <dd>Spécifie le numéro de port utilisé pour les sockets d'écoute RPC. Si cette option n'est pas spécifiée, <b>rpc.statd</b> essaiera de consulter <i>/etc/services</i> ; si la récupération du port réussit, il définira le même port pour tous les sockets d'écoute, sinon il choisira un port éphémère aléatoire pour chaque socket d'écoute.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>Cette option peut être utilisée pour fixer la valeur du port de ses écoutes lorsque les requêtes SM_NOTIFY doivent traverser un pare-feu entre les clients et les serveurs.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="T-1"><a class="permalink" href="#T-1"><b>-T,</b><i></i><b> --nlm-port </b><i>port</i></a></dt>
+  <dd>Spécifie le numéro de port sur lequel <i>lockd</i> doit écouter les requêtes <b>NLM</b>. Ceci définit les ports TCP et UDP, sauf si le port UDP est défini séparément.</dd>
+  <dt id="U-1"><a class="permalink" href="#U-1"><b>-U,</b><i></i><b> --nlm-udp-port </b><i>port</i></a></dt>
+  <dd>Spécifie le numéro de port UDP sur lequel <i>lockd</i> doit écouter les requêtes <b>NLM</b>.</dd>
+  <dt id="P-1"><a class="permalink" href="#P-1"><b>-P, </b><i></i><b>--stat</b></a></dt>
+</dl>
+<dl class="Bl-tag">
+  <dt id="path"><a class="permalink" href="#path"><i>path</i></a></dt>
+  <dd>Spécifie le chemin du fichier de base de données utilisé pour stocker les informations de surveillance des pairs. La valeur par défaut est <i>/var/lib/nfs/statd/state</i>.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="v"><a class="permalink" href="#v"><b>-v</b>,<b> --version</b></a></dt>
+  <dd>Affiche les informations de version, puis quitte.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="V-1"><a class="permalink" href="#V-1"><b>-V</b>,<b> --verbose</b></a></dt>
+  <dd>Mode verbeux. L'information est également envoyée sur <i>stderr</i>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="HA_CALLOUTS"><a class='permalink' href='#HA_CALLOUTS'>CALLOUTS DE HAUTE DISPONIBILITÉ</a></h1>
+<p class="Pp">L'option <b>-H </b><i>prog</i> permet de spécifier un programme externe (le "callout") qui sera exécuté par <b>rpc.statd</b> dans certaines circonstances. Ceci est utile dans les environnements de haute disponibilité où il faut s'assurer que le système de fichiers réseau est mis hors ligne lorsque le serveur qui le fournit redémarre.</p>
+<p class="Pp">Le programme callout est appelé avec les arguments suivants :</p>
+<dl class="Bl-tag">
+  <dt id="SM_NOTIFY"><a class="permalink" href='#SM_NOTIFY'>SM_NOTIFY</a></dt>
+  <dd>Une notification de redémarrage d'un pair distant est reçue. Le nom du pair distant et son nom d'hôte (my_name) sont passés en arguments.</dd>
+  <dt id="NSM_MONITOR_ADD"><a class="permalink" href='#NSM_MONITOR_ADD'>NSM_MONITOR_ADD</a></dt>
+  <dd>Un nouveau pair distant a été ajouté à la liste de surveillance. Le nom du pair distant et son nom d'hôte (my_name) sont passés en arguments.</dd>
+  <dt id="NSM_MONITOR_DEL"><a class="permalink" href='#NSM_MONITOR_DEL'>NSM_MONITOR_DEL</a></dt>
+  <dd>Un pair distant a été retiré de la liste de surveillance. Le nom du pair distant et son nom d'hôte (my_name) sont passés en arguments.</dd>
+</dl>
+<p class="Pp">Si un appelant du programme callout renvoie une valeur différente de zéro, <b>rpc.statd</b> considérera que l'événement a été géré et arrêtera la transmission de l'événement au gestionnaire de verrous local.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="FICHIERS"><a class='permalink' href='#FICHIERS'>FICHIERS</a></h1>
+<dl class="Bl-tag">
+  <dt id="var_lib_nfs_statd_state"><a class="permalink" href='#var_lib_nfs_statd_state'>/var/lib/nfs/statd/state</a></dt>
+  <dd>Stocke l'état du démon NSM.</dd>
+  <dt id="var_lib_nfs_statd_sm-retrans.lock"><a class="permalink" href='#var_lib_nfs_statd_sm-retrans.lock'>/var/lib/nfs/statd/sm-retrans.lock</a></dt>
+  <dd>Fichier verrou utilisé par la commande <b>sm-notify</b>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="VOIR_AUSSI"><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/sm-notify.8.fr'>sm-notify(8)</a>, <a href='/man/lockd.8.fr'>lockd(8)</a>, <a href='http://www.ietf.org/rfc/rfc1094.txt'>RFC 1094</a>, <a href='http://www.ietf.org/rfc/rfc1813.txt'>RFC 1813</a></p>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<div class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><code class="Nm">rpc.statd</code> &#x2014; démonstration du moniteur d'état NFS</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><code class="Nm">rpc.statd</code> [<code class="Op">-f</code> <i class="Em">fichier_état</i>] [<code class="Op">-H</code> <i class="Em">appelant</i>] [<code class="Op">-d</code> <i class="Em">répertoire_état</i>] [<code class="Op">-o</code> <i class="Em">port</i>] [<code class="Op">-O</code> <i class="Em">port_sortant</i>] [<code class="Op">-n</code> <i class="Em">nom_hôte</i>] [<code class="Op">-p</code> <i class="Em">port</i>] [<code class="Op">-P</code> <i class="Em">port_provisoire</i>] [<code class="Op">-v</code>]</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Le démon <code class="Nm">rpc.statd</code> est un démon de support du système de fichiers réseau (NFS) qui implémente le protocole NSM (Network Status Monitor). Il est utilisé pour suivre l'état des verrous NFS lorsque les clients NFS montent des systèmes de fichiers NFS à partir de serveurs NFS. Il est destiné à être utilisé avec les clients NFS et les serveurs NFS pour gérer la récupération des verrous après un redémarrage.</p>
+<p class="Pp">NSM est conçu pour être utilisé avec des verrous NFS et des démons de blocage. Le démon <code class="Nm">rpc.statd</code> n'a pas besoin d'être démarré manuellement. Le démon <code class="Nm">rpc.statd</code> est généralement démarré comme un service lors du démarrage du système.</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='NSM_OPERATION_IN_DETAIL'><a class='permalink' href='#NSM_OPERATION_IN_DETAIL'>FONCTIONNEMENT NSM EN DÉTAIL</a></h1>
+<p class="Pp">Le démon <code class="Nm">rpc.statd</code> est démarré avec un certain nombre d'options facultatives. Ces options sont répertoriées ci-dessous. Le démon <code class="Nm">rpc.statd</code> conserve l'état des clients NFS surveillés et des clients qui surveillent ce système. L'état est stocké dans des fichiers du répertoire spécifié par l'option <code class="Nm">-d</code>. Sans cette option, le répertoire par défaut est <code class="Dl">/var/lib/nfs</i>.</p>
+<p class="Pp">Après avoir démarré, <code class="Nm">rpc.statd</code> tente de définir son UID et son GID effectifs sur le propriétaire et le groupe du sous-répertoire <code class="Dl">sm</i> de ce répertoire. Après avoir modifié les ID effectifs, <code class="Nm">rpc.statd</code> n'a besoin d'accéder qu'aux fichiers de <code class="Dl">sm</i> et <code class="Dl">sm.bak</i> dans le répertoire d'état.</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<dl class="Bl-tag">
+  <dt id="f"><a class="permalink" href="#f"><b>-f</b> <i>fichier_état</i></a></dt>
+  <dd>Spécifie le chemin du fichier d'état, qui est utilisé pour stocker le numéro d'état NSM pour cet hôte. S'il n'est pas spécifié, <code class="Nm">rpc.statd</code> utilise <code class="Dl">/var/lib/nfs/state</i> par défaut.</dd>
+  <dt id="H"><a class="permalink" href="#H"><b>-H</b> <i>appelant</i></a></dt>
+  <dd>Spécifie le nom du programme d'appel utilisé pour les fonctions de haute disponibilité. Ce programme d'appel est exécuté lors du traitement des demandes SM_MON, SM_UNMON et SM_UNMON_ALL réussies, ou lorsqu'il reçoit SM_NOTIFY. L'argument <i>appelant</i> doit être le nom du programme d'appel. Le programme est exécuté avec 4 arguments : la raison de l'appel, le nom de surveillance de l'homologue surveillé, le nom de l'appelant du gestionnaire de verrous demandeur (pour <code class="Nm">add-client</code> ou <code class="Nm">del-client</code>) ou l'adresse IP de l'appelant envoyant SM_NOTIFY, et la valeur d'état de la demande SM_NOTIFY. Voir la section sur les appels de haute disponibilité ci-dessous pour plus de détails.</dd>
+  <dt id="d"><a class="permalink" href="#d"><b>-d</b> <i>répertoire_état</i></a></dt>
+  <dd>Spécifie le chemin du répertoire parent où résident les informations d'état NSM. Si cette option n'est pas spécifiée, <code class="Nm">rpc.statd</code> utilise <code class="Dl">/var/lib/nfs</i> par défaut.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>Après avoir démarré, <code class="Nm">rpc.statd</code> tente de définir son UID et son GID effectifs sur le propriétaire et le groupe du sous-répertoire <code class="Dl">sm</i> de ce répertoire. Après avoir modifié les ID effectifs, <code class="Nm">rpc.statd</code> n'a besoin d'accéder qu'aux fichiers de <code class="Dl">sm</i> et <code class="Dl">sm.bak</i> dans le répertoire d'état.</dd>
+</dl>
+<dl class="Bl-tag">
+  <dt id="o"><a class="permalink" href="#o"><b>-o</b> <i>port</i></a></dt>
+  <dd>Spécifie le port TCP sur lequel <code class="Nm">rpc.statd</code> doit écouter les demandes entrantes. Si cette option n'est pas spécifiée, le port est choisi dynamiquement par le système RPC.</dd>
+  <dt id="O"><a class="permalink" href="#O"><b>-O</b> <i>port_sortant</i></a></dt>
+  <dd>Spécifie le port source à utiliser pour les connexions sortantes. Si cette option n'est pas spécifiée, le port est choisi dynamiquement par le système RPC.</dd>
+  <dt id="n"><a class="permalink" href="#n"><b>-n</b> <i>nom_hôte</i></a></dt>
+  <dd>Spécifie le nom d'hôte à utiliser dans les notifications SM_NOTIFY. Par défaut, le nom d'hôte est celui retourné par la fonction <code class="Fn">gethostname</code>. Ce paramètre est important pour la récupération des verrous entre les systèmes avec des noms d'hôtes différents.</dd>
+  <dt id="p"><a class="permalink" href="#p"><b>-p</b> <i>port</i></a></dt>
+  <dd>Spécifie le port UDP sur lequel <code class="Nm">rpc.statd</code> doit écouter les demandes entrantes. Si cette option n'est pas spécifiée, le port est choisi dynamiquement par le système RPC.</dd>
+  <dt id="P"><a class="permalink" href="#P"><b>-P</b> <i>port_provisoire</i></a></dt>
+  <dd>Spécifie le port TCP sur lequel <code class="Nm">rpc.statd</code> doit écouter les demandes entrantes. Cette option est un alias de <code class="Nm">-o</code>.</dd>
+  <dt id="v"><a class="permalink" href="#v"><b>-v</b>, <b>-V</b>, <b>--version</b></a></dt>
+  <dd>Affiche les informations de version sur <code class="Er">stderr</code> puis quitte.</dd>
+</dl>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='FICHIER_DE_CONFIGURATION'><a class='permalink' href='#FICHIER_DE_CONFIGURATION'>FICHIER   DE   CONFIGURATION</a></h1>
+<p class="Pp">Plusieurs des options pouvant être définies en ligne de commande peuvent également être contrôlées via des valeurs définies dans les sections <code class="Dl">[statd]</code> ou, dans certains cas, <code class="Dl">[lockd]</code> du fichier de configuration <code class="Dl">/etc/nfs.conf</i>. Les valeurs reconnues dans la section <code class="Dl">[statd]</code> incluent <code class="Dv">port</code>, <code class="Dv">outgoing-port</code>, <code class="Dv">name</code>, <code class="Dv">state-directory-path</code> et <code class="Dv">ha-callout</code>, qui ont chacune le même effet que l'option du même nom.</p>
+<p class="Pp">Les valeurs reconnues dans la section <code class="Dl">[lockd]</code> incluent <code class="Dv">port</code> et <code class="Dv">udp-port</code> qui ont le même effet que les options <code class="Nm">--nlm-port</code> et <code class="Nm">--nlm-udp-port</code>, respectivement.</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='SÉCURITÉ'><a class='permalink' href='#SÉCURITÉ'>SÉCURITÉ</a></h1>
+<p class="Pp">Le démon <code class="Nm">rpc.statd</code> doit être démarré en tant que root pour acquérir les privilèges nécessaires à la création de sockets avec des ports source privilégiés et à l'accès à la base de données d'informations d'état. Étant donné que <code class="Nm">rpc.statd</code> maintient un service réseau de longue durée, il abandonne les privilèges root dès son démarrage afin de réduire le risque d'une attaque par escalade de privilèges.</p>
+<p class="Pp">En fonctionnement normal, l'ID utilisateur effectif qu'il choisit est le propriétaire du répertoire d'état. Cela lui permet de continuer à accéder aux fichiers de ce répertoire après avoir abandonné ses privilèges root. Pour contrôler l'ID utilisateur choisi par <code class="Nm">rpc.statd</code>, utilisez simplement <a href='/man/chown.1.en'>chown(1)</a> pour définir le propriétaire du répertoire d'état.</p>
+<p class="Pp">Vous pouvez également protéger vos écoutes <code class="Nm">rpc.statd</code> à l'aide de la bibliothèque <code class="Dv">tcp_wrapper</code> ou <a href='/man/iptables.8.en'>iptables(8)</a>. Pour utiliser la bibliothèque <code class="Dv">tcp_wrapper</code>, ajoutez les noms d'hôtes des homologues qui doivent être autorisés à accéder à <code class="Dl">/etc/hosts.allow</i>. Utilisez le nom du démon <code class="Dv">statd</code> même si le binaire <code class="Nm">rpc.statd</code> a un nom de fichier différent.</p>
+<p class="Pp">Pour plus d'informations, consultez les pages de manuel <a href='/man/tcpd.8.en'>tcpd(8)</a> et <a href='/man/hosts_access.5.en'>hosts_access(5)</a>.</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='NOTES_ADDITIONNELLES'><a class='permalink' href='#NOTES_ADDITIONNELLES'>NOTES   ADDITIONNELLES</a></h1>
+<p class="Pp">La récupération des verrous après un redémarrage est essentielle pour maintenir l'intégrité des données et éviter les blocages inutiles des applications. Pour aider <code class="Nm">rpc.statd</code> à faire correspondre les requêtes SM_NOTIFY aux requêtes NLM, un certain nombre de meilleures pratiques doivent être observées, notamment :</p>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>Le nom d'hôte UTS de vos systèmes doit correspondre aux noms DNS que les homologues NFS utilisent pour les contacter.</dd>
+  <dt></dt>
+  <dd>Les noms d'hôtes UTS de vos systèmes doivent toujours être des noms de domaine complets.</dd>
+  <dt></dt>
+  <dd>La correspondance DNS directe et inverse des noms d'hôtes UTS doit être cohérente.</dd>
+  <dt></dt>
+  <dd>Le nom d'hôte que le client utilise pour monter le serveur doit correspondre au <i>mon_name</i> du serveur dans les requêtes SM_NOTIFY qu'il envoie.</dd>
+</dl>
+<p class="Pp">Le démontage d'un système de fichiers NFS n'empêche pas nécessairement le client ou le serveur NFS d'arrêter de se surveiller mutuellement. Les deux peuvent continuer à se surveiller mutuellement pendant un certain temps au cas où un trafic NFS ultérieur entre les deux entraînerait de nouveaux montages et des verrous de fichiers supplémentaires.</p>
+<p class="Pp">Sous Linux, si le module noyau <code class="Dv">lockd</code> est déchargé pendant le fonctionnement normal, tous les homologues NFS distants sont désactivés. Cela peut se produire sur un client NFS, par exemple, si un automonteur supprime tous les points de montage NFS en raison de l'inactivité.</p>
+<div class="Section">
+<h2 class="Section" id='Appels_de_haute_disponibilité'><a class='permalink' href='#Appels_de_haute_disponibilité'>Appels   de   haute   disponibilité</a></h2>
+<p class="Pp"><code class="Nm">rpc.statd</code> peut exécuter un programme d'appel spécial lors du traitement des demandes réussies SM_MON, SM_UNMON et SM_UNMON_ALL, ou lorsqu'il reçoit SM_NOTIFY. Un tel programme peut être utilisé dans des environnements NFS haute disponibilité (HA-NFS) pour suivre l'état des verrous qui pourraient devoir être migrés après un redémarrage du système.</p>
+<p class="Pp">Le nom du programme d'appel est spécifié avec l'option <code class="Nm">-H</code>. Le programme est exécuté avec 3 arguments : Le premier est soit <code class="Dv">add-client</code>, <code class="Dv">del-client</code>, soit <code class="Dv">sm-notify</code> en fonction de la raison de l'appel. Le deuxième est le <i>mon_name</i> de l'homologue surveillé. Le troisième est le <i>caller_name</i> du gestionnaire de verrous demandeur pour <code class="Dv">add-client</code> ou <code class="Dv">del-client</code>, sinon c'est l'<i>adresse IP</i> de l'appelant envoyant SM_NOTIFY. Le quatrième est la <i>valeur_d'état</i> dans la demande SM_NOTIFY.</p>
+</div>
+<div class="Section">
+<h2 class="Section" id='Prise_en_charge_d&#x2019;IPv6_et_TI-RPC'><a class='permalink' href='#Prise_en_charge_d&#x2019;IPv6_et_TI-RPC'>Prise   en   charge   d'IPv6   et   TI-RPC</a></h2>
+<p class="Pp">TI-RPC est une condition préalable au support NFS sur IPv6. Si la prise en charge TI-RPC est intégrée à <code class="Nm">rpc.statd</code>, il tente de démarrer des écoutes sur les transports réseau marqués comme « visibles » dans <code class="Dl">/etc/netconfig</i>. Tant qu'au moins une écoute de transport réseau démarre avec succès, <code class="Nm">rpc.statd</code> fonctionnera.</p>
+</div>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='ENVIRONNEMENT'><a class='permalink' href='#ENVIRONNEMENT'>ENVIRONNEMENT</a></h1>
+<dl class="Bl-tag">
+  <dt id="RPC_STATD_NO_NOTIFY="><a class="permalink" href="#RPC_STATD_NO_NOTIFY="><b>RPC_STATD_NO_NOTIFY=</b></a></dt>
+  <dd>Si elle est définie sur un entier positif, elle a le même effet que <code class="Nm">--no-notify</code>.</dd>
+</dl>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='FICHIERS'><a class='permalink' href='#FICHIERS'>FICHIERS</a></h1>
+<dl class="Bl-tag">
+  <dt><i>/var/lib/nfs/sm</i></dt>
+  <dd>répertoire contenant la liste des moniteurs</dd>
+  <dt><i>/var/lib/nfs/sm.bak</i></dt>
+  <dd>répertoire contenant la liste des notifications</dd>
+  <dt><i>/var/lib/nfs/state</i></dt>
+  <dd>numéro d'état NSM pour cet hôte</dd>
+  <dt><i>/run/run.statd.pid</i></dt>
+  <dd>fichier pid</dd>
+  <dt><i>/etc/netconfig</i></dt>
+  <dd>base de données des capacités de transport réseau</dd>
+</dl>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR   AUSSI</a></h1>
+<p class="Pp"><a href='/man/sm-notify.8.en'>sm-notify(8)</a>, <a href='/man/nfs.5.en'>nfs(5)</a>, <a href='/man/rpc.nfsd.8.en'>rpc.nfsd(8)</a>,
+    <a href='/man/rpcbind.8.en'>rpcbind(8)</a>, <a href='/man/tcpd.8.en'>tcpd(8)</a>, <a href='/man/hosts_access.5.en'>hosts_access(5)</a>,
+    <a href='/man/iptables.8.en'>iptables(8)</a>, <a href='/man/netconfig.5.en'>netconfig(5)</a></p>
+<p class="Pp">RFC 1094 - « NFS : Spécification du protocole Network File System »
+  <br/>
+  RFC 1813 - « NFS Version 3 Protocol Specification »
+  <br/>
+  OpenGroup Protocols for Interworking: XNFS, Version 3W - Chapitre 11</p>
+</div>
+<div class="Sh">
+<h1 class="Sh" id='AUTEURS'><a class='permalink' href='#AUTEURS'>AUTEURS</a></h1>
+<p class="Pp">Jeff Uphoff &lt;juphoff@users.sourceforge.net&gt;
+  <br/>
+  Olaf Kirch &lt;okir@monad.swb.de&gt;
+  <br/>
+  H.J. Lu &lt;hjl@gnu.org&gt;
+  <br/>
+  Lon Hohberger &lt;hohberger@missioncriticallinux.com&gt;
+  <br/>
+  Paul Clements &lt;paul.clements@steeleye.com&gt;
+  <br/>
+  Chuck Lever &lt;chuck.lever@oracle.com&gt;</p>
+</div>

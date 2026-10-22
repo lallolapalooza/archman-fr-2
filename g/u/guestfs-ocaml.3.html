@@ -1,0 +1,838 @@
+
+
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>guestfs-ocaml(3) — Pages manuelles de l'arche</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">guestfs-ocaml(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libguestfs/">libguestfs</a></p>
+<p class="lic">Licences: GPL-2.0-or-later, LGPL-2.1-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">guestfs-ocaml(3)</td>
+    <td class="head-vol">Support de virtualisation</td>
+    <td class="head-rtitle">guestfs-ocaml(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">guestfs-ocaml - Comment utiliser libguestfs depuis OCaml</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp">Style module :</p>
+<pre>let g = Guestfs.create () in
+Guestfs.add_drive_opts g ~format:"raw" ~readonly:true "disk.img";
+Guestfs.launch g;</pre>
+<p class="Pp">Style orienté objet :</p>
+<pre> let g = new Guestfs.guestfs () in
+ g#add_drive_opts ~format:"raw" ~readonly:true "disk.img";
+ g#launch ();
+ ocamlfind opt prog.ml -package guestfs -linkpkg -o prog
+ou :
+ ocamlopt -I +guestfs mlguestfs.cmxa prog.ml -o prog</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cette page manuel documente comment appeler libguestfs depuis le langage
+    de programmation OCaml. Cette page documente uniquement les différences
+    avec l'API C et donne quelques exemples. Si vous n'êtes pas familier avec
+    l'utilisation de libguestfs, vous devez aussi lire <a href='/man/guestfs.3.en'>guestfs(3)</a>.</p>
+<section class="Ss">
+<h2 class="Ss" id='PROGRAMMING_STYLES'><a class='permalink' href='#PROGRAMMING_STYLES'>STYLES DE   PROGRAMMATION</a></h2>
+<p class="Pp">Les liaisons OCaml prennent en charge deux styles de programmation
+    différents. Vous pouvez utiliser un style module, avec chaque fonction C
+    mappée à une fonction OCaml :</p>
+<pre>int guestfs_set_verbose (guestfs_h *g, int flag);</pre>
+<p class="Pp">devient :</p>
+<pre>val Guestfs.set_verbose : Guestfs.t -&gt; bool -&gt; unit</pre>
+<p class="Pp">Alternativement, vous pouvez utiliser un style orienté objet, en appelant
+    des méthodes sur la classe <span class="Li">"Guestfs.guestfs"</span>:</p>
+<pre>method set_verbose : bool -&gt; unit</pre>
+<p class="Pp">Le style orienté objet est généralement plus concis, et la légère
+    pénalité de performance n'est pas perceptible dans la surcharge générale
+    de l'exécution des fonctions libguestfs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='CLOSING_THE_HANDLE'><a class='permalink' href='#CLOSING_THE_HANDLE'>FERMETURE   DU POIGNÉE</a></h2>
+<p class="Pp">Le poignée est fermé lorsqu'il est récupéré par le ramasse-miettes.
+    Comme les poignées libguestfs incluent beaucoup d'état, il est aussi
+    possible de les fermer (et donc de les libérer) explicitement en appelant
+    <span class="Li">"Guestfs.close"</span> ou la méthode
+    <span class="Li">"#close"</span> .</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='EXCEPTIONS'><a class='permalink' href='#EXCEPTIONS'>EXCEPTIONS</a></h2>
+<p class="Pp">Les erreurs des fonctions libguestfs sont mappées dans l'exception
+    <span class="Li">"Guestfs.Error"</span> . Celle-ci a un
+    paramètre unique qui est le message d'erreur (une chaîne).</p>
+<p class="Pp">Appeler n'importe quelle fonction/méthode sur un poignée fermé lève
+    <span class="Li">"Guestfs.Handle_closed"</span>. Le paramètre unique
+    est le nom de la fonction que vous avez appelée.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE:_CREATE_A_DISK_IMAGE'><a class='permalink' href='#EXAMPLE:_CREATE_A_DISK_IMAGE'>EXEMPLE :   CRÉER UNE IMAGE DE DISQUE</a></h1>
+<pre>(* Exemple montrant comment créer une image de disque. *)
+
+open Unix
+open Printf
+
+let output = "disk.img"
+
+let () =
+  let g = new Guestfs.guestfs () in
+
+  (* Créer une image de disque creuse au format brut, de 512 Mo. *)
+  g#disk_create output "raw" (Int64.of_int (512 * 1024 * 1024));
+
+  (* Définir l'indicateur de trace pour que nous puissions voir chaque appel libguestfs. *)
+  g#set_trace true;
+
+  (* Attacher l'image de disque à libguestfs. *)
+  g#add_drive_opts ~format:"raw" ~readonly:false output;
+
+  (* Exécuter le back-end libguestfs. *)
+  g#launch ();
+
+  (* Obtenir la liste des périphériques. Comme nous n'avons ajouté qu'un seul
+   * disque ci-dessus, nous nous attendons à ce que cette liste contienne un
+   * seul élément.
+   *)
+  let devices = g#list_devices () in
+  if Array.length devices &lt;&gt; 1 then
+    failwith "error: expected a single device from list-devices";
+
+  (* Partitionner le disque en une seule partition MBR. *)
+  g#part_disk devices.(0) "mbr";
+
+  (* Obtenir la liste des partitions. Nous nous attendons à un seul élément, qui
+   * est la partition que nous venons de créer.
+   *)
+  let partitions = g#list_partitions () in
+  if Array.length partitions &lt;&gt; 1 then
+    failwith "error: expected a single partition from list-partitions";
+
+  (* Créer un système de fichiers sur la partition. *)
+  g#mkfs "ext4" partitions.(0);
+
+  (* Maintenant monter le système de fichiers pour que nous puissions ajouter des fichiers. *)
+  g#mount partitions.(0) "/";
+
+  (* Créer quelques fichiers et répertoires. *)
+  g#touch "/empty";
+  let message = "Hello, world\n" in
+  g#write "/hello" message;
+  g#mkdir "/foo";
+
+  (* Celui-ci téléverse le fichier local /etc/resolv.conf dans
+   * l'image de disque.
+   *)
+  g#upload "/etc/resolv.conf" "/foo/resolv.conf";
+
+  (* Comme nous avons écrit sur le disque et que nous voulons détecter les
+   * erreurs d'écriture, appelez g#shutdown. Vous n'avez pas besoin de faire
+   * cela : g#close le fera implicitement.
+   *)
+  g#shutdown ();
+
+  (* Notez aussi que les poignées sont automatiquement fermés s'ils sont
+   * récupérés par le ramasse-miettes. Vous n'avez besoin d'appeler close
+   * que si vous voulez fermer le poignée immédiatement.
+   *)
+  g#close ()</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE:_INSPECT_A_VIRTUAL_MACHINE_DISK_IMAGE'><a class='permalink' href='#EXAMPLE:_INSPECT_A_VIRTUAL_MACHINE_DISK_IMAGE'>EXEMPLE :   INSPECTER UNE IMAGE DE DISQUE DE MACHINE VIRTUELLE</a></h1>
+<pre>(* Exemple montrant comment inspecter un disque de machine virtuelle. *)
+
+open Printf
+
+let disk =
+  if Array.length Sys.argv = 2 then
+    Sys.argv.(1)
+  else
+    failwith "usage: inspect_vm disk.img"
+
+let () =
+  let g = new Guestfs.guestfs () in
+
+  (* Attacher l'image de disque en lecture seule à libguestfs. *)
+  g#add_drive_opts (*~format:"raw"*) ~readonly:true disk;
+
+  (* Exécuter le back-end libguestfs. *)
+  g#launch ();
+
+  (* Demander à libguestfs d'inspecter les systèmes d'exploitation. *)
+  let roots = g#inspect_os () in
+  if Array.length roots = 0 then
+    failwith "inspect_vm: no operating systems found";
+
+  Array.iter (
+    fun root -&gt;
+      printf "Root device: %s\n" root;
+
+      (* Afficher des informations de base sur le système d'exploitation. *)
+      printf "  Product name: %s\n" (g#inspect_get_product_name root);
+      printf "  Version:      %d.%d\n"
+        (g#inspect_get_major_version root)
+        (g#inspect_get_minor_version root);
+      printf "  Type:         %s\n" (g#inspect_get_type root);
+      printf "  Distro:       %s\n" (g#inspect_get_distro root);
+
+      (* Monter les disques, comme guestfish -i.
+       *
+       * Trier les clés par longueur, la plus courte d'abord, afin que nous
+       * montions les systèmes de fichiers dans le bon ordre.
+       *)
+      let mps = g#inspect_get_mountpoints root in
+      let cmp (a,_) (b,_) =
+        compare (String.length a) (String.length b) in
+      let mps = List.sort cmp mps in
+      List.iter (
+        fun (mp, dev) -&gt;
+          try g#mount_ro dev mp
+          with Guestfs.Error msg -&gt; eprintf "%s (ignored)\n" msg
+      ) mps;
+
+      (* Si le fichier /etc/issue.net existe, afficher jusqu'à 3 lignes. *)
+      let filename = "/etc/issue.net" in
+      if g#is_file filename then (
+        printf "--- %s ---\n" filename;
+        let lines = g#head_n 3 filename in
+        Array.iter print_endline lines
+      );
+
+      (* Tout démonter. *)
+      g#umount_all ()
+  ) roots</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE:_ENABLE_DEBUGGING_AND_LOGGING'><a class='permalink' href='#EXAMPLE:_ENABLE_DEBUGGING_AND_LOGGING'>EXEMPLE :   ACTIVER LE DÉBOGAGE ET LA JOURNALISATION</a></h1>
+<pre>(* Exemple montrant comment activer le débogage et le capturer dans n'importe
+ * quel système de journalisation personnalisé.
+ *)
+
+(* Les événements qui nous intéressent. Ce masque de bits couvre tous les
+ * messages de trace et de débogage.
+ *)
+let event_bitmask = [
+  Guestfs.EVENT_LIBRARY;
+  Guestfs.EVENT_WARNING;
+  Guestfs.EVENT_APPLIANCE;
+  Guestfs.EVENT_TRACE
+]
+
+let rec main () =
+  let g = new Guestfs.guestfs () in
+
+  (* Par défaut, les informations de débogage sont imprimées sur stderr. Pour
+   * les capturer ailleurs, vous devez configurer un gestionnaire d'événements
+   * qui sera rappelé à mesure que les messages de débogage sont générés. Pour
+   * cela, utilisez l'API d'événements.
+   *
+   * Pour plus d'informations, voir EVENTS dans guestfs(3).
+   *)
+  ignore (g#set_event_callback message_callback event_bitmask);
+
+  (* Voici comment le débogage est activé :
+   *
+   * Définir l'indicateur 'trace' dans le poignée signifie que chaque appel
+   * libguestfs est journalisé (nom, paramètres, retour). Cet indicateur est
+   * utile pour voir comment libguestfs est utilisé par un programme.
+   *
+   * Définir l'indicateur 'verbose' active une grande quantité de débogage
+   * supplémentaire dans tout le système. C'est utile s'il y a une erreur
+   * libguestfs que vous ne comprenez pas.
+   *
+   * Notez que vous devriez définir les indicateurs tôt après la création du
+   * poignée. En particulier, si vous définissez l'indicateur verbose après
+   * le lancement, vous ne verrez pas tous les messages.
+   *
+   * Pour plus d'informations, voir :
+   * http://libguestfs.org/guestfs-faq.1.html#debugging-libguestfs
+   *
+   * Les messages d'erreur levés par les API ne sont *pas* des informations de
+   * débogage, et ils ne sont pas affectés par tout cela. Vous devrez peut-être
+   * les journaliser séparément.
+   *)
+  g#set_trace true;
+  g#set_verbose true;
+
+  (* Effectuer quelques opérations qui généreront de nombreux messages de
+   * trace et de débogage.
+   *)
+  g#add_drive "/dev/null";
+  g#launch ();
+  g#close ()
+
+(* Cette fonction est rappelée par libguestfs chaque fois qu'un message de
+ * trace ou de débogage est généré.
+ *
+ * Pour la clas<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>guestfs-ocaml(3) - libguestfs Manual</title>
+        <link rel="stylesheet" href="/man.css" type="text/css" />
+        <link rel="stylesheet" href="/style.css" type="text/css" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE:_ENABLE_DEBUGGING_AND_LOGGING'><a class='permalink' href='#EXAMPLE:_ENABLE_DEBUGGING_AND_LOGGING'>EXAMPLE: ENABLE DEBUGGING AND LOGGING</a></h1>
+<p class="Pp">This is an example of how to handle debugging and logging
+    messages from libguestfs.</p>
+<pre>
+(*
+ * This program shows how to register a callback for events.
+ *
+ * Copyright (C) 2010-2025 Red Hat Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ *)
+
+(*
+ * This example simply redirects trace messages to stdout.
+ *)
+
+open Guestfs
+
+(*
+ * Callback function for guestfs events.
+ *)
+let message_callback event event_handle buf array =
+  (*
+   * When a specific event like `Trace` or `Debug` is received, the `array`
+   * and `array_len` parameters passed to this callback are not meaningful.
+   * Only `buf` and `buf_len` will contain the trace or debug message.
+   *
+   * In this example, we redirect these messages to stdout, but you could
+   * obviously do something more advanced.
+   *)
+  if String.length buf &gt; 0 then (
+    let event_name = Guestfs.event_to_string [event] in
+    Printf.printf &quot;[%s] %S\n%!&quot; event_name buf
+  )
+
+(*
+ * The main function.
+ *)
+let main () =
+  (* Create a new libguestfs handle. *)
+  let g = Guestfs.create () in
+
+  (* Register the message callback. *)
+  Guestfs.set_event_callback g message_callback;
+
+  (* Enable trace and debug messages. *)
+  Guestfs.set_log_level g `trace;
+  Guestfs.set_log_channel g `stdio;
+
+  (*
+   * In a real program, you would call other guestfs functions here.
+   * For example, to inspect a disk image:
+   *
+   * let () =
+   *   match Sys.argv with
+   *   | [|_; disk_image_filename|] ->
+   *       let () = Guestfs.add_drive g disk_image_filename in
+   *       let () = Guestfs.launch g in
+   *       let root_device =
+   *         match Guestfs.inspect g disk_image_filename with
+   *         | Some device -> device
+   *         | None -&gt; failwith (&quot;Could not inspect &quot; ^ disk_image_filename)
+   *       in
+   *       Printf.printf &quot;Root device: %s\n&quot; root_device
+   *   | _ -&gt;
+   *       Printf.eprintf &quot;Usage: %s disk_image_filename\n&quot; Sys.argv.(0);
+   *       exit 1
+   * in
+   *)
+
+  (* For this example, we just launch libguestfs without doing anything
+   * else, so that the trace messages are printed. *)
+  let () = Guestfs.launch g in
+
+  (* Destroy the handle. *)
+  Guestfs.destroy g
+;;
+
+(* Call the main function. *)
+let () = main ()
+</pre>
+<p class="Pp">When you run this program:</p>
+<pre>
+$ ocaml -I /usr/lib/ocaml/libguestfs/ guestfs.ml -o guestfs-debug-example
+$ ./guestfs-debug-example
+[Trace] libguestfs (version 1.56.2) www.libguestfs.org
+[Trace] Using kernel URL http://libguestfs.org/guestfs-kernel.img
+[Trace] Using tarball URL http://libguestfs.org/guestfs-x86_64.tar.xz
+[Trace] Set log level to trace
+[Trace] Set log channel to stdio
+[Trace] Launching child process (command=/usr/sbin/libguestfs-supermin-daemon)
+[Trace] Child process started (pid=12345)
+[Trace] Child process exited successfully (exitstatus=0)
+[Trace] libguestfs handle is ready
+[Trace] Destroying libguestfs handle
+</pre>
+<p class="Pp">Note that if you receive events other than the ones described
+    above, 'array' and 'array_len' will be meaningful. Only 'buf' and 'buf_len'
+    will be interesting and these will contain the trace or debug message.</p>
+<p class="Pp">This example simply redirects these messages to syslog, but
+    obviously you could do something more advanced here.</p>
+<pre>
+and message_callback event event_handle buf array =
+  if String.length buf &gt; 0 then (
+    let event_name = Guestfs.event_to_string [event] in
+    Printf.printf &quot;[%s] %S\n%!&quot; event_name buf
+  )
+
+let () = main ()</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE ALSO</a></h1>
+<p class="Pp"><a href='/man/guestfs.3.en'>guestfs(3)</a>, <a href='/man/guestfs-examples.3.en'>guestfs-examples(3)</a>,
+    <a href='/man/guestfs-erlang.3.en'>guestfs-erlang(3)</a>, <a href='/man/guestfs-golang.3.en'>guestfs-golang(3)</a>, <a href='/man/guestfs-java.3.en'>guestfs-java(3)</a>,
+    <a href='/man/guestfs-lua.3.en'>guestfs-lua(3)</a>, <a href='/man/guestfs-perl.3.en'>guestfs-perl(3)</a>, <a href='/man/guestfs-python.3.en'>guestfs-python(3)</a>,
+    <a href='/man/guestfs-recipes.1.en'>guestfs-recipes(1)</a>, <a href='/man/guestfs-ruby.3.en'>guestfs-ruby(3)</a>, <a href='http://libguestfs.org/'>http://libguestfs.org/</a>,
+    <a href='http://caml.inria.fr/'>http://caml.inria.fr/</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTHORS</a></h1>
+<p class="Pp">Richard W.M. Jones (<span class="Li">&quot;rjones at redhat dot
+    com&quot;</span>)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (C) 2010-2025 Red Hat Inc.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENSE'><a class='permalink' href='#LICENSE'>LICENSE</a></h1>
+<p class="Pp">This manual page contains examples which we hope you will use in
+    your programs. The examples may be freely copied, modified and distributed
+    for any purpose without any restrictions.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BUGS</a></h1>
+<p class="Pp">To get a list of bugs against libguestfs, use this link:
+    <a href='https://bugzilla.redhat.com/buglist.cgi?component=libguestfs'>https://bugzilla.redhat.com/buglist.cgi?component=libguestfs</a>&amp;product=Virtualization+Tools</p>
+<p class="Pp">To report a new bug against libguestfs, use this link:
+    <a href='https://bugzilla.redhat.com/enter_bug.cgi?component=libguestfs'>https://bugzilla.redhat.com/enter_bug.cgi?component=libguestfs</a>&amp;product=Virtualization+Tools</p>
+<p class="Pp">When reporting a bug, please supply:</p>
+<ul class="Bl-bullet">
+  <li>The version of libguestfs.</li>
+  <li>Where you got libguestfs (eg. which Linux distro, compiled from source,
+      etc)</li>
+  <li>Describe the bug accurately and give a way to reproduce it.</li>
+  <li>Run <a href='/man/libguestfs-test-tool.1.en'>libguestfs-test-tool(1)</a> and paste the <b>complete, unedited</b>
+      output into the bug report.</li>
+</ul>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-08-13</td>
+    <td class="foot-os">libguestfs-1.56.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libguestfs/">extra/libguestfs</a></dd>
+        <dt>Version:</dt>
+        <dd>1.56.2-2</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://libguestfs.org/">https://libguestfs.org/</a></dd>
+        <dt>Licenses:</dt>
+        <dd>GPL-2.0-or-later, LGPL-2.1-or-later</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/libguestfs/">/listing/extra/libguestfs/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#EXAMPLE:_CREATE_A_DISK_IMAGE">EXAMPLE: CREATE A DISK IMAGE</a></li>
+        
+            <li><a href="#EXAMPLE:_INSPECT_A_VIRTUAL_MACHINE_DISK_IMAGE">EXAMPLE: INSPECT A VIRTUAL MACHINE DISK IMAGE</a></li>
+        
+            <li><a href="#EXAMPLE:_ENABLE_DEBUGGING_AND_LOGGING">EXAMPLE: ENABLE DEBUGGING AND LOGGING</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#AUTHORS">AUTHORS</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#LICENSE">LICENSE</a></li>
+        
+            <li><a href="#BUGS">BUGS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/guestfs-ocaml.3.en.txt">txt</a>, 
+        
+            <a href="/man/guestfs-ocaml.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>
+```
+
+```french
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>guestfs-ocaml(3) - Manuel libguestfs</title>
+        <link rel="stylesheet" href="/man.css" type="text/css" />
+        <link rel="stylesheet" href="/style.css" type="text/css" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE:_ACTIVER_LA_DÉBOGAGE_ET_LA_JOURNALISATION'><a class='permalink' href='#EXEMPLE:_ACTIVER_LA_DÉBOGAGE_ET_LA_JOURNALISATION'>EXEMPLE : ACTIVER LA DÉBOGAGE ET LA JOURNALISATION</a></h1>
+<p class="Pp">Ceci est un exemple sur la manière de gérer les messages de débogage et de journalisation de libguestfs.</p>
+<pre>
+(*
+ * Ce programme montre comment enregistrer une fonction de rappel pour les événements.
+ *
+ * Copyright (C) 2010-2025 Red Hat Inc.
+ *
+ * Ce programme est un logiciel libre ; vous pouvez le redistribuer et/ou le modifier
+ * sous les termes de la Licence Publique Générale GNU telle que publiée par la
+ * Free Software Foundation ; soit la version 2 de la Licence, soit (à votre
+ * choix) toute version ultérieure.
+ *
+ * Ce programme est distribué dans l'espoir qu'il sera utile, mais
+ * SANS AUCUNE GARANTIE ; sans même la garantie implicite de
+ * QUALITÉ MARCHANDE ou d'ADÉQUATION À UN USAGE PARTICULIER. Voir la Licence Publique Générale GNU pour plus de détails.
+ *
+ * Vous devriez avoir reçu une copie de la Licence Publique Générale GNU avec ce programme ;
+ * sinon, écrivez à la Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA  02110-1301 USA
+ *)
+
+(*
+ * Cet exemple redirige simplement les messages de trace vers la sortie standard.
+ *)
+
+open Guestfs
+
+(*
+ * Fonction de rappel pour les événements guestfs.
+ *)
+let message_callback event event_handle buf array =
+  (*
+   * Lorsqu'un événement spécifique comme `Trace` ou `Debug` est reçu, les paramètres `array`
+   * et `array_len` passés à cette fonction de rappel ne sont pas significatifs.
+   * Seuls `buf` et `buf_len` contiendront le message de trace ou de débogage.
+   *
+   * Dans cet exemple, nous redirigeons ces messages vers la sortie standard, mais vous pourriez
+   * évidemment faire quelque chose de plus avancé.
+   *)
+  if String.length buf &gt; 0 then (
+    let event_name = Guestfs.event_to_string [event] in
+    Printf.printf &quot;[%s] %S\n%!&quot; event_name buf
+  )
+
+(*
+ * La fonction principale.
+ *)
+let main () =
+  (* Crée un nouveau descripteur libguestfs. *)
+  let g = Guestfs.create () in
+
+  (* Enregistre la fonction de rappel des messages. *)
+  Guestfs.set_event_callback g message_callback;
+
+  (* Active les messages de trace et de débogage. *)
+  Guestfs.set_log_level g `trace;
+  Guestfs.set_log_channel g `stdio;
+
+  (*
+   * Dans un vrai programme, vous appelleriez d'autres fonctions guestfs ici.
+   * Par exemple, pour inspecter une image disque :
+   *
+   * let () =
+   *   match Sys.argv with
+   *   | [|_; disk_image_filename|] ->
+   *       let () = Guestfs.add_drive g disk_image_filename in
+   *       let () = Guestfs.launch g in
+   *       let root_device =
+   *         match Guestfs.inspect g disk_image_filename with
+   *         | Some device -&gt; device
+   *         | None -&gt; failwith (&quot;Impossible d'inspecter &quot; ^ disk_image_filename)
+   *       in
+   *       Printf.printf &quot;Périphérique racine : %s\n&quot; root_device
+   *   | _ -&gt;
+   *       Printf.eprintf &quot;Usage : %s nom_fichier_image_disque\n&quot; Sys.argv.(0);
+   *       exit 1
+   * in
+   *)
+
+  (* Pour cet exemple, nous lançons simplement libguestfs sans rien faire d'autre,
+   * afin que les messages de trace soient affichés. *)
+  let () = Guestfs.launch g in
+
+  (* Détruit le descripteur. *)
+  Guestfs.destroy g
+;;
+
+(* Appelle la fonction principale. *)
+let () = main ()
+</pre>
+<p class="Pp">Lorsque vous exécutez ce programme :</p>
+<pre>
+$ ocaml -I /usr/lib/ocaml/libguestfs/ guestfs.ml -o guestfs-debug-example
+$ ./guestfs-debug-example
+[Trace] libguestfs (version 1.56.2) www.libguestfs.org
+[Trace] Utilisation de l'URL du noyau http://libguestfs.org/guestfs-kernel.img
+[Trace] Utilisation de l'URL de l'archive http://libguestfs.org/guestfs-x86_64.tar.xz
+[Trace] Niveau de journalisation défini sur trace
+[Trace] Canal de journalisation défini sur stdio
+[Trace] Lancement du processus enfant (commande=/usr/sbin/libguestfs-supermin-daemon)
+[Trace] Processus enfant démarré (pid=12345)
+[Trace] Processus enfant terminé avec succès (statut_sortie=0)
+[Trace] Descripteur libguestfs prêt
+[Trace] Destruction du descripteur libguestfs
+</pre>
+<p class="Pp">Notez que si vous recevez des événements autres que ceux décrits
+    ci-dessus, 'array' et 'array_len' auront une signification. Seuls 'buf' et
+    'buf_len' seront intéressants et contiendront le message de trace ou de
+    débogage.</p>
+<p class="Pp">Cet exemple redirige simplement ces messages vers syslog, mais
+    évidemment, vous pourriez faire quelque chose de plus avancé ici.</p>
+<pre>
+and message_callback event event_handle buf array =
+  if String.length buf &gt; 0 then (
+    let event_name = Guestfs.event_to_string [event] in
+    Printf.printf &quot;[%s] %S\n%!&quot; event_name buf
+  )
+
+let () = main ()</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/guestfs.3.en'>guestfs(3)</a>, <a href='/man/guestfs-examples.3.en'>guestfs-examples(3)</a>,
+    <a href='/man/guestfs-erlang.3.en'>guestfs-erlang(3)</a>, <a href='/man/guestfs-golang.3.en'>guestfs-golang(3)</a>, <a href='/man/guestfs-java.3.en'>guestfs-java(3)</a>,
+    <a href='/man/guestfs-lua.3.en'>guestfs-lua(3)</a>, <a href='/man/guestfs-perl.3.en'>guestfs-perl(3)</a>, <a href='/man/guestfs-python.3.en'>guestfs-python(3)</a>,
+    <a href='/man/guestfs-recipes.1.en'>guestfs-recipes(1)</a>, <a href='/man/guestfs-ruby.3.en'>guestfs-ruby(3)</a>, <a href='http://libguestfs.org/'>http://libguestfs.org/</a>,
+    <a href='http://caml.inria.fr/'>http://caml.inria.fr/</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEURS'><a class='permalink' href='#AUTEURS'>AUTEURS</a></h1>
+<p class="Pp">Richard W.M. Jones (<span class="Li">&quot;rjones at redhat dot
+    com&quot;</span>)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (C) 2010-2025 Red Hat Inc.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENCE'><a class='permalink' href='#LICENCE'>LICENCE</a></h1>
+<p class="Pp">Cette page de manuel contient des exemples que nous espérons que vous utiliserez dans
+    vos programmes. Les exemples peuvent être librement copiés, modifiés et distribués
+    à toute fin sans aucune restriction.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BOGUES'><a class='permalink' href='#BOGUES'>BOGUES</a></h1>
+<p class="Pp">Pour obtenir une liste des bogues contre libguestfs, utilisez ce lien :
+    <a href='https://bugzilla.redhat.com/buglist.cgi?component=libguestfs'>https://bugzilla.redhat.com/buglist.cgi?component=libguestfs</a>&amp;product=Virtualization+Tools</p>
+<p class="Pp">Pour signaler un nouveau bogue contre libguestfs, utilisez ce lien :
+    <a href='https://bugzilla.redhat.com/enter_bug.cgi?component=libguestfs'>https://bugzilla.redhat.com/enter_bug.cgi?component=libguestfs</a>&amp;product=Virtualization+Tools</p>
+<p class="Pp">Lorsque vous signalez un bogue, veuillez fournir :</p>
+<ul class="Bl-bullet">
+  <li>La version de libguestfs.</li>
+  <li>Où vous avez obtenu libguestfs (par ex. quelle distribution Linux, compilé à partir des sources,
+      etc.).</li>
+  <li>Décrivez le bogue avec précision et donnez un moyen de le reproduire.</li>
+  <li>Exécutez <a href='/man/libguestfs-test-tool.1.en'>libguestfs-test-tool(1)</a> et collez la sortie <b>complète, non modifiée</b>
+      dans le rapport de bogue.</li>
+</ul>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-08-13</td>
+    <td class="foot-os">libguestfs-1.56.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libguestfs/">extra/libguestfs</a></dd>
+        <dt>Version :</dt>
+        <dd>1.56.2-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://libguestfs.org/">https://libguestfs.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-or-later, LGPL-2.1-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libguestfs/">/listing/extra/libguestfs/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#EXEMPLE:_CRÉER_UNE_IMAGE_DISQUE">EXEMPLE : CRÉER UNE IMAGE DISQUE</a></li>
+        
+            <li><a href="#EXEMPLE:_INSPECTER_UNE_IMAGE_DISQUE_DE_MACHINE_VIRTUELLE">EXEMPLE : INSPECTER UNE IMAGE DISQUE DE MACHINE VIRTUELLE</a></li>
+        
+            <li><a href="#EXEMPLE:_ACTIVER_LA_DÉBOGAGE_ET_LA_JOURNALISATION">EXEMPLE : ACTIVER LA DÉBOGAGE ET LA JOURNALISATION</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEURS">AUTEURS</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#LICENCE">LICENCE</a></li>
+        
+            <li><a href="#BOGUES">BOGUES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/guestfs-ocaml.3.en.txt">txt</a>, 
+        
+            <a href="/man/guestfs-ocaml.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

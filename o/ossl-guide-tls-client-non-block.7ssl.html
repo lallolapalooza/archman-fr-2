@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ossl-guide-tls-client-non-block(7ssl) — Pages man Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ossl-guide-tls-client-non-block(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OSSL-GUIDE-TLS-CLIENT-NON-BLOCK(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">OSSL-GUIDE-TLS-CLIENT-NON-BLOCK(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ossl-guide-tls-client-non-block - Guide OpenSSL : Écriture d'un client TLS non bloquant simple</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_CLIENT_TLS_NON_BLOQUANT_SIMPLE'><a class='permalink' href='#EXEMPLE_CLIENT_TLS_NON_BLOQUANT_SIMPLE'>EXEMPLE   CLIENT TLS NON BLOQUANT SIMPLE</a></h1>
+<p class="Pp">Cette page s'appuie sur l'exemple développé dans la page
+    <a href='/man/ossl-guide-tls-client-block.7.en'>ossl-guide-tls-client-block(7)</a> qui montre comment écrire un
+    client TLS bloquant simple. Sur cette page, nous allons modifier ce code de démonstration afin qu'il prenne en charge un socket non bloquant.</p>
+<p class="Pp">Le code source complet de cet exemple de client TLS non bloquant est
+    disponible dans le répertoire <b>demos/guide</b> de la distribution source
+    OpenSSL, dans le fichier
+    <b>tls-client-non-block.c</b>. Il est également disponible en ligne à l'adresse
+    <a href='https://github.com/openssl/openssl/blob/master/demos/guide/tls-client-non-block.c'>https://github.com/openssl/openssl/blob/master/demos/guide/tls-client-non-block.c</a>.</p>
+<p class="Pp">Comme nous l'avons vu dans l'exemple précédent, un socket bloquant
+    est un socket qui attend (bloque) jusqu'à ce que des données soient disponibles
+    en lecture si vous tentez d'y lire alors qu'il n'y a pas encore de données.
+    De même, il attend lors de l'écriture si le socket ne peut actuellement pas
+    écrire. Cela peut simplifier le développement de code car vous n'avez pas à
+    vous soucier de ce qu'il faut faire dans ces cas. L'exécution du code s'arrêtera
+    simplement jusqu'à ce qu'elle puisse continuer. Cependant, dans de nombreux cas,
+    vous ne souhaitez pas ce comportement. Plutôt que de s'arrêter et d'attendre,
+    votre application peut avoir besoin d'effectuer d'autres tâches pendant que
+    le socket est incapable de lire/écrire, par exemple la mise à jour d'une interface
+    graphique ou l'exécution d'opérations sur un autre socket.</p>
+<p class="Pp">Avec un socket non bloquant, tenter de lire ou d'écrire sur un
+    socket qui est actuellement incapable de lire ou d'écrire retournera immédiatement
+    avec une erreur non fatale. Bien qu'OpenSSL effectue la lecture/écriture sur
+    le socket, ce comportement non bloquant est propagé à l'application, de sorte
+    que les fonctions d'E/S d'OpenSSL telles que <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou
+    <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> ne bloqueront pas.</p>
+<p class="Pp">Étant donné que cette page s'appuie sur l'exemple développé dans
+    la page
+    <a href='/man/ossl-guide-tls-client-block.7.en'>ossl-guide-tls-client-block(7)</a>, nous supposons que vous la connaissez
+    et nous expliquons uniquement en quoi cet exemple diffère.</p>
+<section class="Ss">
+<h2 class="Ss" id='Mise_du_socket_en_mode_non_bloquant'><a class='permalink' href='#Mise_du_socket_en_mode_non_bloquant'>Mise   du socket en mode non bloquant</a></h2>
+<p class="Pp">La première étape pour écrire une application qui prend en charge le
+    mode non bloquant consiste à mettre le socket en mode non bloquant. Un socket
+    sera bloquant par défaut. Les détails exacts sur la façon de procéder peuvent
+    varier d'une plateforme à l'autre. Heureusement, OpenSSL offre une fonction
+    portable qui s'en chargera pour vous :</p>
+<pre>/* Mettre en mode non bloquant */
+if (!BIO_socket_nbio(sock, 1)) {
+    sock = -1;
+    continue;
+}</pre>
+<p class="Pp">Vous n'êtes pas obligé d'utiliser la fonction d'OpenSSL pour cela.
+    Vous pouvez bien sûr appeler directement les fonctions que votre système
+    d'exploitation fournit à cet effet sur votre plateforme.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Effectuer_un_travail_en_attendant_le_socket'><a class='permalink' href='#Effectuer_un_travail_en_attendant_le_socket'>Effectuer   un travail en attendant le socket</a></h2>
+<p class="Pp">Dans une application non bloquante, vous devrez avoir du travail à
+    effectuer dans le cas où nous souhaitons lire ou écrire sur le socket, mais
+    que nous en sommes actuellement incapables. En fait, c'est tout l'intérêt d'utiliser
+    un socket non bloquant, c'est-à-dire de donner à l'application l'opportunité
+    de faire autre chose. Quoi qu'il en soit, l'application doit également être
+    prête à revenir et à réessayer périodiquement l'opération qu'elle a précédemment
+    tentée pour voir si elle peut maintenant s'achever. Idéalement, elle ne le ferait
+    que si l'état du socket sous-jacent a réellement changé (par exemple, il est
+    devenu lisible alors qu'il ne l'était pas auparavant), mais ce n'est pas
+    obligatoire. Elle peut réessayer à tout moment.</p>
+<p class="Pp">Notez qu'il est important de réessayer exactement la même opération
+    que celle que vous avez tentée la dernière fois. Vous ne pouvez pas en commencer
+    une nouvelle. Par exemple, si vous tentiez d'écrire le texte &quot;Hello World&quot;
+    et que l'opération a échoué parce que le socket ne peut actuellement pas écrire,
+    vous ne pouvez pas ensuite tenter d'écrire un autre texte lors de la nouvelle
+    tentative.</p>
+<p class="Pp">Dans cette application de démonstration, nous allons créer une
+    fonction d'aide qui simule l'exécution d'autres tâches. En fait, pour plus de
+    simplicité, elle ne fera rien d'autre qu'attendre que l'état du socket change.</p>
+<p class="Pp">Nous appelons notre fonction <span class="Li">wait_for_activity()</span>
+    car tout ce qu'elle fait est d'attendre que le socket sous-jacent devienne
+    lisible ou accessible en écriture alors qu'il ne l'était pas auparavant.</p>
+<pre>static void wait_for_activity(SSL *ssl, int write)
+{
+    fd_set fds;
+    int width, sock;
+    /* Obtenir le descripteur de fichier sous-jacent pour le socket */
+    sock = SSL_get_fd(ssl);
+    FD_ZERO(&amp;fds);
+    FD_SET(sock, &amp;fds);
+    width = sock + 1;
+    /*
+     * Attendre jusqu'à ce que le socket soit accessible en écriture ou en lecture.
+     * Nous utilisons select ici pour des raisons de simplicité et de portabilité,
+     * mais vous pourriez tout aussi bien utiliser poll/epoll ou des fonctions similaires.
+     *
+     * REMARQUE : Aux fins de ce code de démonstration, cela fait effectivement
+     * que cette démo bloque jusqu'à ce qu'elle ait quelque chose de plus utile à faire.
+     * Dans une application réelle, vous voudrez probablement effectuer d'autres
+     * tâches ici (par exemple, mettre à jour une interface graphique, ou servir
+     * d'autres connexions).
+     *
+     * Disons, par exemple, que vous souhaitez mettre à jour le compteur de progression
+     * sur une interface graphique toutes les 100 ms. Une façon de le faire serait
+     * d'ajouter un délai d'attente de 100 ms dans le dernier paramètre de &quot;select&quot; ci-dessous.
+     * Ensuite, lorsque select retourne, vous vérifiez s'il l'a fait en raison de l'activité
+     * sur les descripteurs de fichiers ou en raison du délai d'attente. S'il s'agit d'un
+     * délai d'attente, mettez à jour l'interface graphique, puis redémarrez &quot;select&quot;.
+     */
+    if (write)
+        select(width, NULL, &amp;fds, NULL, NULL);
+    else
+        select(width, &amp;fds, NULL, NULL, NULL);
+}</pre>
+<p class="Pp">Dans cet exemple, nous utilisons la fonction
+    <span class="Li">&quot;select&quot;</span> car elle est très simple à utiliser
+    et est disponible sur la plupart des systèmes d'exploitation. Cependant, vous
+    pourriez utiliser toute autre fonction similaire pour faire la même chose.
+    <span class="Li">&quot;select&quot;</span> attend que l'état du ou des sockets
+    sous-jacents devienne lisible/accessible en écriture avant de retourner. Elle
+    prend également en charge un &quot;délai d'attente&quot; (comme la plupart des
+    autres fonctions similaires), de sorte que dans vos propres applications, vous
+    pouvez l'utiliser pour vous réveiller périodiquement et effectuer des tâches
+    pendant que vous attendez que l'état du socket change. Mais nous n'utilisons pas
+    cette capacité de délai d'attente dans cet exemple pour des raisons de simplicité.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Gestion_des_erreurs_des_fonctions_dE/S_OpenSSL'><a class='permalink' href='#Gestion_des_erreurs_des_fonctions_dE/S_OpenSSL'>Gestion   des erreurs des fonctions d'E/S OpenSSL</a></h2>
+<p class="Pp">Une application qui utilise un socket non bloquant devra être prête à
+    gérer les erreurs retournées par les fonctions d'E/S OpenSSL telles que
+    <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a>. Les erreurs peuvent être fatales
+    (par exemple, parce que la connexion sous-jacente a échoué) ou non fatales
+    (par exemple, parce que nous essayons de lire depuis le socket sous-jacent
+    mais que les données ne sont pas encore arrivées du pair).</p>
+<p class="Pp"><a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> et <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> retourneront 0 pour
+    indiquer une erreur et <a href='/man/SSL_read.3.en'>SSL_read(3)</a> et <a href='/man/SSL_write.3.en'>SSL_write(3)</a>
+    retourneront 0 ou une valeur négative pour indiquer une erreur. <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> retournera
+    une valeur négative pour indiquer une erreur.</p>
+<p class="Pp">En cas d'erreur, une application doit appeler
+    <a href='/man/SSL_get_error.3.en'>SSL_get_error(3)</a> pour savoir quel type d'erreur s'est produit. Si
+    l'erreur n'est pas fatale et peut être retentée, <a href='/man/SSL_get_error.3.en'>SSL_get_error(3)</a> retournera
+    <b>SSL_ERROR_WANT_READ</b> ou <b>SSL_ERROR_WANT_WRITE</b> selon que OpenSSL
+    voulait lire depuis ou écrire sur le socket mais n'a pas pu. Notez qu'un appel
+    à <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou <a href='/man/SSL_read.3.en'>SSL_read(3)</a> peut toujours générer
+    <b>SSL_ERROR_WANT_WRITE</b> car OpenSSL peut avoir besoin d'écrire des messages
+    de protocole (comme pour mettre à jour des clés cryptographiques) même si l'application
+    essaie uniquement de lire des données. De même, les appels à
+    <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> ou <a href='/man/SSL_write.3.en'>SSL_write(3)</a> pourraient générer
+    <b>SSL_ERROR_WANT_READ</b>.</p>
+<p class="Pp">Un autre type d'erreur non fatale qui peut survenir est
+    <b>SSL_ERROR_ZERO_RETURN</b>. Cela indique un EOF (End-Of-File) qui peut se
+    produire si vous tentez de lire des données à partir d'un objet <b>SSL</b> mais
+    que le pair a indiqué qu'il n'enverra plus de données. Dans ce cas, vous pouvez
+    toujours vouloir écrire des données dans la connexion mais vous ne recevrez
+    plus de données.</p>
+<p class="Pp">Les erreurs fatales th</p>
+</div>
+</section>
+                
+            </article>
+            <aside id="content-right">
+                <nav>
+                    <div class="toc">
+                        <p><strong>Sommaire</strong></p>
+                        <ul>
+                            <li><a href="#NOM">NOM</a></li>
+                            <li><a href="#EXEMPLE_CLIENT_TLS_NON_BLOQUANT_SIMPLE">EXEMPLE CLIENT TLS NON BLOQUANT SIMPLE</a>
+                                <ul>
+                                    <li><a href="#Mise_du_socket_en_mode_non_bloquant">Mise du socket en mode non bloquant</a></li>
+                                    <li><a href="#Effectuer_un_travail_en_attendant_le_socket">Effectuer un travail en attendant le socket</a></li>
+                                    <li><a href="#Gestion_des_erreurs_des_fonctions_dE/S_OpenSSL">Gestion des erreurs des fonctions d'E/S OpenSSL</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </nav>
+            </aside>
+        </main>
+        <footer>
+            <p>
+                Page générée le : 2024-03-01
+            </p>
+        </footer>
+    </body>
+</html>
+<section class="Sh">
+<h1 class="Sh" id="Gestion_des_erreurs_dE/O"><a class="permalink" href="#Gestion_des_erreurs_dE/O">Gestion des erreurs d'E/S</a></h1>
+<p class="Pp">Les erreurs les plus courantes pouvant survenir sont
+    <b>SSL_ERROR_SYSCALL</b> et <b>SSL_ERROR_SSL</b>. Celles-ci indiquent que la
+    connexion sous-jacente a échoué. Vous ne devez pas tenter de la fermer avec
+    <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a>.
+    <b>SSL_ERROR_SYSCALL</b> indique qu'OpenSSL a tenté d'effectuer un appel système
+    qui a échoué. Vous pouvez consulter <b>errno</b> pour plus de détails.
+    <b>SSL_ERROR_SSL</b> indique qu'une erreur OpenSSL s'est produite. Vous pouvez
+    consulter la pile d'erreurs OpenSSL pour plus de détails (par exemple, en
+    appelant <a href="/man/ERR_print_errors.3.en">ERR_print_errors(3)</a> pour afficher les détails des
+    erreurs survenues).</p>
+<p class="Pp">Dans notre application de démonstration, nous allons écrire une
+    fonction pour gérer ces erreurs provenant des fonctions d'E/S d'OpenSSL :</p>
+<pre>static int handle_io_failure(SSL *ssl, int res)
+{
+    switch (SSL_get_error(ssl, res)) {
+    case SSL_ERROR_WANT_READ:
+        /* Échec temporaire. Attendre qu'on puisse lire et réessayer */
+        wait_for_activity(ssl, 0);
+        return 1;
+    case SSL_ERROR_WANT_WRITE:
+        /* Échec temporaire. Attendre qu'on puisse écrire et réessayer */
+        wait_for_activity(ssl, 1);
+        return 1;
+    case SSL_ERROR_ZERO_RETURN:
+        /* EOF */
+        return 0;
+    case SSL_ERROR_SYSCALL:
+        return -1;
+    case SSL_ERROR_SSL:
+        /*
+        * Si l'échec est dû à une erreur de vérification, nous pouvons obtenir plus
+        * d'informations à ce sujet à partir de SSL_get_verify_result().
+        */
+        if (SSL_get_verify_result(ssl) != X509_V_OK)
+            printf(&quot;Verify error: %s\n&quot;,
+                X509_verify_cert_error_string(SSL_get_verify_result(ssl)));
+        return -1;
+    default:
+        return -1;
+    }
+}</pre>
+<p class="Pp">Cette fonction prend comme arguments l'objet <b>SSL</b> qui
+    représente la connexion, ainsi que le code de retour de la fonction d'E/S
+    qui a échoué. En cas d'échec non fatal, elle attend qu'une nouvelle tentative
+    de l'opération d'E/S puisse réussir (en utilisant la fonction
+    <span class="Li">wait_for_activity()</span> que nous avons développée dans la
+    section précédente). Elle renvoie 1 en cas d'erreur non fatale (sauf EOF), 0
+    en cas d'EOF, ou -1 si une erreur fatale s'est produite.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Création_des_objets_SSL_CTX_et_SSL"><a class="permalink" href="#Création_des_objets_SSL_CTX_et_SSL">Création des objets SSL_CTX et SSL</a></h2>
+<p class="Pp">Afin de nous connecter à un serveur, nous devons créer des objets
+    <b>SSL_CTX</b> et <b>SSL</b> pour cela. Les étapes pour y parvenir sont les
+    mêmes que pour un client bloquant et sont expliquées sur la page
+    <a href="/man/ossl-guide-tls-client-block.7.en">ossl-guide-tls-client-block(7)</a>. Nous ne répéterons pas ces
+    informations ici.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Exécution_de_la_poignée_de_main"><a class="permalink" href="#Exécution_de_la_poignée_de_main">Exécution de la poignée de main</a></h2>
+<p class="Pp">Comme dans la démonstration pour un client TLS bloquant, nous
+    utilisons la fonction <a href="/man/SSL_connect.3.en">SSL_connect(3)</a> pour effectuer la
+    poignée de main TLS avec le serveur. Puisque nous utilisons une socket non
+    bloquante, il est très probable que les appels à cette fonction échouent avec
+    une erreur non fatale pendant que nous attendons que le serveur réponde à nos
+    messages de poignée de main. Dans un tel cas, nous devons retenter le même appel
+    à <a href="/man/SSL_connect.3.en">SSL_connect(3)</a> plus tard. Dans cette démo, nous faisons cela dans une
+    boucle :</p>
+<pre>/* Effectuer la poignée de main avec le serveur */
+while ((ret = SSL_connect(ssl)) != 1) {
+    if (handle_io_failure(ssl, ret) == 1)
+        continue; /* Réessayer */
+    printf(&quot;Échec de la connexion au serveur\n&quot;);
+    goto end; /* Impossible de réessayer : erreur */
+}</pre>
+<p class="Pp">Nous appelons continuellement <a href="/man/SSL_connect.3.en">SSL_connect(3)</a>
+    jusqu'à ce qu'il nous donne une réponse de succès. Sinon, nous utilisons la
+    fonction <span class="Li">handle_io_failure()</span> que nous avons créée plus
+    tôt pour déterminer ce que nous devons faire ensuite. Notez que nous ne nous
+    attendons pas à ce qu'un EOF se produise à ce stade, donc une telle réponse
+    est traitée de la même manière qu'une erreur fatale.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Envoi_et_réception_de_données"><a class="permalink" href="#Envoi_et_réception_de_données">Envoi et réception de données</a></h2>
+<p class="Pp">Comme pour la démo du client TLS bloquant, nous utilisons la fonction
+    <a href="/man/SSL_write_ex.3.en">SSL_write_ex(3)</a> pour envoyer des données au serveur. Comme avec
+    <a href="/man/SSL_connect.3.en">SSL_connect(3)</a> ci-dessus, parce que nous utilisons une socket non
+    bloquante, cet appel pourrait échouer avec une erreur non fatale. Dans ce cas,
+    nous devrions retenter exactement le même appel à
+    <a href="/man/SSL_write_ex.3.en">SSL_write_ex(3)</a>. Notez que les paramètres doivent être
+    <i>exactement</i> les mêmes, c'est-à-dire le même pointeur vers le tampon à
+    écrire avec la même longueur. Vous ne devez pas tenter d'envoyer des données
+    différentes lors d'une nouvelle tentative. Un mode optionnel existe (
+    <b>SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER</b>) qui configurera OpenSSL pour
+    permettre au tampon utilisé pour l'écriture de changer d'une tentative à
+    l'autre. Cependant, dans ce cas, vous devez toujours retenter les mêmes données
+    - même si le tampon qui contient ces données peut changer d'emplacement. Voir
+    <a href="/man/SSL_CTX_set_mode.3.en">SSL_CTX_set_mode(3)</a> pour plus de détails. Comme dans le tutoriel client
+    TLS bloquant (<a href="/man/ossl-guide-tls-client-block.7.en">ossl-guide-tls-client-block(7)</a>), nous écrivons la
+    requête en trois parties.</p>
+<pre>/* Écrire une requête HTTP GET vers le pair */
+while (!SSL_write_ex(ssl, request_start, strlen(request_start), &amp;written)) {
+    if (handle_io_failure(ssl, 0) == 1)
+        continue; /* Réessayer */
+    printf(&quot;Échec de l'écriture du début de la requête HTTP\n&quot;);
+    goto end; /* Impossible de réessayer : erreur */
+}
+while (!SSL_write_ex(ssl, hostname, strlen(hostname), &amp;written)) {
+    if (handle_io_failure(ssl, 0) == 1)
+        continue; /* Réessayer */
+    printf(&quot;Échec de l'écriture du nom d'hôte dans la requête HTTP\n&quot;);
+    goto end; /* Impossible de réessayer : erreur */
+}
+while (!SSL_write_ex(ssl, request_end, strlen(request_end), &amp;written)) {
+    if (handle_io_failure(ssl, 0) == 1)
+        continue; /* Réessayer */
+    printf(&quot;Échec de l'écriture de la fin de la requête HTTP\n&quot;);
+    goto end; /* Impossible de réessayer : erreur */
+}</pre>
+<p class="Pp">Lors d'une écriture, nous ne nous attendons pas à voir une réponse EOF
+    donc nous traitons ce cas de la même manière qu'une erreur fatale.</p>
+<p class="Pp">La lecture d'une réponse du serveur est similaire :</p>
+<pre>do {
+    /*
+     * Obtenir jusqu'à sizeof(buf) octets de la réponse. Nous continuons à lire jusqu'à ce que
+     * le serveur ferme la connexion.
+     */
+    while (!eof &amp;&amp; !SSL_read_ex(ssl, buf, sizeof(buf), &amp;readbytes)) {
+        switch (handle_io_failure(ssl, 0)) {
+        case 1:
+            continue; /* Réessayer */
+        case 0:
+            eof = 1;
+            continue;
+        case -1:
+        default:
+            printf(&quot;Échec de la lecture des données restantes\n&quot;);
+            goto end; /* Impossible de réessayer : erreur */
+        }
+    }
+    /*
+     * OpenSSL ne garantit pas que les données renvoyées sont une chaîne de caractères ou
+     * qu'elles sont terminées par NUL, nous utilisons donc fwrite() pour écrire le nombre exact
+     * d'octets que nous avons lus. Les données pourraient être non imprimables ou
+     * contenir des caractères NUL au milieu. Pour cet exemple simple, nous allons quand même les imprimer sur stdout.
+     */
+    if (!eof)
+        fwrite(buf, 1, readbytes, stdout);
+} while (!eof);
+/* Au cas où la réponse ne se terminerait pas par un saut de ligne, nous en ajoutons un maintenant */
+printf(&quot;\n&quot;);</pre>
+<p class="Pp">La principale différence cette fois-ci est qu'il est valide pour nous de
+    recevoir une réponse EOF lors de la tentative de lecture de données depuis le
+    serveur. Cela se produira lorsque le serveur fermera la connexion après avoir
+    envoyé toutes les données de sa réponse.</p>
+<p class="Pp">Dans cette démo, nous nous contentons d'imprimer toutes les données que
+    nous avons reçues en retour dans la réponse du serveur. Nous continuons de
+    boucler jusqu'à ce que nous rencontrions soit une erreur fatale, soit un EOF
+    (indiquant une fin normale).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Arrêt_de_la_connexion"><a class="permalink" href="#Arrêt_de_la_connexion">Arrêt de la connexion</a></h2>
+<p class="Pp">Comme dans l'exemple du client TLS bloquant, nous devons arrêter la
+    connexion lorsque nous avons terminé avec elle.</p>
+<p class="Pp">Si notre application initiait l'arrêt, nous nous attendrions à ce que
+    <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a> retourne 0, puis nous continuerions à l'appeler
+    jusqu'à ce que nous recevions un retour de 1 (signifiant que nous avons achevé
+    l'arrêt avec succès). Dans cet exemple particulier, nous ne nous attendons pas
+    à ce que <b>SSL_shutdown()</b> retourne 0 car nous avons déjà reçu EOF du
+    serveur indiquant qu'il s'est déjà arrêté. Nous continuons donc à l'appeler
+    jusqu'à ce que <b>SSL_shutdown()</b> retourne 1. Puisque nous utilisons une
+    socket non bloquante, nous pourrions avoir à retenter cette opération plusieurs
+    fois. Si <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a> retourne un résultat négatif, nous devons appeler
+    <a href="/man/SSL_get_error.3.en">SSL_get_error(3)</a> pour déterminer quoi faire ensuite. Nous utilisons notre
+    fonction <b>handle_io_failure()</b> que nous avons développée précédemment pour
+    cela :</p>
+<pre>/*
+ * Le pair s'est déjà arrêté gracieusement (nous le savons à cause du
+ * SSL_ERROR_ZERO_RETURN (c'est-à-dire EOF) ci-dessus). Nous devrions faire de même en retour.
+ */
+while ((ret = SSL_shutdown(ssl)) != 1) {
+    if (ret &lt; 0 &amp;&amp; handle_io_failure(ssl, ret) == 1)
+        continue; /* Réessayer */
+    /*
+     * ret == 0 est inattendu ici car cela signifie "nous avons envoyé un
+     * close_notify et nous en attendons un en retour". Mais nous savons déjà
+     * que nous en avons reçu un du pair à cause du SSL_ERROR_ZERO_RETURN
+     * (c'est-à-dire EOF) ci-dessus.
+     */
+    printf(&quot;Erreur lors de l'arrêt\n&quot;);
+    goto end; /* Impossible de réessayer : erreur */
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Nettoyage_final"><a class="permalink" href="#Nettoyage_final">Nettoyage final</a></h2>
+<p class="Pp">Comme dans l'exemple du client TLS bloquant, une fois que notre connexion
+    est terminée, nous devons la libérer. Les étapes pour le faire dans cet exemple
+    sont les mêmes que pour l'exemple bloquant, nous ne les répéterons donc pas ici.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="LECTURES_COMPLÉMENTAIRES"><a class="permalink" href="#LECTURES_COMPLÉMENTAIRES">LECTURES COMPLÉMENTAIRES</a></h1>
+<p class="Pp">Voir <a href="/man/ossl-guide-tls-client-block.7.en">ossl-guide-tls-client-block(7)</a> pour lire un tutoriel sur
+    la manière d'écrire un client TLS bloquant. Voir
+    <a href="/man/ossl-guide-quic-client-block.7.en">ossl-guide-quic-client-block(7)</a> pour voir comment faire la même chose pour un
+    client QUIC.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="VOIR_AUSSI"><a class="permalink" href="#VOIR_AUSSI">VOIR AUSSI</a></h1>
+<p class="Pp"><a href="/man/ossl-guide-introduction.7.en">ossl-guide-introduction(7)</a>,
+    <a href="/man/ossl-guide-libraries-introduction.7.en">ossl-guide-libraries-introduction(7)</a>,
+    <a href="/man/ossl-guide-libssl-introduction.7.en">ossl-guide-libssl-introduction(7)</a>,
+    <a href="/man/ossl-guide-tls-introduction.7.en">ossl-guide-tls-introduction(7)</a>,
+    <a href="/man/ossl-guide-tls-client-block.7.en">ossl-guide-tls-client-block(7)</a>,
+    <a href="/man/ossl-guide-quic-client-block.7.en">ossl-guide-quic-client-block(7)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="COPYRIGHT"><a class="permalink" href="#COPYRIGHT">COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2023 The OpenSSL Project Authors. Tous droits réservés.</p>
+<p class="Pp">Sous licence Apache License 2.0 (la « Licence »). Vous ne pouvez pas
+    utiliser ce fichier sauf en conformité avec la Licence. Vous pouvez obtenir
+    une copie dans le fichier LICENSE de la distribution source ou à
+    l'adresse <a href="https://www.openssl.org/source/license.html">https://www.openssl.org/source/license.html</a>.</p>
+</section>
+/div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version :</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SIMPLE_NONBLOCKING_TLS_CLIENT_EXAMPLE">EXEMPLE SIMPLE DE CLIENT TLS NON BLOQUANT</a></li>
+        
+            <li><a href="#FURTHER_READING">LECTURES COMPLÉMENTAIRES</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">DROIT D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ossl-guide-tls-client-non-block.7ssl.en.txt">txt</a>, 
+        
+            <a href="/man/ossl-guide-tls-client-non-block.7ssl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

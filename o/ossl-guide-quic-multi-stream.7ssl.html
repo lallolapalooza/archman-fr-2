@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ossl-guide-quic-multi-stream(7ssl) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ossl-guide-quic-multi-stream(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OSSL-GUIDE-QUIC-MULTI-STREAM(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">OSSL-GUIDE-QUIC-MULTI-STREAM(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ossl-guide-quic-multi-stream - Guide OpenSSL : Écrire un client QUIC multi-flux simple</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTRODUCTION'><a class='permalink' href='#INTRODUCTION'>INTRODUCTION</a></h1>
+<p class="Pp">Cette page présentera certains concepts importants requis pour écrire une application QUIC multi-flux simple. Elle suppose une compréhension de base de QUIC et de son utilisation dans OpenSSL. Voir <a href='/man/ossl-guide-quic-introduction.7.en'>ossl-guide-quic-introduction(7)</a> et <a href='/man/ossl-guide-quic-client-block.7.en'>ossl-guide-quic-client-block(7)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FLUX_QUIC'><a class='permalink' href='#FLUX_QUIC'>FLUX   QUIC</a></h1>
+<p class="Pp">Dans une application QUIC multi-flux, nous séparons les concepts de « connexion » QUIC et de « flux » QUIC. Un objet de connexion représente les détails globaux de la connexion entre un client et un serveur, y compris tous ses paramètres négociés et configurés. Nous utilisons l'objet <b>SSL</b> pour cela dans une application OpenSSL (connu sous le nom d'objet <b>SSL</b> de connexion). Il est créé par une application appelant <a href='/man/SSL_new.3.en'>SSL_new(3)</a>.</p>
+<p class="Pp">Séparément, une connexion peut avoir zéro flux ou plus associés. Un flux est utilisé pour envoyer et recevoir des données entre les deux pairs. Chaque flux est également représenté par un objet <b>SSL</b>. Un flux est logiquement indépendant de tous les autres flux associés à la même connexion. Les données envoyées sur un flux sont garanties d'être livrées dans l'ordre où elles ont été envoyées au sein de ce flux. Il en va de même pour les flux, par exemple, si une application envoie des données sur le flux 1 d'abord, puis envoie des données supplémentaires sur le flux 2 ensuite, le pair distant peut recevoir les données envoyées sur le flux 2 avant de recevoir les données envoyées sur le flux 1.</p>
+<p class="Pp">Une fois que l'objet <b>SSL</b> de connexion a terminé son handshake (c'est-à-dire que <a href='/man/SSL_connect.3.en'>SSL_connect(3)</a> a retourné 1), les objets <b>SSL</b> de flux sont créés par l'application appelant <a href='/man/SSL_new_stream.3.en'>SSL_new_stream(3)</a> ou <a href='/man/SSL_accept_stream.3.en'>SSL_accept_stream(3)</a> (voir « CRÉATION DE NOUVEAUX FLUX » ci-dessous).</p>
+<p class="Pp">Les mêmes règles d'interfaçage s'appliquent aux objets <b>SSL</b> comme à la plupart des objets OpenSSL (voir <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a>). En particulier, la plupart des fonctions OpenSSL sont thread-safe, mais l'objet <b>SSL</b> ne l'est pas. Cela signifie que vous pouvez utiliser un objet <b>SSL</b> représentant un flux en même temps qu'un autre thread utilise un objet <b>SSL</b> différent pour un flux différent sur la même connexion. Mais vous ne pouvez pas utiliser le même objet <b>SSL</b> sur deux threads différents en même temps (sans verrouillage supplémentaire au niveau de l'application).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LE_FLUX_PAR_DEFAUT'><a class='permalink' href='#LE_FLUX_PAR_DEFAUT'>LE   FLUX PAR DÉFAUT</a></h1>
+<p class="Pp">Un objet <b>SSL</b> de connexion peut également être associé (facultativement) à un flux. Ce flux est connu sous le nom de flux par défaut. Le flux par défaut est automatiquement créé et associé à l'objet <b>SSL</b> lorsque l'application appelle <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a>, <a href='/man/SSL_read.3.en'>SSL_read(3)</a>, <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> ou <a href='/man/SSL_write.3.en'>SSL_write(3)</a> et passe l'objet <b>SSL</b> de connexion comme paramètre.</p>
+<p class="Pp">Si une application cliente appelle d'abord <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> ou <a href='/man/SSL_write.3.en'>SSL_write(3)</a>, alors (par défaut) le flux par défaut sera un flux bidirectionnel initié par le client. Si une application cliente appelle d'abord <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou <a href='/man/SSL_read.3.en'>SSL_read(3)</a>, alors le premier flux initié par le serveur sera utilisé comme flux par défaut (qu'il soit bidirectionnel ou unidirectionnel).</p>
+<p class="Pp">Ce comportement peut être contrôlé via le mode de flux par défaut. Voir <a href='/man/SSL_set_default_stream_mode.3.en'>SSL_set_default_stream_mode(3)</a> pour plus de détails.</p>
+<p class="Pp">Il est recommandé que les nouvelles applications multi-flux n'utilisent pas du tout de flux par défaut et utilisent plutôt un objet <b>SSL</b> de flux séparé pour chaque flux utilisé. Cela nécessite d'appeler <a href='/man/SSL_set_default_stream_mode.3.en'>SSL_set_default_stream_mode(3)</a> et de définir le mode sur <b>SSL_DEFAULT_STREAM_MODE_NONE</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CRÉATION_DE_NOUVEAUX_FLUX'><a class='permalink' href='#CRÉATION_DE_NOUVEAUX_FLUX'>CRÉATION   DE NOUVEAUX FLUX</a></h1>
+<p class="Pp">Un point d'extrémité peut créer un nouveau flux en appelant <a href='/man/SSL_new_stream.3.en'>SSL_new_stream(3)</a>. Cela crée un flux initié localement. Pour ce faire, vous devez passer l'objet <b>SSL</b> de connexion QUIC en paramètre. Vous pouvez également spécifier si vous souhaitez un flux bidirectionnel ou unidirectionnel.</p>
+<p class="Pp">La fonction renvoie un nouvel objet <b>SSL</b> de flux QUIC pour envoyer et recevoir des données sur ce flux.</p>
+<p class="Pp">Le pair peut également initier des flux. Une application peut utiliser la fonction <a href='/man/SSL_get_accept_stream_queue_len.3.en'>SSL_get_accept_stream_queue_len(3)</a> pour déterminer le nombre de flux que le pair a initiés et qui attendent d'être traités par l'application. Une application peut appeler <a href='/man/SSL_accept_stream.3.en'>SSL_accept_stream(3)</a> pour créer un nouvel objet <b>SSL</b> pour un flux initié par le pair. Si le pair n'en a initié aucun, cet appel bloquera jusqu'à ce qu'un soit disponible si l'objet de connexion est en mode bloquant (voir <a href='/man/SSL_set_blocking_mode.3.en'>SSL_set_blocking_mode(3)</a>).</p>
+<p class="Pp">Lors de l'utilisation d'un flux par défaut, OpenSSL empêchera l'acceptation de nouveaux flux. Pour outrepasser ce comportement, vous devez appeler <a href='/man/SSL_set_incoming_stream_policy.3.en'>SSL_set_incoming_stream_policy(3)</a> pour définir la politique sur <b>SSL_INCOMING_STREAM_POLICY_ACCEPT</b>. Voir la page de manuel pour plus de détails. Ceci n'est pas pertinent si le flux par défaut a été désactivé comme décrit dans « LE FLUX PAR DÉFAUT » ci-dessus.</p>
+<p class="Pp">Tout flux peut être bidirectionnel ou unidirectionnel. S'il est unidirectionnel, l'initiateur peut y écrire mais pas y lire, et vice-versa pour le pair. Vous pouvez déterminer quel type de flux un objet <b>SSL</b> représente en appelant <a href='/man/SSL_get_stream_type.3.en'>SSL_get_stream_type(3)</a>. Voir la page de manuel pour plus de détails.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISER_UN_FLUX_POUR_ENVOYER_ET_RECEVOIR_DES_DONNÉES'><a class='permalink' href='#UTILISER_UN_FLUX_POUR_ENVOYER_ET_RECEVOIR_DES_DONNÉES'>UTILISER   UN FLUX POUR ENVOYER ET RECEVOIR DES DONNÉES</a></h1>
+<p class="Pp">Une fois que vous avez un objet <b>SSL</b> de flux (qui inclut l'objet <b>SSL</b> de connexion si un flux par défaut est utilisé), vous pouvez envoyer et recevoir des données via celui-ci en utilisant les fonctions <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a>, <a href='/man/SSL_write.3.en'>SSL_write(3)</a>, <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou <a href='/man/SSL_read.3.en'>SSL_read(3)</a>. Voir les pages de manuel pour plus de détails.</p>
+<p class="Pp">Dans le cas où l'une de ces fonctions ne renvoie pas un code de succès, vous devez appeler <a href='/man/SSL_get_error.3.en'>SSL_get_error(3)</a> pour obtenir plus de détails sur l'erreur. En mode bloquant, il s'agira soit d'une erreur fatale (par exemple, <b>SSL_ERROR_SYSCALL</b> ou <b>SSL_ERROR_SSL</b>), soit de <b>SSL_ERROR_ZERO_RETURN</b>, qui peut survenir lors de la tentative de lecture de données d'un flux et que le pair a indiqué que le flux est terminé (c'est-à-dire que « FIN » a été signalé sur le flux). Cela signifie que le pair n'enverra plus de données sur ce flux. Notez que l'interprétation de <b>SSL_ERROR_ZERO_RETURN</b> est légèrement différente pour une application QUIC par rapport à une application TLS. En TLS, cela se produit lorsque la connexion a été fermée par le pair. En QUIC, cela indique seulement que le flux actuel a été conclu par le pair. Cela ne vous dit rien sur la connexion sous-jacente. Si le pair a conclu le flux, aucune autre donnée ne sera reçue, cependant une application peut toujours envoyer des données au pair jusqu'à ce que le côté envoi du flux soit également conclu. Cela peut se produire par l'application appelant <a href='/man/SSL_stream_conclude.3.en'>SSL_stream_conclude(3)</a>. Il est erroné de tenter d'envoyer plus de données sur un flux après que <a href='/man/SSL_stream_conclude.3.en'>SSL_stream_conclude(3)</a> ait été appelé.</p>
+<p class="Pp">Il est également possible d'abandonner un flux anormalement en appelant <a href='/man/SSL_stream_reset.3.en'>SSL_stream_reset(3)</a>.</p>
+<p class="Pp">Une fois qu'un objet de flux n'est plus nécessaire, il doit être libéré par un appel à <a href='/man/SSL_free.3.en'>SSL_free(3)</a>. Une application ne doit pas l'appeler avec <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> car cela n'a de sens que pour les objets <b>SSL</b> au niveau de la connexion. La libération du flux signalera automatiquement STOP_SENDING au pair.</p>
+</section>
+<section class="S
+<section class="Sh">
+<h1 class="Sh" id='STREAMS_AND_CONNECTIONS'><a class='permalink' href='#STREAMS_AND_CONNECTIONS'>FLUX ET CONNEXIONS</a></h1>
+<p class="Pp">Étant donné un objet flux, il est possible d'obtenir l'objet <b>SSL</b>
+    correspondant à la connexion via un appel à <a href='/man/SSL_get0_connection.3.en'>SSL_get0_connection(3)</a>.
+    Les restrictions liées au multithreading s'appliquent, il faut donc être prudent lors de l'utilisation de
+    l'objet connexion renvoyé. Plus précisément, si vous gérez chacun de vos
+    objets flux dans un thread différent et que vous appelez <a href='/man/SSL_get0_connection.3.en'>SSL_get0_connection(3)</a>
+    depuis ce thread, vous devez veiller à ne pas appeler une fonction
+    utilisant l'objet connexion en même temps qu'un autre thread utilise également cet objet connexion (à l'exception de
+    <a href='/man/SSL_accept_stream.3.en'>SSL_accept_stream(3)</a> et <a href='/man/SSL_get_accept_stream_queue_len.3.en'>SSL_get_accept_stream_queue_len(3)</a>
+    qui sont thread-safe).</p>
+<p class="Pp">Un objet flux n'hérite pas de tous ses paramètres et valeurs de son
+    objet parent de connexion <b>SSL</b>. Par conséquent, certains appels de fonction
+    pertinents pour la connexion dans son ensemble ne fonctionneront pas sur un flux.
+    Par exemple, la fonction <a href='/man/SSL_get_certificate.3.en'>SSL_get_certificate(3)</a> peut être utilisée pour obtenir
+    un handle sur le certificat pair lorsqu'elle est appelée avec un objet <b>SSL</b> de connexion.
+    Lorsqu'elle est appelée avec un objet <b>SSL</b> de flux, elle renvoie NULL.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIMPLE_MULTI-STREAM_QUIC_CLIENT_EXAMPLE'><a class='permalink' href='#SIMPLE_MULTI-STREAM_QUIC_CLIENT_EXAMPLE'>EXEMPLE SIMPLE DE CLIENT QUIC MULTI-FLUX</a></h1>
+<p class="Pp">Cette section présentera divers exemples de code démontrant comment écrire une application client QUIC multi-flux simple qui se connecte à un serveur, lui envoie quelques requêtes HTTP/1.0 et lit les réponses. Notez que HTTP/1.0 sur QUIC n'est pas standard et ne sera pas pris en charge par les serveurs du monde réel. Ceci est uniquement à des fins de démonstration.</p>
+<p class="Pp">Nous nous appuierons sur le code d'exemple du client QUIC bloquant simple couvert dans la page <a href='/man/ossl-guide-quic-client-block.7.en'>ossl-guide-quic-client-block(7)</a> et nous supposerons que vous la connaissez. Nous décrirons uniquement les différences entre le client QUIC bloquant simple et le client QUIC multi-flux. Bien que le code d'exemple utilise des objets <b>SSL</b> bloquants, vous pouvez également utiliser des objets <b>SSL</b> non bloquants. Voir <a href='/man/ossl-guide-quic-client-non-block.7.en'>ossl-guide-quic-client-non-block(7)</a> pour plus d'informations sur l'écriture d'un client QUIC non bloquant.</p>
+<p class="Pp">Le code source complet de cet exemple de client QUIC multi-flux est disponible dans le répertoire <span class="Li">&quot;demos/guide&quot;</span> de la distribution source OpenSSL dans le fichier <span class="Li">&quot;quic-multi-stream.c&quot;</span>. Il est également disponible en ligne à l'adresse
+    <a href='https://github.com/openssl/openssl/blob/master/demos/guide/quic-multi-stream.c'>https://github.com/openssl/openssl/blob/master/demos/guide/quic-multi-stream.c</a>.</p>
+<section class="Ss">
+<h2 class="Ss" id='Disabling_the_default_stream'><a class='permalink' href='#Disabling_the_default_stream'>Désactivation du flux par défaut</a></h2>
+<p class="Pp">Comme discuté ci-dessus dans &quot;LE FLUX PAR DÉFAUT&quot;, nous suivrons la recommandation de désactiver le flux par défaut pour notre client multi-flux. Pour ce faire, nous appelons la fonction <a href='/man/SSL_set_default_stream_mode.3.en'>SSL_set_default_stream_mode(3)</a> et passons notre objet <b>SSL</b> de connexion et la valeur
+    <b>SSL_DEFAULT_STREAM_MODE_NONE</b>.</p>
+<pre>/*
+ * Nous utiliserons plusieurs flux, nous désactiverons donc le mode de flux par défaut.
+ * Ce n'est pas une exigence pour utiliser plusieurs flux, mais c'est recommandé.
+ */
+if (!SSL_set_default_stream_mode(ssl, SSL_DEFAULT_STREAM_MODE_NONE)) {
+    printf(&quot;Échec de la désactivation du mode de flux par défaut\n&quot;);
+    goto end;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Creating_the_request_streams'><a class='permalink' href='#Creating_the_request_streams'>Création des flux de requêtes</a></h2>
+<p class="Pp">Aux fins de cet exemple, nous créerons deux flux différents pour envoyer deux requêtes HTTP différentes au serveur. Aux fins de démonstration, le premier sera un flux bidirectionnel et le second un flux unidirectionnel :</p>
+<pre>/*
+ * Nous créons deux nouveaux flux initiés par le client. Le premier sera
+ * bidirectionnel, et le second sera unidirectionnel.
+ */
+stream1 = SSL_new_stream(ssl, 0);
+stream2 = SSL_new_stream(ssl, SSL_STREAM_FLAG_UNI);
+if (stream1 == NULL || stream2 == NULL) {
+    printf(&quot;Échec de la création des flux\n&quot;);
+    goto end;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Writing_data_to_the_streams'><a class='permalink' href='#Writing_data_to_the_streams'>Écriture de données dans les flux</a></h2>
+<p class="Pp">Une fois les flux créés avec succès, nous pouvons commencer à y écrire des données. Dans cet exemple, nous enverrons une requête HTTP différente sur chaque flux. Pour éviter de répéter trop de code, nous écrivons une fonction d'aide simple pour envoyer une requête HTTP à un flux :</p>
+<pre>int write_a_request(SSL *stream, const char *request_start,
+                    const char *hostname)
+{
+    const char *request_end = &quot;\r\n\r\n&quot;;
+    size_t written;
+    if (!SSL_write_ex(stream, request_start, strlen(request_start), &amp;written))
+        return 0;
+    if (!SSL_write_ex(stream, hostname, strlen(hostname), &amp;written))
+        return 0;
+    if (!SSL_write_ex(stream, request_end, strlen(request_end), &amp;written))
+        return 0;
+    return 1;
+}</pre>
+<p class="Pp">Nous supposons que les chaînes <b>request1_start</b> et
+    <b>request2_start</b> contiennent les requêtes HTTP appropriées. Nous pouvons alors appeler
+    notre fonction d'aide ci-dessus pour envoyer les requêtes sur les deux flux. Pour plus de simplicité, cet exemple le fait séquentiellement, en écrivant d'abord sur
+    <b>stream1</b> et, une fois cela réussi, en écrivant ensuite sur <b>stream2</b>. Rappelez-vous que notre client est bloquant, donc ces appels ne retourneront qu'une fois qu'ils auront été effectués avec succès. Une application réelle n'aurait pas besoin de faire ces écritures séquentiellement ou dans un ordre particulier. Par exemple, nous pourrions démarrer deux threads (un pour chaque flux) et écrire simultanément les requêtes dans chaque flux.</p>
+<pre>/* Écrire une requête HTTP GET sur chacun de nos flux vers le pair */
+if (!write_a_request(stream1, request1_start, hostname)) {
+    printf(&quot;Échec de l'écriture de la requête HTTP sur le flux 1\n&quot;);
+    goto end;
+}
+if (!write_a_request(stream2, request2_start, hostname)) {
+    printf(&quot;Échec de l'écriture de la requête HTTP sur le flux 2\n&quot;);
+    goto end;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Reading_data_from_a_stream'><a class='permalink' href='#Reading_data_from_a_stream'>Lecture de données à partir d'un flux</a></h2>
+<p class="Pp">Dans cet exemple, <b>stream1</b> est un flux bidirectionnel, donc une fois que nous y avons envoyé la requête, nous pouvons tenter de lire la réponse du serveur. Ici, nous appelons simplement à plusieurs reprises <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> jusqu'à ce que cette fonction échoue (indiquant soit un problème, soit que le pair a signalé le flux comme étant conclu).</p>
+<pre>printf(&quot;Données du flux 1 :\n&quot;);
+/*
+ * Obtenir jusqu'à sizeof(buf) octets de la réponse du flux 1 (qui est un
+ * flux bidirectionnel). Nous continuons à lire jusqu'à ce que le serveur ferme
+ * la connexion.
+ */
+while (SSL_read_ex(stream1, buf, sizeof(buf), &amp;readbytes)) {
+    /*
+    * OpenSSL ne garantit pas que les données renvoyées forment une chaîne ou
+    * qu'elles sont terminées par NUL, nous utilisons donc fwrite() pour écrire le nombre exact
+    * d'octets lus. Les données pourraient être non imprimables ou
+    * contenir des caractères NUL en leur milieu. Pour cet exemple simple,
+    * nous allons quand même les imprimer sur stdout.
+    */
+    fwrite(buf, 1, readbytes, stdout);
+}
+/* Au cas où la réponse ne se terminerait pas par une nouvelle ligne, nous en ajoutons une maintenant */
+printf(&quot;\n&quot;);</pre>
+<p class="Pp">Dans une application bloquante comme celle-ci, les appels à
+    <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> réussiront immédiatement en renvoyant les données disponibles,
+    ou ils bloqueront en attendant plus de données disponibles et les renverront lorsqu'elles seront là, ou ils échoueront avec un code de réponse de 0.</p>
+<p class="Pp">Une fois que nous sortons de la boucle while ci-dessus, nous savons que le dernier appel à
+    <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> a renvoyé un code de réponse de 0, nous appelons donc la fonction
+    <a href='/man/SSL_get_error.3.en'>SSL_get_error(3)</a> pour obtenir plus de détails. Comme il s'agit d'une application bloquante, cela renverra soit <b>SSL_ERROR_SYSCALL</b> ou
+    <b>SSL_ERROR_SSL</b> indiquant un problème fondamental, soit elle renverra
+    <b>SSL_ERROR_ZERO_RETURN</b> indiquant que le flux est terminé et qu'il n'y aura plus de données disponibles à lire. Il faut veiller à distinguer une erreur au niveau du flux (c'est-à-dire une réinitialisation de flux) d'une erreur au niveau de la connexion (c'est-à-dire une fermeture de connexion). La fonction
+    <a href='/man/SSL_get_stream_read_state.3.en'>SSL_get_stream_read_state(3)</a> peut être utilisée pour distinguer ces différents cas.</p>
+<pre>/*
+ * Vérifiez si nous avons terminé la boucle while ci-dessus normalement ou à la suite
+ * d'une erreur. L'argument 0 à SSL_get_error() est le code de retour
+ * que nous avons reçu de l'appel SSL_read_ex(). Il doit être 0 pour
+ * arriver ici. L'achèvement normal est indiqué par SSL_ERROR_ZERO_RETURN. En
+ * termes QUIC, cela signifie que le pair a envoyé FIN sur le flux pour
+ * indiquer qu'aucune donnée supplémentaire ne sera envoyée.
+ */
+switch (SSL_get_error(stream1, 0)) {
+case SSL_ERROR_ZERO_RETURN:
+    /* Achèvement normal du flux */
+    break;
+case SSL_ERROR_SSL:
+    /*
+     * Une erreur fatale de flux s'est produite. Cela pourrait être dû à une réinitialisation
+     * du flux - ou à une défaillance sur la connexion sous-jacente.
+     */
+    switch (SSL_get_stream_read_state(stream1)) {
+    case SSL_STREAM_STATE_RESET_REMOTE:
+        printf(&quot;Réinitialisation du flux produite\n&quot;);
+        /* Le flux a été réinitialisé mais la connexion est toujours saine. */
+        break;
+    case SSL_STREAM_STATE_CONN_CLOSED:
+        printf(&quot;Connexion fermée\n&quot;);
+        /* La connexion est déjà fermée. Ignorer SSL_shutdown() */
+        goto end;
+    default:
+        printf(&quot;Échec inconnu du flux\n&quot;);
+        break;
+    }
+    break;
+default:
+    /* Une autre erreur inattendue s'est produite */
+    printf (&quot;Échec de la lecture des données restantes\n&quot;);
+    break;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Accepting_an_incoming_stream'><a class='permalink' href='#Accepting_an_incoming_stream'>Acceptation d'un flux entrant</a></h2>
+<p class="Pp">Notre objet <b>stream2</b> que nous avons créé ci-dessus était un flux
+    unidirectionnel, il ne peut donc pas être utilisé pour recevoir des données du serveur.
+    Dans cet exemple hypothétique, nous supposons que le serveur initie un nouveau
+    flux pour nous renvoyer les données que nous avons demandées. Pour ce faire, nous appelons
+    <a href='/man/SSL_accept_stream.3.en'>SSL_accept_stream(3)</a>. Comme il s'agit d'une application bloquante, cela
+    attendra indéfiniment jusqu'à ce que le nouveau flux arrive et soit disponible pour nous
+    à accepter. En cas d'erreur, il renverra <b>NULL</b>.</p>
+<pre>/*
+ * Dans notre protocole hypothétique HTTP/1.0 sur QUIC que nous utilisons, nous
+ * supposons que le serveur répondra avec un flux initié par le serveur
+ * contenant les données demandées dans notre flux unidirectionnel. Cela n'a
+ * pas vraiment de sens de faire cela dans un vrai protocole, mais c'est juste
+ * à des fins de démonstration.
+ *
+ * Nous utilisons le mode bloquant, donc cela bloquera jusqu'à ce qu'un flux devienne
+</pre>
+</section>
+</section>
+* disponible. Nous pourrions outrepasser ce comportement si nous le souhaitions en définissant
+ * le drapeau SSL_ACCEPT_STREAM_NO_BLOCK dans le deuxième argument ci-dessous.
+ */
+stream3 = SSL_accept_stream(ssl, 0);
+if (stream3 == NULL) {
+    printf("Échec de l'acceptation d'un nouveau flux\n");
+    goto end;
+}</pre>
+<p class="Pp">Nous pouvons maintenant lire des données du flux de la même manière que nous l'avons fait pour <b>stream1</b> ci-dessus. Nous ne répéterons pas cela ici.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Nettoyage_des_flux'><a class='permalink' href='#Nettoyage_des_flux'>Nettoyage   des flux</a></h2>
+<p class="Pp">Une fois que nous avons fini d'utiliser nos flux, nous pouvons simplement les libérer en appelant <a href='/man/SSL_free.3.en'>SSL_free(3)</a>. Facultativement, nous pourrions appeler <a href='/man/SSL_stream_conclude.3.en'>SSL_stream_conclude(3)</a> sur eux si nous voulons indiquer au pair que nous ne leur enverrons plus de données, mais nous ne le faisons pas dans cet exemple car nous supposons que le protocole d'application HTTP fournit suffisamment d'informations pour que le pair sache quand nous avons fini d'envoyer les données de la requête.</p>
+<p class="Pp">Nous ne devrions pas appeler <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> ou <a href='/man/SSL_shutdown_ex.3.en'>SSL_shutdown_ex(3)</a> sur les objets de flux car ces appels ne doivent pas être utilisés pour les flux.</p>
+<pre>SSL_free(stream1);
+SSL_free(stream2);
+SSL_free(stream3);</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR   AUSSI</a></h1>
+<p class="Pp"><a href='/man/ossl-guide-introduction.7.en'>ossl-guide-introduction(7)</a>,
+    <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a>,
+    <a href='/man/ossl-guide-libssl-introduction.7.en'>ossl-guide-libssl-introduction(7)</a>
+    <a href='/man/ossl-guide-quic-introduction.7.en'>ossl-guide-quic-introduction(7)</a>,
+    <a href='/man/ossl-guide-quic-client-block.7.en'>ossl-guide-quic-client-block(7)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2023 The OpenSSL Project Authors. Tous droits réservés.</p>
+<p class="Pp">Licencié sous la licence Apache 2.0 (la &quot;Licence&quot;). Vous ne pouvez pas utiliser ce fichier sauf en conformité avec la Licence. Vous pouvez obtenir une copie dans le fichier LICENSE dans la distribution source ou à l'adresse <a href='https://www.openssl.org/source/license.html'>https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version :</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#INTRODUCTION">INTRODUCTION</a></li>
+        
+            <li><a href="#STREAMS_QUIC">FLUX QUIC</a></li>
+        
+            <li><a href="#LE_FLUX_PAR_DEFAUT">LE FLUX PAR DÉFAUT</a></li>
+        
+            <li><a href="#CREATION_DE_NOUVEAUX_FLUX">CRÉATION DE NOUVEAUX FLUX</a></li>
+        
+            <li><a href="#UTILISATION_D_UN_FLUX_POUR_ENVOYER_ET_RECEVOIR_DES_DONNEES">UTILISATION D'UN FLUX POUR ENVOYER ET RECEVOIR DES DONNÉES</a></li>
+        
+            <li><a href="#FLUX_ET_CONNEXIONS">FLUX ET CONNEXIONS</a></li>
+        
+            <li><a href="#EXEMPLE_SIMPLE_DE_CLIENT_QUIC_MULTI-FLUX">EXEMPLE SIMPLE DE CLIENT QUIC MULTI-FLUX</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ossl-guide-quic-multi-stream.7ssl.fr.txt">txt</a>, 
+        
+            <a href="/man/ossl-guide-quic-multi-stream.7ssl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ossl-guide-tls-client-block(7ssl) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ossl-guide-tls-client-block(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OSSL-GUIDE-TLS-CLIENT-BLOCK(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">OSSL-GUIDE-TLS-CLIENT-BLOCK(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">ossl-guide-tls-client-block - Guide OpenSSL : Écrire un client TLS bloquant simple</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIMPLE_BLOCKING_TLS_CLIENT_EXAMPLE'><a class='permalink' href='#SIMPLE_BLOCKING_TLS_CLIENT_EXAMPLE'>EXEMPLE DE CLIENT TLS BLOQUANT SIMPLE</a></h1>
+<p class="Pp">Cette page présente divers exemples de code démontrant comment écrire une application client TLS simple qui se connecte à un serveur, lui envoie une requête HTTP/1.0 et lit la réponse.</p>
+<p class="Pp">Nous utilisons un socket bloquant pour cet exemple. Cela signifie que tenter de lire des données à partir d'un socket sur lequel aucune donnée n'est disponible pour la lecture bloquera (et la fonction ne retournera pas), jusqu'à ce que des données soient disponibles. Par exemple, cela peut se produire si nous avons envoyé notre requête, mais que nous attendons toujours la réponse du serveur. De même, toute tentative d'écriture sur un socket qui ne peut pas écrire pour le moment bloquera jusqu'à ce que l'écriture soit possible.</p>
+<p class="Pp">Ce comportement bloquant simplifie l'implémentation d'un client car vous n'avez pas à vous soucier de ce qui se passe si les données ne sont pas encore disponibles. L'application attendra simplement jusqu'à ce qu'elles soient disponibles.</p>
+<p class="Pp">Le code source complet de cet exemple de client TLS bloquant est disponible dans le répertoire <b>demos/guide</b> de la distribution source OpenSSL, dans le fichier <b>tls-client-block.c</b>. Il est également disponible en ligne à l'adresse
+    <a href='https://github.com/openssl/openssl/blob/master/demos/guide/tls-client-block.c'>https://github.com/openssl/openssl/blob/master/demos/guide/tls-client-block.c</a>.</p>
+<p class="Pp">Nous supposons que vous avez déjà OpenSSL installé sur votre système ; que vous avez déjà une compréhension fondamentale des concepts OpenSSL et TLS (voir <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a> et
+    <a href='/man/ossl-guide-tls-introduction.7.en'>ossl-guide-tls-introduction(7)</a>) ; et que vous savez comment écrire et compiler du code C et le lier aux bibliothèques libcrypto et libssl fournies par OpenSSL. Cela suppose également que vous avez une compréhension de base de TCP/IP et des sockets.</p>
+<section class="Ss">
+<h2 class="Ss" id='Creating_the_SSL_CTX_and_SSL_objects'><a class='permalink' href='#Creating_the_SSL_CTX_and_SSL_objects'>Création   des objets SSL_CTX et SSL</a></h2>
+<p class="Pp">La première étape consiste à créer un objet <b>SSL_CTX</b> pour notre client. Nous utilisons la fonction <a href='/man/SSL_CTX_new.3.en'>SSL_CTX_new(3)</a> à cet effet. Nous pourrions utiliser <b>SSL_CTX_new_ex(3)</b> si nous voulons associer le <b>SSL_CTX</b> à un <b>OSSL_LIB_CTX</b> particulier (voir <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a> pour en savoir plus sur <b>OSSL_LIB_CTX</b>). Nous passons comme argument le résultat de la fonction <a href='/man/TLS_client_method.3.en'>TLS_client_method(3)</a>. Vous devriez utiliser cette méthode chaque fois que vous écrivez un client TLS. Cette méthode utilisera automatiquement la négociation de version TLS pour sélectionner la version la plus élevée du protocole qui est mutuellement prise en charge par le client et le serveur.</p>
+<pre>/*
+ * Crée un SSL_CTX que nous pouvons utiliser pour créer des objets SSL. Nous
+ * voulons un SSL_CTX pour créer des clients, donc nous utilisons TLS_client_method()
+ * ici.
+ */
+ctx = SSL_CTX_new(TLS_client_method());
+if (ctx == NULL) {
+    printf(&quot;Échec de la création du SSL_CTX\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Puisque nous écrivons un client, nous devons nous assurer de vérifier le certificat du serveur. Nous le faisons en appelant la fonction <a href='/man/SSL_CTX_set_verify.3.en'>SSL_CTX_set_verify(3)</a> et en lui passant la valeur <b>SSL_VERIFY_PEER</b>. Le dernier argument de cette fonction est une fonction de rappel que vous pouvez facultativement fournir pour remplacer la gestion par défaut de la vérification du certificat. La plupart des applications n'ont pas besoin de le faire, cela peut donc être défini en toute sécurité sur NULL pour obtenir la gestion par défaut.</p>
+<pre>/*
+ * Configure le client pour qu'il abandonne la négociation si la vérification
+ * du certificat échoue. Presque tous les clients devraient le faire, sauf si vous
+ * savez vraiment ce que vous faites.
+ */
+SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);</pre>
+<p class="Pp">Pour que la vérification du certificat réussisse, vous devez avoir configuré l'emplacement du magasin de certificats de confiance à utiliser (voir <a href='/man/ossl-guide-tls-introduction.7.en'>ossl-guide-tls-introduction(7)</a>). Dans la plupart des cas, vous souhaitez simplement utiliser le magasin par défaut, nous appelons donc
+  <a href='/man/SSL_CTX_set_default_verify_paths.3.en'>SSL_CTX_set_default_verify_paths(3)</a>.</p>
+<pre>/* Utilise le magasin de certificats de confiance par défaut */
+if (!SSL_CTX_set_default_verify_paths(ctx)) {
+    printf(&quot;Échec de la configuration du magasin de certificats de confiance par défaut\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Nous aimerions également restreindre les versions TLS que nous sommes prêts à accepter à TLSv1.2 ou supérieur. Les versions du protocole TLS antérieures à celle-ci doivent généralement être évitées autant que possible. Nous pouvons le faire en utilisant
+    <a href='/man/SSL_CTX_set_min_proto_version.3.en'>SSL_CTX_set_min_proto_version(3)</a> :</p>
+<pre>/*
+ * TLSv1.1 et les versions antérieures sont dépréciés par l'IETF et doivent
+ * généralement être évités autant que possible. Nous exigeons une version minimale
+ * du protocole TLS de TLSv1.2.
+ */
+if (!SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)) {
+    printf(&quot;Échec de la définition de la version minimale du protocole TLS\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">C'est tout ce que nous avons besoin de configurer pour le <b>SSL_CTX</b>, donc ensuite nous devons créer un objet <b>SSL</b> pour représenter la connexion TLS. Dans une application réelle, nous pourrions nous attendre à créer plus d'une connexion TLS au fil du temps. Dans ce cas, nous nous attendrions à réutiliser le <b>SSL_CTX</b> que nous avons déjà créé à chaque fois. Il n'est pas nécessaire de répéter ces étapes. En fait, il est préférable de ne pas le faire car certaines ressources internes sont mises en cache dans le <b>SSL_CTX</b>. Vous obtiendrez de meilleures performances en réutilisant un <b>SSL_CTX</b> existant au lieu d'en créer un nouveau à chaque fois.</p>
+<p class="Pp">La création de l'objet <b>SSL</b> est une simple affaire d'appel de la fonction <a href='/man/SSL_new.3.en'>SSL_new(3)</a> et de passage du <b>SSL_CTX</b> que nous avons créé comme argument.</p>
+<pre>/* Crée un objet SSL pour représenter la connexion TLS */
+ssl = SSL_new(ctx);
+if (ssl == NULL) {
+    printf(&quot;Échec de la création de l'objet SSL\n&quot;);
+    goto end;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Creating_the_socket_and_BIO'><a class='permalink' href='#Creating_the_socket_and_BIO'>Création   du socket et du BIO</a></h2>
+<p class="Pp">Les données TLS sont transmises sur une couche de transport sous-jacente. Normalement un socket TCP. Il incombe à l'application de s'assurer que le socket est créé et associé à un objet SSL (via un BIO).</p>
+<p class="Pp">La création de socket à utiliser par un client est généralement un processus en 2 étapes, c'est-à-dire la construction du socket ; et la connexion du socket.</p>
+<p class="Pp">La manière de construire un socket est spécifique à la plateforme, mais la plupart des plateformes (y compris Windows) fournissent une interface compatible POSIX via la fonction <i>socket</i>, par exemple pour créer un socket TCP IPv4 :</p>
+<pre>int sock;
+sock = socket(AF_INET, SOCK_STREAM, 0);
+if (sock == -1)
+    return NULL;</pre>
+<p class="Pp">Une fois le socket construit, il doit être connecté au serveur distant. Encore une fois, les détails sont spécifiques à la plateforme, mais la plupart des plateformes (y compris Windows) fournissent la fonction <i>connect</i> compatible POSIX. Par exemple :</p>
+<pre>struct sockaddr_in serveraddr;
+struct hostent *server;
+server = gethostbyname(&quot;www.openssl.org&quot;);
+if (server == NULL) {
+    close(sock);
+    return NULL;
+}
+memset(&amp;serveraddr, 0, sizeof(serveraddr));
+serveraddr.sin_family = server-&gt;h_addrtype;
+serveraddr.sin_port = htons(443);
+memcpy(&amp;serveraddr.sin_addr.s_addr, server-&gt;h_addr, server-&gt;h_length);
+if (connect(sock, (struct sockaddr *)&amp;serveraddr,
+            sizeof(serveraddr)) == -1) {
+    close(sock);
+    return NULL;
+}</pre>
+<p class="Pp">OpenSSL fournit des fonctions d'aide portables pour effectuer ces tâches, qui s'intègrent également dans le système d'erreurs OpenSSL pour enregistrer les données d'erreur, par exemple :</p>
+<pre>int sock = -1;
+BIO_ADDRINFO *res;
+const BIO_ADDRINFO *ai = NULL;
+/*
+ * Recherche les informations d'adresse IP du serveur.
+ */
+if (!BIO_lookup_ex(hostname, port, BIO_LOOKUP_CLIENT, family, SOCK_STREAM, 0,
+                   &amp;res))
+    return NULL;
+/*
+ * Parcourt toutes les adresses possibles pour le serveur et en trouve une
+ * à laquelle nous pouvons nous connecter.
+ */
+for (ai = res; ai != NULL; ai = BIO_ADDRINFO_next(ai)) {
+    /*
+     * Crée un socket TCP. Nous pourrions aussi bien utiliser des appels non-OpenSSL
+     * comme &quot;socket&quot; ici pour cela et les fonctions connect et close ultérieures.
+     * Mais pour des raisons de portabilité et aussi pour que nous obtenions
+     * des erreurs dans la pile OpenSSL en cas d'échec, nous utilisons
+     * les versions OpenSSL de ces fonctions.
+     */
+    sock = BIO_socket(BIO_ADDRINFO_family(ai), SOCK_STREAM, 0, 0);
+    if (sock == -1)
+        continue;
+    /* Connecte le socket à l'adresse du serveur */
+    if (!BIO_connect(sock, BIO_ADDRINFO_address(ai), BIO_SOCK_NODELAY)) {
+        BIO_closesocket(sock);
+        sock = -1;
+        continue;
+    }
+    /* Nous avons un socket connecté, donc nous sortons de la boucle */
+    break;
+}
+/* Libère les ressources d'informations d'adresse que nous avons allouées précédemment */
+BIO_ADDRINFO_free(res);</pre>
+<p class="Pp">Voir <a href='/man/BIO_lookup_ex.3.en'>BIO_lookup_ex(3)</a>,
+    <a href='/man/BIO_socket.3.en'>BIO_socket(3)</a>, <a href='/man/BIO_connect.3.en'>BIO_connect(3)</a>,
+    <a href='/man/BIO_closesocket.3.en'>BIO_closesocket(3)</a>, <a href='/man/BIO_ADDRINFO_free.3.en'>BIO_ADDRINFO_free(3)</a>,
+    <a href='/man/BIO_ADDRINFO_next.3.en'>BIO_ADDRINFO_next(3)</a>, et <a href='/man/BIO_ADDRINFO_address.3.en'>BIO_ADDRINFO_address(3)</a> pour
+    plus de détails.</p>
+<p class="Pp">Nous devons maintenant associer le socket à notre objet SSL. Le moyen le plus simple de faire cela est d'utiliser une structure BIO (Basic I/O) qui encapsule notre socket. Nous créons un BIO pour notre socket en utilisant la fonction <a href='/man/BIO_new_socket.3.en'>BIO_new_socket(3)</a> :</p>
+<pre>/* Crée un BIO associé à notre socket */
+bio = BIO_new_socket(sock, BIO_NOCLOSE);
+if (bio == NULL) {
+    printf(&quot;Échec de la création du BIO\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Il existe plusieurs options pour la manière dont le BIO gère la fermeture du socket sous-jacent. Dans cet exemple, nous passons <b>BIO_NOCLOSE</b> car nous voulons fermer le socket nous-mêmes lorsque nous aurons terminé. Si nous avions passé <b>BIO_CLOSE</b>, alors la fermeture du BIO aurait également fermé le socket.</p>
+<p class="Pp">Maintenant, nous lions le BIO à notre objet SSL. Ceci est fait en utilisant la fonction <a href='/man/SSL_set_bio.3.en'>SSL_set_bio(3)</a> :</p>
+<pre>/* Lie le BIO à l'objet SSL */
+SSL_set_bio(ssl, bio, bio);</pre>
+<p class="Pp">Nous avons maintenant terminé la configuration des objets nécessaires. Les BIOs utilisés ici sont le BIO "read" et le BIO "write". En passant le même BIO pour les deux, nous obtenons le comportement par défaut où les opérations de lecture et d'écriture sur l'objet SSL liront et écriront sur le même socket sous-jacent.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Performing_the_TLS_handshake'><a class='permalink' href='#Performing_the_TLS_handshake'>Effectuer   la négociation TLS</a></h2>
+<p class="Pp">Nous sommes maintenant prêts à effectuer la négociation TLS. C'est la phase où le client et le serveur s'authentifient mutuellement (si nécessaire) et établissent les paramètres de sécurité pour la connexion. Ceci est fait en appelant la fonction <a href='/man/SSL_connect.3.en'>SSL_connect(3)</a> :</p>
+<pre>/*
+ * Effectue la négociation TLS.
+ */
+if (SSL_connect(ssl) &lt;= 0) {
+    /*
+     * Nous avons rencontré une erreur. Nous devons la signaler, mais nous
+     * pouvons aussi vouloir essayer de réessayer si l'erreur était temporaire.
+     */
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+<p class="Pp">Le comportement de <a href='/man/SSL_connect.3.en'>SSL_connect(3)</a> est défini par la manière dont les BIOs sous-jacents se comportent. Dans notre cas, le BIO sous-jacent est un socket bloquant. Par conséquent, <a href='/man/SSL_connect.3.en'>SSL_connect(3)</a> se comportera également de manière bloquante. Il retournera uniquement lorsque la négociation sera terminée ou qu'une erreur irrécupérable se produira.</p>
+<p class="Pp">Si <a href='/man/SSL_connect.3.en'>SSL_connect(3)</a> renvoie une valeur <= 0, cela signifie qu'il y a eu un problème. Nous imprimons les erreurs qui se sont produites en utilisant <a href='/man/ERR_print_errors_fp.3.en'>ERR_print_errors_fp(3)</a>.</p>
+<p class="Pp">Une fois la négociation terminée avec succès, nous pouvons vouloir vérifier l'identité du serveur. Nous faisons cela en appelant <a href='/man/SSL_get_verify_result.3.en'>SSL_get_verify_result(3)</a>. Une valeur de <b>X509_V_OK</b> signifie que la vérification a réussi. Sinon, un code d'erreur est retourné qui peut être utilisé pour déterminer la raison de l'échec.</p>
+<pre>/*
+ * Vérifie que la négociation s'est bien déroulée et que le certificat
+ * du serveur est valide.
+ */
+if (SSL_get_verify_result(ssl) != X509_V_OK) {
+    fprintf(stderr, &quot;Erreur de vérification du certificat du serveur.\n&quot;);
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+<p class="Pp">Nous pouvons également vouloir connaître le nom de l'émetteur du certificat du serveur et sa date d'expiration. Le certificat lui-même est obtenu en appelant <a href='/man/SSL_get_peer_certificate.3.en'>SSL_get_peer_certificate(3)</a>. La structure <b>X509</b> retournée contient toutes les informations du certificat.</p>
+<pre>/*
+ * Récupère le certificat du pair et affiche des informations à son sujet.
+ */
+cert = SSL_get_peer_certificate(ssl);
+if (cert == NULL) {
+    printf(&quot;Aucun certificat du pair n'a été récupéré.\n&quot;);
+    goto end;
+}
+printf(&quot;Certificat du pair obtenu:\n&quot;);
+X509_print_fp(stdout, cert);</pre>
+<p class="Pp">N'oubliez pas de libérer la structure <b>X509</b> lorsque vous avez terminé avec elle en appelant <a href='/man/X509_free.3.en'>X509_free(3)</a>.</p>
+<pre>X509_free(cert);</pre>
+<p class="Pp">À ce stade, la connexion TLS est établie et nous pouvons commencer à envoyer et recevoir des données. Pour cet exemple, nous envoyons une requête HTTP simple.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sending_and_Receiving_Data'><a class='permalink' href='#Sending_and_Receiving_Data'>Envoi   et réception de données</a></h2>
+<p class="Pp">L'envoi et la réception de données sur une connexion TLS sont très similaires à l'envoi et à la réception de données sur un socket normal. La principale différence est que nous utilisons les fonctions <a href='/man/SSL_read.3.en'>SSL_read(3)</a> et <a href='/man/SSL_write.3.en'>SSL_write(3)</a> au lieu de <a href='/man/read.3.en'>read(3)</a> et <a href='/man/write.3.en'>write(3)</a>.</p>
+<p class="Pp">Voici comment nous envoyons une requête HTTP GET simple :</p>
+<pre>/*
+ * Envoie une requête HTTP GET simple au serveur.
+ */
+snprintf(request, sizeof(request), &quot;GET / HTTP/1.0\r\nHost: %s\r\n\r\n&quot;, hostname);
+printf(&quot;Envoi de la requête:\n%s&quot;, request);
+written = SSL_write(ssl, request, strlen(request));
+if (written &lt;= 0) {
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+<p class="Pp">Encore une fois, les fonctions <a href='/man/SSL_read.3.en'>SSL_read(3)</a> et <a href='/man/SSL_write.3.en'>SSL_write(3)</a> se comporteront de manière bloquante car le BIO sous-jacent est un socket bloquant. Si des données ne sont pas encore disponibles pour la lecture, <a href='/man/SSL_read.3.en'>SSL_read(3)</a> bloquera jusqu'à ce qu'elles le soient. De même, si le socket ne peut pas accepter plus de données pour l'écriture, <a href='/man/SSL_write.3.en'>SSL_write(3)</a> bloquera jusqu'à ce qu'il le puisse.</p>
+<p class="Pp">Après avoir envoyé notre requête, nous voulons lire la réponse du serveur. Nous pouvons le faire dans une boucle, en lisant les données par morceaux jusqu'à ce que le serveur ferme la connexion.</p>
+<pre>/*
+ * Lit la réponse du serveur.
+ */
+printf(&quot;Réponse du serveur:\n&quot;);
+for (;;) {
+    /*
+     * Essaie de lire jusqu'à 1024 octets de données du serveur.
+     */
+    bytes_read = SSL_read(ssl, buffer, sizeof(buffer) - 1);
+    if (bytes_read &lt;= 0) {
+        /*
+         * Une valeur <= 0 signifie que la lecture a échoué, ou que le
+         * serveur a fermé la connexion.
+         */
+        if (bytes_read == 0) {
+            /* Connexion fermée par le serveur */
+            break;
+        } else {
+            /* Erreur de lecture */
+            ERR_print_errors_fp(stderr);
+            goto end;
+        }
+    }
+    /* Assure que le buffer est terminé par un caractère nul pour l'affichage */
+    buffer[bytes_read] = '\0';
+    /* Affiche les données lues */
+    printf(&quot;%s&quot;, buffer);
+}</pre>
+<p class="Pp">La boucle se termine lorsque <a href='/man/SSL_read.3.en'>SSL_read(3)</a> renvoie 0, ce qui indique que le serveur a fermé la connexion de manière gracieuse.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Cleaning_Up'><a class='permalink' href='#Cleaning_Up'>Nettoyage</a></h2>
+<p class="Pp">Une fois que nous avons terminé avec la connexion TLS, nous devons la fermer et libérer toutes les ressources que nous avons allouées. La fermeture de la connexion TLS est effectuée en appelant <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> :</p>
+<pre>/*
+ * Ferme la connexion TLS.
+ */
+if (SSL_shutdown(ssl) &lt;= 0) {
+    /*
+     * La fermeture peut échouer si la connexion n'était pas encore complètement
+     * établie ou si une erreur s'est produite. Nous ignorons l'erreur pour
+     * l'instant, car nous allons libérer les ressources de toute façon.
+     */
+    ERR_print_errors_fp(stderr);
+}</pre>
+<p class="Pp">Notez que <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> peut nécessiter plus d'une tentative pour se terminer complètement, en particulier si une négociation de fermeture est nécessaire. Pour cet exemple simple, nous n'essayons qu'une seule fois. Dans une application plus robuste, vous devriez gérer plusieurs appels à <a href='/man/SSL_shutdown.3.en'>SSL_shutdown(3)</a> jusqu'à ce qu'il soit terminé ou qu'une erreur irrécupérable se produise.</p>
+<p class="Pp">Enfin, nous libérons toutes les ressources allouées :</p>
+<pre>end:
+/* Libère les ressources */
+SSL_free(ssl);
+/* Ferme le socket. Notez que si nous avions utilisé BIO_CLOSE, cela n'aurait
+ * pas été nécessaire ici. */
+BIO_closesocket(sock);
+SSL_CTX_free(ctx);
+return 0;</pre>
+<p class="Pp">La libération de l'objet <b>SSL</b> est effectuée en appelant <a href='/man/SSL_free.3.en'>SSL_free(3)</a>. La fermeture du socket est effectuée en appelant <a href='/man/BIO_closesocket.3.en'>BIO_closesocket(3)</a>. Enfin, nous libérons le <b>SSL_CTX</b> en appelant <a href='/man/SSL_CTX_free.3.en'>SSL_CTX_free(3)</a>.</p>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+ href='/man/BIO_socket.3.fr'>BIO_socket(3)</a>,
+    <a href='/man/BIO_connect.3.fr'>BIO_connect(3)</a>, <a href='/man/BIO_closesocket.3.fr'>BIO_closesocket(3)</a>,
+    <a href='/man/BIO_ADDRINFO_next.3.fr'>BIO_ADDRINFO_next(3)</a>, <a href='/man/BIO_ADDRINFO_address.3.fr'>BIO_ADDRINFO_address(3)</a> et
+    <a href='/man/BIO_ADDRINFO_free.3.fr'>BIO_ADDRINFO_free(3)</a> pour plus d'informations sur les fonctions utilisées
+    ici. Dans l'exemple de code ci-dessus, les variables <b>hostname</b> et <b>port</b>
+    sont des chaînes de caractères, par exemple &quot;www.example.com&quot; et &quot;443&quot;.
+    Notez également l'utilisation de la variable family, qui peut prendre les valeurs
+    AF_INET ou AF_INET6 en fonction de l'option de ligne de commande -6, pour permettre des
+    connexions spécifiques à un hôte activé ipv4 ou ipv6.</p>
+<p class="Pp">Les sockets créés en utilisant les méthodes décrites ci-dessus seront
+    automatiquement des sockets bloquantes - ce qui est exactement ce que nous voulons pour cet
+    exemple.</p>
+<p class="Pp">Une fois que le socket a été créé et connecté, nous devons l'associer
+    à un objet BIO :</p>
+<pre>BIO *bio;
+/* Créer un BIO pour encapsuler le socket */
+bio = BIO_new(BIO_s_socket());
+if (bio == NULL) {
+    BIO_closesocket(sock);
+    return NULL;
+}
+/*
+ * Associer le BIO nouvellement créé au socket sous-jacent. En passant
+ * BIO_CLOSE, le socket sera automatiquement fermé lorsque le BIO sera libéré.
+ * Alternativement, vous pouvez utiliser BIO_NOCLOSE, auquel cas vous devez fermer
+ * le socket explicitement lorsqu'il n'est plus nécessaire.
+ */
+BIO_set_fd(bio, sock, BIO_CLOSE);</pre>
+<p class="Pp">Voir <a href='/man/BIO_new.3.fr'>BIO_new(3)</a>, <a href='/man/BIO_s_socket.3.fr'>BIO_s_socket(3)</a> et
+    <a href='/man/BIO_set_fd.3.fr'>BIO_set_fd(3)</a> pour plus d'informations sur ces fonctions.</p>
+<p class="Pp">Enfin, nous associons l'objet <b>SSL</b> que nous avons créé précédemment avec
+    le <b>BIO</b> en utilisant la fonction <a href='/man/SSL_set_bio.3.fr'>SSL_set_bio(3)</a>. Notez que cela
+    transfère la propriété de l'objet <b>BIO</b> à l'objet <b>SSL</b>. Une fois la propriété transférée, l'objet SSL est responsable de sa gestion et le libérera automatiquement lorsque le <b>SSL</b> sera libéré. Ainsi, une fois que <a href='/man/SSL_set_bio.3.fr'>SSL_set_bio(3)</a> a été appelée, vous ne devriez pas appeler <a href='/man/BIO_free.3.fr'>BIO_free(3)</a> sur le <b>BIO</b>.</p>
+<pre>SSL_set_bio(ssl, bio, bio);</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Définir_le_nom_d&apos;hôte_du_serveur'><a class='permalink' href='#Définir_le_nom_d&apos;hôte_du_serveur'>Définir   le nom d'hôte du serveur</a></h2>
+<p class="Pp">Nous avons déjà connecté notre socket sous-jacent au serveur, mais le client
+    a toujours besoin de connaître le nom d'hôte du serveur. Il utilise ces
+    informations à 2 fins principales et nous devons définir le nom d'hôte pour chacune
+    d'elles.</p>
+<p class="Pp">Premièrement, le nom d'hôte du serveur est inclus dans le message
+    initial ClientHello envoyé par le client. Ceci est connu sous le nom de Server Name Indication
+    (SNI). C'est important car il est courant que plusieurs noms d'hôtes soient devant un
+    seul serveur qui gère les requêtes pour tous. En d'autres termes, un seul serveur peut avoir plusieurs noms d'hôtes associés, et il est important d'indiquer celui auquel nous voulons nous connecter. Sans ces informations, nous pourrions avoir un échec de handshake, ou nous pourrions être connectés au serveur "par défaut" qui pourrait ne pas être celui attendu.</p>
+<p class="Pp">Pour définir les données du nom d'hôte SNI, nous appelons la fonction
+    <a href='/man/SSL_set_tlsext_host_name.3.fr'>SSL_set_tlsext_host_name(3)</a> comme suit :</p>
+<pre>/*
+ * Indiquer au serveur pendant le handshake quel nom d'hôte nous essayons
+ * de contacter au cas où le serveur prendrait en charge plusieurs hôtes.
+ */
+if (!SSL_set_tlsext_host_name(ssl, hostname)) {
+    printf(&quot;Échec de la définition du nom d'hôte SNI\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Ici, l'argument <span class="Li">&quot;hostname&quot;</span> est une chaîne de caractères représentant le nom d'hôte du serveur, par exemple &quot;www.example.com&quot;.</p>
+<p class="Pp">Deuxièmement, nous devons indiquer à OpenSSL quel nom d'hôte nous nous attendons
+    à voir dans le certificat renvoyé par le serveur. C'est presque toujours le même que celui
+    que nous avons demandé dans la requête initiale. C'est important car, sans cela, nous ne vérifions pas que le nom d'hôte dans le certificat est celui que nous attendons et n'importe quel certificat est acceptable à moins que votre application ne le vérifie explicitement elle-même. Nous faisons cela via la fonction <a href='/man/SSL_set1_host.3.fr'>SSL_set1_host(3)</a> :</p>
+<pre>/*
+ * Assurez-vous que nous vérifions pendant la validation du certificat que le serveur
+ * a fourni un certificat pour le nom d'hôte que nous attendions.
+ * Pratiquement tous les clients devraient faire cela, sauf si vous savez vraiment ce que vous faites.
+ */
+if (!SSL_set1_host(ssl, hostname)) {
+    printf(&quot;Échec de la définition du nom d'hôte pour la vérification du certificat&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Toutes les étapes ci-dessus doivent avoir lieu avant que nous n'essayions d'effectuer
+    le handshake, sinon elles n'auront aucun effet.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Effectuer_le_handshake'><a class='permalink' href='#Effectuer_le_handshake'>Effectuer   le handshake</a></h2>
+<p class="Pp">Avant de pouvoir commencer à envoyer ou recevoir des données d'application sur une connexion
+    TLS, le handshake TLS doit être effectué. Nous pouvons le faire explicitement via la fonction
+    <a href='/man/SSL_connect.3.fr'>SSL_connect(3)</a>.</p>
+<pre>/* Effectuer le handshake avec le serveur */
+if (SSL_connect(ssl) &lt; 1) {
+    printf(&quot;Échec de la connexion au serveur\n&quot;);
+    /*
+     * Si l'échec est dû à une erreur de vérification, nous pouvons obtenir plus
+     * d'informations à son sujet à partir de SSL_get_verify_result().
+     */
+    if (SSL_get_verify_result(ssl) != X509_V_OK)
+        printf(&quot;Erreur de vérification : %s\n&quot;,
+            X509_verify_cert_error_string(SSL_get_verify_result(ssl)));
+    goto end;
+}</pre>
+<p class="Pp">La fonction <a href='/man/SSL_connect.3.fr'>SSL_connect(3)</a> peut retourner 1, 0 ou moins de 0.
+    Seule une valeur de retour de 1 est considérée comme un succès. Pour un client bloquant simple, nous
+    n'avons besoin de nous préoccuper que de savoir si l'appel a réussi ou non. Tout le reste indique
+    que nous avons échoué à nous connecter au serveur.</p>
+<p class="Pp">Une cause fréquente d'échec à ce stade est un problème lors de la vérification du
+    certificat du serveur. Par exemple, si le certificat a expiré, ou s'il n'est pas signé par une CA dans notre
+    magasin de certificats de confiance. Nous pouvons utiliser la fonction <a href='/man/SSL_get_verify_result.3.fr'>SSL_get_verify_result(3)</a>
+    pour obtenir plus d'informations sur l'échec de la vérification. Une valeur de retour de
+    <b>X509_V_OK</b> indique que la vérification a réussi (donc l'erreur de connexion doit être due à une autre cause). Sinon, nous utilisons la fonction <a href='/man/X509_verify_cert_error_string.3.fr'>X509_verify_cert_error_string(3)</a> pour obtenir un message d'erreur lisible par l'homme.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Envoi_et_réception_de_données'><a class='permalink' href='#Envoi_et_réception_de_données'>Envoi   et réception de données</a></h2>
+<p class="Pp">Une fois le handshake terminé, nous sommes en mesure d'envoyer et de recevoir
+    des données d'application. Exactement quelles données sont envoyées et dans quel ordre est généralement
+    contrôlé par un protocole au niveau de l'application. Dans cet exemple, nous utilisons HTTP 1.0, qui est un
+    protocole de requête et réponse très simple. Le client envoie une requête au serveur. Le serveur envoie les données de réponse puis ferme immédiatement la connexion.</p>
+<p class="Pp">Pour envoyer des données au serveur, nous utilisons la fonction <a href='/man/SSL_write_ex.3.fr'>SSL_write_ex(3)</a>
+    et pour recevoir des données du serveur, nous utilisons la fonction <a href='/man/SSL_read_ex.3.fr'>SSL_read_ex(3)</a>.
+    En HTTP 1.0, le client écrit toujours d'abord les données. Notre requête HTTP inclura le nom d'hôte auquel nous nous connectons. Pour simplifier, nous écrivons la requête HTTP en trois parties. D'abord, nous écrivons le début de la requête. Ensuite, nous écrivons le nom d'hôte auquel nous envoyons la requête. Enfin, nous envoyons la fin de la requête.</p>
+<pre>size_t written;
+const char *request_start = &quot;GET / HTTP/1.0\r\nConnection: close\r\nHost: &quot;;
+const char *request_end = &quot;\r\n\r\n&quot;;
+/* Écrire une requête HTTP GET au pair */
+if (!SSL_write_ex(ssl, request_start, strlen(request_start), &amp;written)) {
+    printf(&quot;Échec de l'écriture du début de la requête HTTP\n&quot;);
+    goto end;
+}
+if (!SSL_write_ex(ssl, hostname, strlen(hostname), &amp;written)) {
+    printf(&quot;Échec de l'écriture du nom d'hôte dans la requête HTTP\n&quot;);
+    goto end;
+}
+if (!SSL_write_ex(ssl, request_end, strlen(request_end), &amp;written)) {
+    printf(&quot;Échec de l'écriture de la fin de la requête HTTP\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">La fonction <a href='/man/SSL_write_ex.3.fr'>SSL_write_ex(3)</a> retourne 0 en cas d'échec et 1 en cas de succès. En cas de succès, nous pouvons passer à l'attente d'une réponse du serveur.</p>
+<pre>size_t readbytes;
+char buf[160];
+/*
+ * Obtenir jusqu'à sizeof(buf) octets de la réponse. Nous continuons à lire jusqu'à ce que
+ * le serveur ferme la connexion.
+ */
+while (SSL_read_ex(ssl, buf, sizeof(buf), &amp;readbytes)) {
+    /*
+    * OpenSSL ne garantit pas que les données retournées sont une chaîne ou
+    * qu'elles sont terminées par un NUL, nous utilisons donc fwrite() pour écrire le nombre exact
+    * d'octets que nous avons lus. Les données pourraient être non imprimables ou
+    * contenir des caractères NUL au milieu. Pour cet exemple simple,
+    * nous allons les imprimer sur stdout de toute façon.
+    */
+    fwrite(buf, 1, readbytes, stdout);
+}
+/* Au cas où la réponse ne se terminerait pas par une nouvelle ligne, nous en ajoutons une maintenant */
+printf(&quot;\n&quot;);</pre>
+<p class="Pp">Nous utilisons la fonction <a href='/man/SSL_read_ex.3.fr'>SSL_read_ex(3)</a> pour lire la réponse. Nous
+    ne savons pas exactement quelle quantité de données nous allons recevoir, nous entrons donc dans une boucle de lecture de blocs de données du serveur et d'impression de chaque bloc reçu à l'écran. La boucle se termine dès que <a href='/man/SSL_read_ex.3.fr'>SSL_read_ex(3)</a> retourne 0 - ce qui signifie qu'elle n'a pas réussi à lire de données.</p>
+<p class="Pp">Un échec de lecture de données pourrait signifier qu'il y a eu un problème,
+    ou cela pourrait simplement signifier que le serveur a envoyé toutes les données qu'il voulait envoyer et a indiqué qu'il a terminé en envoyant une alerte
+    &quot;close_notify&quot;. Cette alerte est un message au niveau du protocole TLS indiquant que le point de terminaison a fini d'envoyer toutes ses données et n'en enverra plus. Ces deux conditions entraînent une valeur de retour de 0 de <a href='/man/SSL_read_ex.3.fr'>SSL_read_ex(3)</a> et nous devons utiliser la fonction <a href='/man/SSL_get_error.3.fr'>SSL_get_error(3)</a> pour déterminer la cause de la valeur de retour de 0.</p>
+<pre>/*
+ * Vérifier si nous avons terminé la boucle while ci-dessus normalement ou suite
+ * à une erreur. L'argument 0 à SSL_get_error() est le code de retour
+ * que nous avons reçu de l'appel SSL_read_ex(). Il doit être 0 pour
+ * arriver ici. Une fin normale est indiquée par SSL_ERROR_ZERO_RETURN.
+ */
+if (SSL_get_error(ssl, 0) != SSL_ERROR_ZERO_RETURN) {
+    /*
+     * Une autre erreur s'est produite autre qu'une fermeture normale par le
+     * pair
+     */
+    printf (&quot;Échec de la lecture des données restantes\n&quot;);
+    goto end;
+}</pre>
+<p class="Pp">Si <a href='/man/SSL_get_error.3.fr'>SSL_get_error(3)</a> retourne <b>SSL_ERROR_ZERO_RETURN</b>,
+    nous savons que le serveur a fini d'envoyer ses données. Sinon, une erreur s'est produite.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Fermeture_de_la_connexion'><a class='permalink' href='#Fermeture_de_la_connexion'>Fermeture   de la connexion</a></h2>
+<p class="Pp">Une fois que nous avons fini de lire les données du serveur, nous sommes prêts à
+    fermer la connexion. Nous le faisons via la fonction <a href='/man/SSL_shutdown.3.fr'>SSL_shutdown(3)</a>,
+    qui a pour effet d'envoyer un message au niveau du protocole TLS (une &quot;<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>ossl-guide-tls-client-block(7ssl) — Arch Linux</title>
+        <meta name="description" content="A guide to implementing a simple TLS client.">
+        <link rel="icon" type="image/png" href="/favicon.png">
+        <link rel="stylesheet" href="/css/style.css">
+        <link rel="stylesheet" href="/css/man-page.css">
+        <link rel="stylesheet" href="/css/toc.css">
+    </head>
+    <body>
+        
+        <main class="container">
+            <article>
+                <section class="Sh">
+    <h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+    <p class="Nm">ossl-guide-tls-client-block — TLS client demo, blocking socket</p>
+</section>
+<section class="Sh">
+    <h1 class="Sh" id="SIMPLE_BLOCKING_TLS_CLIENT_EXAMPLE"><a class="permalink" href="#SIMPLE_BLOCKING_TLS_CLIENT_EXAMPLE">SIMPLE BLOCKING TLS CLIENT EXAMPLE</a></h1>
+    <p class="Pp">This page shows a simple TLS client example using OpenSSL's
+        <a href="https://www.openssl.org/docs/man3.1/man3/libssl.html">libssl</a>.
+        It demonstrates how to establish a TLS connection, send and receive data,
+        and gracefully shut down the connection.</p>
+    <p class="Pp">We'll be building this example piece by piece, explaining each
+        part as we go.</p>
+    <section class="Ss">
+        <h2 class="Ss" id="Setting_up_the_SSL_context"><a class="permalink" href="#Setting_up_the_SSL_context">Setting   up the SSL context</a></h2>
+        <p class="Pp">Before we can establish a TLS connection we need to set up an
+            <code class="Cm">SSL_CTX</code>. This is an object that contains configuration
+            information for TLS connections. It's used to create <code class="Cm">SSL</code>
+            objects, which represent individual TLS connections.</p>
+        <pre>
+/* Create context */
+ctx = SSL_CTX_new(TLS_client_method());
+if (!ctx) {
+    fprintf(stderr, "Error creating the SSL context...\n");
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/SSL_CTX_new.3.en">SSL_CTX_new(3)</a> to create a new
+            context. <code class="Cm">TLS_client_method()</code> specifies that this context
+            will be used for client-side TLS connections.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Configuring_the_SSL_context"><a class="permalink" href="#Configuring_the_SSL_context">Configuring   the SSL context</a></h2>
+        <p class="Pp">Next, we need to configure the context. This typically involves
+            setting the trusted CA certificates, which are used to verify the
+            server's certificate.</p>
+        <pre>
+/* Load trusted certificates */
+if (SSL_CTX_load_verify_locations(ctx, CA_CERT_FILE, NULL) &lt;= 0) {
+    fprintf(stderr, "Error loading CA certificate file...\n");
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/SSL_CTX_load_verify_locations.3.en">SSL_CTX_load_verify_locations(3)</a>
+            to load the trusted CA certificates from the file specified by
+            <code class="Cm">CA_CERT_FILE</code>. If <code class="Cm">CA_CERT_FILE</code>
+            is set to NULL, the default system store is used.</p>
+        <pre>
+/* Set verification mode */
+SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);</pre>
+        <p class="Pp">We use <a href="/man/SSL_CTX_set_verify.3.en">SSL_CTX_set_verify(3)</a>
+            to set the verification mode. <code class="Cm">SSL_VERIFY_PEER</code> means
+            that the client will attempt to verify the server's certificate.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Creating_an_SSL_object"><a class="permalink" href="#Creating_an_SSL_object">Creating   an SSL object</a></h2>
+        <p class="Pp">Now that we have a configured context, we can create an <code class="Cm">SSL</code>
+            object for our specific connection.</p>
+        <pre>
+/* Create the SSL object */
+ssl = SSL_new(ctx);
+if (!ssl) {
+    fprintf(stderr, "Error creating the SSL object...\n");
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/SSL_new.3.en">SSL_new(3)</a> to create the <code class="Cm">SSL</code>
+            object, passing it our context.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Setting_up_the_BIO"><a class="permalink" href="#Setting_up_the_BIO">Setting   up the BIO</a></h2>
+        <p class="Pp"><code class="Cm">BIO</code> (Basic Input/Output) objects are used by
+            OpenSSL to handle I/O. We need to associate a <code class="Cm">BIO</code>
+            object with our <code class="Cm">SSL</code> object to handle the network
+            communication.</p>
+        <pre>
+/* Create BIO */
+bio = BIO_new_ssl_socket(sock, BIO_NOCLOSE);
+if (!bio) {
+    fprintf(stderr, "Error creating BIO...\n");
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/BIO_new_ssl_socket.3.en">BIO_new_ssl_socket(3)</a>
+            to create a <code class="Cm">BIO</code> object that wraps our socket.
+            <code class="Cm">BIO_NOCLOSE</code> prevents the <code class="Cm">BIO</code>
+            from closing the socket when it's freed.</p>
+        <pre>
+/* Set the BIO for the SSL object */
+SSL_set_bio(ssl, bio, bio);</pre>
+        <p class="Pp">We then use <a href="/man/SSL_set_bio.3.en">SSL_set_bio(3)</a> to associate
+            the <code class="Cm">BIO</code> with the <code class="Cm">SSL</code> object.
+            The first <code class="Cm">bio</code> is for reading, and the second is for
+            writing.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Performing_the_TLS_handshake"><a class="permalink" href="#Performing_the_TLS_handshake">Performing   the TLS handshake</a></h2>
+        <p class="Pp">With everything set up, we can initiate the TLS handshake.</p>
+        <pre>
+/* Perform the handshake */
+ret = SSL_connect(ssl);
+if (ret &lt; 1) {
+    fprintf(stderr, "Error during the SSL connection...\n");
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+        <p class="Pp">The <a href="/man/SSL_connect.3.en">SSL_connect(3)</a> function attempts to
+            complete the TLS handshake. It returns 1 on success, 0 if the handshake
+            is not yet complete (which shouldn't happen with a blocking socket),
+            and a negative value on error.</p>
+        <p class="Pp">If <a href="/man/SSL_connect.3.en">SSL_connect(3)</a> returns an error,
+            we print the OpenSSL error stack using <a href="/man/ERR_print_errors_fp.3.en">ERR_print_errors_fp(3)</a>
+            for debugging.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Sending_and_Receiving_Data"><a class="permalink" href="#Sending_and_Receiving_Data">Sending   and Receiving Data</a></h2>
+        <p class="Pp">Once the handshake is complete, we can send and receive data
+            using <a href="/man/SSL_write.3.en">SSL_write(3)</a> and <a href="/man/SSL_read.3.en">SSL_read(3)</a>.</p>
+        <pre>
+/* Write data */
+ret = SSL_write(ssl, msg, strlen(msg));
+if (ret &lt; 1) {
+    fprintf(stderr, "Error writing to the socket...\n");
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/SSL_write.3.en">SSL_write(3)</a> to send data. It
+            returns the number of bytes written, or a value less than 1 on error.</p>
+        <pre>
+/* Read data */
+ret = SSL_read(ssl, buf, sizeof(buf) - 1);
+if (ret &lt; 1) {
+    /*
+     * If SSL_read returns SSL_ERROR_ZERO_RETURN, it means the peer
+     * has shut down the connection gracefully.
+     */
+    if (ret == 0) {
+        printf("Peer has closed the connection gracefully.\n");
+        /* We should do the same */
+        goto shutdown;
+    }
+    fprintf(stderr, "Error reading from the socket...\n");
+    ERR_print_errors_fp(stderr);
+    goto end;
+}</pre>
+        <p class="Pp">We use <a href="/man/SSL_read.3.en">SSL_read(3)</a> to read data. It
+            returns the number of bytes read. A return value of 0 indicates that
+            the peer has closed the connection gracefully. A negative value
+            indicates an error.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Graceful_Shutdown"><a class="permalink" href="#Graceful_Shutdown">Graceful   Shutdown</a></h2>
+        <p class="Pp">To shut down the connection gracefully, we need to send a
+            <code class="Cm">&quot;close_notify&quot;</code> alert to the server.</p>
+        <pre>
+shutdown:
+/* Send close_notify alert */
+ret = SSL_shutdown(ssl);
+if (ret &lt; 1) {
+    /*
+     * ret &lt; 0 indicates an error. ret == 0 would be unexpected here
+     * because that means "we've sent a close_notify and we're waiting
+     * for one back". But we already know we got one from the peer
+     * because of the SSL_ERROR_ZERO_RETURN above.
+     */
+    printf("Error shutting down\n");
+    goto end;
+}</pre>
+        <p class="Pp">The <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a> function initiates
+            the shutdown process. It returns 1 on success (meaning both sides have
+            sent and received <code class="Cm">close_notify</code>), 0 if we've sent
+            <code class="Cm">close_notify</code> but haven't received one back yet,
+            and a negative value on error.</p>
+        <p class="Pp">In this example, we expect to receive a <code class="Cm">close_notify</code>
+            from the peer before calling <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a>
+            (due to the <code class="Cm">SSL_ERROR_ZERO_RETURN</code> from <a href="/man/SSL_read.3.en">SSL_read(3)</a>).
+            Therefore, a return value of 0 from <a href="/man/SSL_shutdown.3.en">SSL_shutdown(3)</a>
+            should ideally not occur and is treated as an error here.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Final_clean_up"><a class="permalink" href="#Final_clean_up">Final   clean up</a></h2>
+        <p class="Pp">Finally, we free the allocated resources.</p>
+        <pre>
+   /* Success! */
+   res = EXIT_SUCCESS;
+end:
+   /*
+    * If something bad happened then we will dump the contents of the
+    * OpenSSL error stack to stderr. There might be some useful diagnostic
+    * information there.
+    */
+   if (res == EXIT_FAILURE)
+       ERR_print_errors_fp(stderr);
+   /*
+    * Free the resources we allocated. We do not free the BIO object here
+    * because ownership of it was immediately transferred to the SSL object
+    * via SSL_set_bio(). The BIO will be freed when we free the SSL object.
+    */
+   SSL_free(ssl);
+   SSL_CTX_free(ctx);
+   return res;</pre>
+        <p class="Pp">We use <a href="/man/ERR_print_errors_fp.3.en">ERR_print_errors_fp(3)</a>
+            to print any accumulated OpenSSL errors to <code class="Cm">stderr</code> if an
+            error occurred.</p>
+        <p class="Pp">We then free the <code class="Cm">SSL</code> object using <a href="/man/SSL_free.3.en">SSL_free(3)</a>
+            and the <code class="Cm">SSL_CTX</code> using <a href="/man/SSL_CTX_free.3.en">SSL_CTX_free(3)</a>.</p>
+    </section>
+</section>
+<section class="Sh">
+    <h1 class="Sh" id="TROUBLESHOOTING"><a class="permalink" href="#TROUBLESHOOTING">TROUBLESHOOTING</a></h1>
+    <section class="Ss">
+        <h2 class="Ss" id="Failure_to_connect_the_underlying_socket"><a class="permalink" href="#Failure_to_connect_the_underlying_socket">Failure   to connect the underlying socket</a></h2>
+        <p class="Pp">This can be due to network issues, firewalls, DNS problems, or
+            the server not running.</p>
+    </section>
+    <section class="Ss">
+        <h2 class="Ss" id="Verification_failure_of_the_server_certificate"><a class="permalink" href="#Verification_failure_of_the_server_certificate">Verification   failure of the server certificate</a></h2>
+        <p class="Pp">This typically occurs during the <a href="/man/SSL_connect.3.en">SSL_connect(3)</a>
+            call and indicates a problem with the server's certificate or the
+            client's trust store.</p>
+        <pre>
+Verify error:unable to get local issuer certificate
+40E74AF1F47F0000:error:0A000086:SSL routines:tls_post_process_server_certificate:certificate verify failed:ssl/statem/statem_clnt.c:2069:</pre>
+        <p class="Pp">Common causes include:</p>
+        <dl class="Bl-tag">
+            <dt id="Failure"><a class="permalink" href="#Failure">Failure to correctly
+                setup the trusted certificate store</a></dt>
+            <dd>Ensure your <code class="Cm">CA_CERT_FILE</code> is correctly specified or
+                that your system's trust store is properly configured. Refer to
+                <a href="/man/ossl-guide-tls-introduction.7.en">ossl-guide-tls-introduction(7)</a>.</dd>
+            <dt id="Unrecognised"><a class="permalink" href="#Unrecognised">Unrecognised
+                CA</a></dt>
+            <dd>The Certificate Authority (CA) that signed the server's certificate
+                is not present in the client's trusted certificate store. This can
+                happen with self-signed certificates.</dd>
+            <dt id="Missing"><a class="permalink" href="#Missing">Missing intermediate
+                CAs</a></dt>
+            <dd>The server has not provided all the necessary intermediate CA
+                certificates to establish a complete trust chain.</dd>
+            <dt id="Mismatched"><a class="permalink" href="#Mismatched">Mismatched
+                hostname</a></dt>
+            <dd>The hostname the client is trying to connect to does not match the
+                hostname specified in the server's certificate.</dd>
+            <dt id="Expired"><a class="permalink" href="#Expired">Expired
+                certificate</a></dt>
+            <dd>The server's certificate has passed its validity period.</dd>
+        </dl>
+        <p class="Pp">The specific error "unable to get local issuer certificate"
+            means the client couldn't find the issuer of the server's certificate
+            (or one of its intermediates) in its trusted store.</p>
+    </section>
+</section>
+<section class="Sh">
+    <h1 class="Sh" id="FURTHER_READING"><a class="permalink" href="#FURTHER_READING">FURTHER   READING</a></h1>
+    <p class="Pp">See <a href="/man/ossl-guide-tls-client-non-block.7.en">ossl-guide-tls-client-non-block(7)</a>
+        for a tutorial on modifying this client to use a non-blocking socket.</p>
+    <p class="Pp">See <a href="/man/ossl-guide-tls-server-block.7.en">ossl-guide-tls-server-block(7)</a>
+        for a tutorial on implementing a simple TLS server.</p>
+    <p class="Pp">See <a href="/man/ossl-guide-quic-client-block.7.en">ossl-guide-quic-client-block(7)</a>
+        to learn how to adapt this client for QUIC instead of TLS.</p>
+</section>
+<section class="Sh">
+    <h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE   ALSO</a></h1>
+    <p class="Pp"><a href="/man/ossl-guide-introduction.7.en">ossl-guide-introduction(7)</a>,
+        <a href="/man/ossl-guide-libraries-introduction.7.en">ossl-guide-libraries-introduction(7)</a>,
+        <a href="/man/ossl-guide-libssl-introduction.7.en">ossl-guide-libssl-introduction(7)</a>,
+        <a href="/man/ossl-guide-tls-introduction.7.en">ossl-guide-tls-introduction(7)</a>,
+        <a href="/man/ossl-guide-tls-client-non-block.7.en">ossl-guide-tls-client-non-block(7)</a>,
+        <a href="/man/ossl-guide-quic-client-block.7.en">ossl-guide-quic-client-block(7)</a></p>
+</section>
+<section class="Sh">
+    <h1 class="Sh" id="COPYRIGHT"><a class="permalink" href="#COPYRIGHT">COPYRIGHT</a></h1>
+    <p class="Pp">Copyright 2023-2024 The OpenSSL Project Authors. All Rights
+        Reserved.</p>
+    <p class="Pp">Licensed under the Apache License 2.0 (the &quot;License&quot;).
+        You may not use this file except in compliance with the License. You can
+        obtain a copy in the file LICENSE in the source distribution or at
+        <a href="https://www.openssl.org/source/license.html">https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+    <tr>
+        <td class="foot-date">2025-10-01</td>
+        <td class="foot-os">3.6.0</td>
+    </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+        <input type="search" placeholder="Search manual page" name="q" value="" />
+        <input type="submit" name="go" value="Go" />
+    </form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version:</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licenses:</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+            <li><a href="#NAME">NAME</a></li>
+            <li><a href="#SIMPLE_BLOCKING_TLS_CLIENT_EXAMPLE">SIMPLE BLOCKING TLS CLIENT EXAMPLE</a>
+                <ul>
+                    <li><a href="#Setting_up_the_SSL_context">Setting up the SSL context</a></li>
+                    <li><a href="#Configuring_the_SSL_context">Configuring the SSL context</a></li>
+                    <li><a href="#Creating_an_SSL_object">Creating an SSL object</a></li>
+                    <li><a href="#Setting_up_the_BIO">Setting up the BIO</a></li>
+                    <li><a href="#Performing_the_TLS_handshake">Performing the TLS handshake</a></li>
+                    <li><a href="#Sending_and_Receiving_Data">Sending and Receiving Data</a></li>
+                    <li><a href="#Graceful_Shutdown">Graceful Shutdown</a></li>
+                    <li><a href="#Final_clean_up">Final clean up</a></li>
+                </ul>
+            </li>
+            <li><a href="#TROUBLESHOOTING">TROUBLESHOOTING</a>
+                <ul>
+                    <li><a href="#Failure_to_connect_the_underlying_socket">Failure to connect the underlying socket</a></li>
+                    <li><a href="#Verification_failure_of_the_server_certificate">Verification failure of the server certificate</a></li>
+                </ul>
+            </li>
+            <li><a href="#FURTHER_READING">FURTHER READING</a></li>
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        </ul>
+    </nav>
+</details>
+
+<nav class="other-formats">
+    <p>Other formats:
+        <a href="/man/ossl-guide-tls-client-block.7ssl.en.txt">txt</a>,
+        <a href="/man/ossl-guide-tls-client-block.7ssl.en.raw">raw</a>
+    </p>
+</nav>
+
+            </aside>
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

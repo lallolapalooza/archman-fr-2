@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pcre2jit(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pcre2jit(3)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PCRE2JIT(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">PCRE2JIT(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">PCRE2 - expressions régulières compatibles Perl (API révisée)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SUPPORT_DU_COMPILATEUR_JUSTE-A-TEMPS_PCRE2'><a class='permalink' href='#SUPPORT_DU_COMPILATEUR_JUSTE-A-TEMPS_PCRE2'>SUPPORT DU COMPILATEUR JUSTE-À-TEMPS PCRE2</a></h1>
+<p class="Pp">La compilation juste-à-temps (JIT) est une optimisation lourde qui peut grandement accélérer la correspondance de motifs. Cependant, elle a pour coût un traitement supplémentaire avant que la correspondance ne soit effectuée, elle est donc plus bénéfique lorsque le même motif doit être utilisé à plusieurs reprises. Cela ne signifie pas nécessairement plusieurs appels à une fonction de correspondance ; si le motif n'est pas ancré, les tentatives de correspondance peuvent avoir lieu de nombreuses fois à différentes positions dans le sujet, même pour un seul appel. Par conséquent, si la chaîne sujet est très longue, cela peut toujours valoir la peine d'utiliser le JIT même pour des correspondances uniques. Le support JIT est disponible pour toutes les bibliothèques PCRE2 8 bits, 16 bits et 32 bits.</p>
+<p class="Pp">Le support JIT ne s'applique qu'à la fonction de correspondance traditionnelle compatible Perl. Il ne s'applique pas lorsque la fonction de correspondance DFA est utilisée. Le code de support JIT a été écrit par Zoltan Herczeg.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DISPONIBILITE_DU_SUPPORT_JIT'><a class='permalink' href='#DISPONIBILITE_DU_SUPPORT_JIT'>DISPONIBILITÉ DU SUPPORT JIT</a></h1>
+<p class="Pp">Le support JIT est une fonctionnalité optionnelle de PCRE2. L'option de configuration --enable-jit (ou l'option CMake équivalente) doit être définie lors de la compilation de PCRE2 si vous souhaitez utiliser le JIT. Le support est limité aux plateformes matérielles suivantes :</p>
+<p class="Pp">
+  <br/>
+   ARM 32 bits (v7 et Thumb2)
+  <br/>
+   ARM 64 bits
+  <br/>
+   IBM s390x 64 bits
+  <br/>
+   Intel x86 32 bits et 64 bits
+  <br/>
+   LoongArch 64 bits
+  <br/>
+   MIPS 32 bits et 64 bits
+  <br/>
+   Power PC 32 bits et 64 bits
+  <br/>
+   RISC-V 32 bits et 64 bits</p>
+<p class="Pp">Si --enable-jit est défini sur une plateforme non prise en charge, la compilation échoue.</p>
+<p class="Pp">Un programme client peut savoir si le support JIT a été compilé en appelant <b>pcre2_config()</b> avec l'option PCRE2_CONFIG_JIT. Le résultat est un si PCRE2 a été compilé avec le support JIT, et zéro sinon. Cependant, disposer du code JIT ne garantit pas qu'il sera utilisé pour une correspondance particulière. L'une des raisons est qu'il existe un certain nombre d'options et d'éléments de motif qui ne sont pas pris en charge par le JIT (voir ci-dessous). Une autre raison est que, dans certains environnements, le JIT ne parvient pas à obtenir de mémoire exécutable dans laquelle construire son code compilé. La seule garantie de <b>pcre2_config()</b> est que s'il renvoie zéro, le JIT ne sera certainement <i>pas</i> utilisé.</p>
+<p class="Pp">Depuis la version 10.45, il existe un moyen plus informatif de tester le support JIT. Si <b>pcre2_compile_jit()</b> est appelé avec l'option unique PCRE2_JIT_TEST_ALLOC, il renvoie zéro si le JIT est disponible et dispose d'un allocateur fonctionnel. Sinon, il renvoie PCRE2_ERROR_NOMEMORY si le JIT est disponible mais ne peut pas allouer de mémoire exécutable, ou PCRE2_ERROR_JIT_UNSUPPORTED si le support JIT n'est pas compilé. L'argument code est ignoré, il peut donc être NULL.</p>
+<p class="Pp">Un programme simple n'a pas besoin de vérifier la disponibilité pour utiliser le JIT lorsque cela est possible. L'API est implémentée de manière à revenir au code interprétatif si le JIT n'est pas disponible ou ne peut pas être utilisé pour une correspondance donnée. Pour les programmes qui ont besoin des meilleures performances possibles, il existe une API de « chemin rapide » spécifique au JIT.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION_SIMPLE_DU_JIT'><a class='permalink' href='#UTILISATION_SIMPLE_DU_JIT'>UTILISATION SIMPLE DU JIT</a></h1>
+<p class="Pp">Pour utiliser le support JIT de la manière la plus simple, il vous suffit d'appeler <b>pcre2_jit_compile()</b> après avoir compilé avec succès un motif avec <b>pcre2_compile()</b>. Cette fonction a deux arguments : le premier est le pointeur du motif compilé renvoyé par <b>pcre2_compile()</b>, et le second est zéro ou plusieurs des bits d'option suivants : PCRE2_JIT_COMPLETE, PCRE2_JIT_PARTIAL_HARD ou PCRE2_JIT_PARTIAL_SOFT.</p>
+<p class="Pp">Si le support JIT n'est pas disponible, un appel à <b>pcre2_jit_compile()</b> ne fait rien et renvoie PCRE2_ERROR_JIT_BADOPTION. Sinon, le motif compilé est passé au compilateur JIT, qui le transforme en code machine qui s'exécute beaucoup plus rapidement que le code interprétatif normal, mais produit exactement les mêmes résultats. La valeur renvoyée par <b>pcre2_jit_compile()</b> est zéro en cas de succès, ou un code d'erreur négatif.</p>
+<p class="Pp">Il existe une limite à la taille des motifs pris en charge par le JIT, imposée par la taille de la pile machine qu'il utilise. Les règles exactes ne sont pas documentées car elles peuvent changer à tout moment, en particulier lors de l'introduction de nouvelles optimisations. Si un motif est trop volumineux, un appel à <b>pcre2_jit_compile()</b> renvoie PCRE2_ERROR_NOMEMORY.</p>
+<p class="Pp">PCRE2_JIT_COMPLETE demande au compilateur JIT de générer du code pour des correspondances complètes. Si vous souhaitez exécuter des correspondances partielles en utilisant les options PCRE2_PARTIAL_HARD ou PCRE2_PARTIAL_SOFT de <b>pcre2_match()</b>, vous devez définir une ou deux des autres options en plus de, ou à la place de PCRE2_JIT_COMPLETE. Le compilateur JIT génère un code optimisé différent pour chacun des trois modes (normal, partiel doux, partiel dur). Lorsque <b>pcre2_match()</b> est appelé, le code approprié est exécuté s'il est disponible. Sinon, le motif est utilisé avec le code interprétatif.</p>
+<p class="Pp">Vous pouvez appeler <b>pcre2_jit_compile()</b> plusieurs fois pour le même motif compilé. Cela ne fait rien s'il a précédemment compilé du code pour l'un des bits d'option. Par exemple, vous pouvez l'appeler une fois avec PCRE2_JIT_COMPLETE et (peut-être plus tard, lorsque vous constatez que vous avez besoin de correspondances partielles) à nouveau avec PCRE2_JIT_COMPLETE et PCRE2_JIT_PARTIAL_HARD. Cette fois, il ignorera PCRE2_JIT_COMPLETE et compilera uniquement le code pour les correspondances partielles. Si <b>pcre2_jit_compile()</b> est appelé sans aucun bit d'option défini, il renvoie immédiatement zéro. C'est une autre façon de tester si le support JIT a été compilé.</p>
+<p class="Pp">À l'heure actuelle, il n'est pas possible de libérer le code compilé JIT sauf lorsque l'intégralité du motif compilé est libérée en appelant <b>pcre2_code_free()</b>.</p>
+<p class="Pp">Dans certains cas, vous devrez peut-être appeler des fonctions supplémentaires. Celles-ci sont décrites dans la section intitulée « Contrôle de la pile JIT » ci-dessous.</p>
+<p class="Pp">Il existe certaines options de <b>pcre2_match()</b> qui ne sont pas prises en charge par le JIT, et il existe également certains éléments de motif que le JIT ne peut pas gérer. Les détails sont donnés ci-dessous. Dans les deux cas, la correspondance revient automatiquement au code interprétatif. Si vous souhaitez savoir si le JIT a été réellement utilisé pour une correspondance particulière, vous devez prévoir qu'une fonction de rappel JIT soit configurée comme décrit dans la section intitulée « Contrôle de la pile JIT » ci-dessous, même si vous n'avez pas besoin de fournir une pile JIT non par défaut. Une telle fonction de rappel est appelée chaque fois qu'un code JIT est sur le point d'être exécuté. Si les options de temps de correspondance ne conviennent pas à l'exécution JIT, la fonction de rappel n'est pas appelée.</p>
+<p class="Pp">Si le compilateur JIT trouve un élément non pris en charge, aucune donnée JIT n'est générée. Vous pouvez savoir si la compilation JIT a réussi pour un motif compilé en appelant <b>pcre2_pattern_info()</b> avec l'option PCRE2_INFO_JITSIZE. Un résultat non nul signifie que la compilation JIT a réussi. Un résultat de 0 signifie que le support JIT n'est pas disponible, que le motif n'a pas été traité par <b>pcre2_jit_compile()</b>, ou que le compilateur JIT n'a pas pu gérer le motif. La compilation JIT réussie ne garantit cependant pas l'utilisation du JIT au moment de la correspondance, car certaines options de temps de correspondance ne sont pas prises en charge par le JIT.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CORRESPONDANCE_DES_SUJETS_CONTENANT_DU_UTF_INVALIDE'><a class='permalink' href='#CORRESPONDANCE_DES_SUJETS_CONTENANT_DU_UTF_INVALIDE'>CORRESPONDANCE DES SUJETS CONTENANT DU UTF INVALIDE</a></h1>
+<p class="Pp">Lorsqu'un motif est compilé avec l'option PCRE2_UTF, les chaînes sujet sont normalement attendues comme une séquence valide d'unités de code UTF. Par défaut, cela est vérifié au début de la correspondance et une erreur est générée si un UTF invalide est détecté. L'option PCRE2_NO_UTF_CHECK peut être passée à <b>pcre2_match()</b> pour ignorer la vérification (pour améliorer les performances) si vous êtes sûr que la chaîne sujet est valide. Si cette option est utilisée avec une chaîne invalide, le résultat est indéfini. Le programme appelant peut planter, boucler ou se comporter de manière erronée.</p>
+<p class="Pp">Cependant, un moyen d'exécuter des correspondances sur des chaînes pouvant contenir des séquences UTF invalides est disponible. Appeler <b>pcre2_compile()</b> avec l'option PCRE2_MATCH_INVALID_UTF a deux effets : il indique à l'interpréteur de <b>pcre2_match()</b> de prendre en charge l'UTF invalide, et, si <b>pcre2_jit_compile()</b> est appelé ensuite, le code JIT compilé prend également en charge l'UTF invalide. Les détails sur le fonctionnement de ce support, tant dans le cas du JIT que dans le cas interprétatif, sont donnés dans la documentation <b>pcre2unicode</b>.</p>
+<p class="Pp">Il existe également une option obsolète pour <b>pcre2_jit_compile()</b> appelée PCRE2_JIT_INVALID_UTF, qui existe actuellement uniquement pour la compatibilité ascendante. Elle est remplacée par l'option <b>pcre2_compile()</b> PCRE2_MATCH_INVALID_UTF et ne doit plus être utilisée. Elle pourrait être supprimée à l'avenir.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS_ET_ELEMENTS_DE_MOTIFS_NON_PRIS_EN_CHARGE'><a class='permalink' href='#OPTIONS_ET_ELEMENTS_DE_MOTIFS_NON_PRIS_EN_CHARGE'>OPTIONS ET ÉLÉMENTS DE MOTIFS NON PRIS EN CHARGE</a></h1>
+
+</section>
+</div>
+</section>
+                
+            </article>
+            
+        </main>
+    </body>
+</html>
+<section class="Sh">
+<h1 class="Sh" id='TED_OPTIONS_AND_PATTERN_ITEMS'><a class='permalink' href='#TED_OPTIONS_AND_PATTERN_ITEMS'>OPTIONS ET ÉLÉMENTS DE MOTIF NON PRIS EN CHARGE</a></h1>
+<p class="Pp">Les options <b>pcre2_match()</b> qui sont prises en charge pour la
+    correspondance JIT sont PCRE2_COPY_MATCHED_SUBJECT, PCRE2_NOTBOL, PCRE2_NOTEOL,
+    PCRE2_NOTEMPTY, PCRE2_NOTEMPTY_ATSTART, PCRE2_NO_UTF_CHECK,
+    PCRE2_PARTIAL_HARD et PCRE2_PARTIAL_SOFT. Les options PCRE2_ANCHORED et
+    PCRE2_ENDANCHORED ne sont pas prises en charge au moment de la correspondance.</p>
+<p class="Pp">Si l'option PCRE2_NO_JIT est passée à <b>pcre2_match()</b>, elle
+    désactive l'utilisation du JIT, forçant la correspondance par le code de
+    l'interpréteur.</p>
+<p class="Pp">Les seuls éléments de motif non pris en charge sont \C (correspondance
+    d'une seule unité de données) lors de l'exécution en mode UTF, et un appel de
+    rappel immédiatement avant une condition d'assertion dans un groupe
+    conditionnel.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RETURN_VALUES_FROM_JIT_MATCHING'><a class='permalink' href='#RETURN_VALUES_FROM_JIT_MATCHING'>VALEURS DE RETOUR DE LA CORRESPONDANCE JIT</a></h1>
+<p class="Pp">Lorsqu'un motif est mis en correspondance à l'aide de JIT, les valeurs
+    de retour sont les mêmes que celles fournies par le code interprétatif de
+    <b>pcre2_match()</b>, avec l'ajout d'un nouveau code d'erreur :
+    PCRE2_ERROR_JIT_STACKLIMIT. Cela signifie que la mémoire utilisée pour la pile
+    JIT était insuffisante. Voir "Contrôle de la pile JIT" ci-dessous pour une
+    discussion sur l'utilisation de la pile JIT.</p>
+<p class="Pp">Le code d'erreur PCRE2_ERROR_MATCHLIMIT est retourné par le code JIT
+    si la recherche dans un arbre de motifs très grand dure trop longtemps, comme
+    c'est le cas lorsque JIT n'est pas utilisé, mais les détails de ce qui est compté
+    ne sont pas les mêmes. Le code d'erreur PCRE2_ERROR_DEPTHLIMIT n'est jamais
+    retourné lorsque la correspondance JIT est utilisée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONTROLLING_THE_JIT_STACK'><a class='permalink' href='#CONTROLLING_THE_JIT_STACK'>CONTRÔLE DE LA PILE JIT</a></h1>
+<p class="Pp">Lorsque le code JIT compilé s'exécute, il a besoin d'un bloc de mémoire
+    pour servir de pile. Par défaut, il utilise 32 Ko sur la pile de la machine.
+    Cependant, certains motifs volumineux ou complexes nécessitent plus que cela.
+    L'erreur PCRE2_ERROR_JIT_STACKLIMIT est donnée lorsqu'il n'y a pas assez de
+    pile. Trois fonctions sont fournies pour gérer les blocs de mémoire à utiliser
+    comme piles JIT. Il y a d'autres discussions sur l'utilisation des piles JIT
+    dans la section intitulée "FAQ sur la pile JIT" ci-dessous.</p>
+<p class="Pp">La fonction <b>pcre2_jit_stack_create()</b> crée une pile JIT. Ses
+    arguments sont une taille de départ, une taille maximale et un contexte général
+    (pour les fonctions d'allocation de mémoire, ou NULL pour l'allocation de mémoire
+    standard). Elle renvoie un pointeur vers une structure opaque de type
+    <b>pcre2_jit_stack</b>, ou NULL en cas d'erreur. La fonction
+    <b>pcre2_jit_stack_free()</b> est utilisée pour libérer une pile qui n'est plus
+    nécessaire. Si son argument est NULL, cette fonction retourne immédiatement,
+    sans rien faire. (Pour les techniciens : l'espace d'adressage est alloué par
+    mmap ou VirtualAlloc.) Une taille de pile maximale de 512 Ko à 1 Mo devrait
+    être plus que suffisante pour n'importe quel motif.</p>
+<p class="Pp">La fonction <b>pcre2_jit_stack_assign()</b> spécifie quelle pile le
+    code JIT doit utiliser. Ses arguments sont les suivants :</p>
+<p class="Pp">
+  <br/>
+   pcre2_match_context *mcontext
+  <br/>
+   pcre2_jit_callback callback
+  <br/>
+   void *data</p>
+<p class="Pp">Le premier argument est un pointeur vers un contexte de correspondance.
+    Lorsqu'il est ensuite passé à une fonction de correspondance, ses informations
+    déterminent quelle pile JIT est utilisée. Si cet argument est NULL, la fonction
+    retourne immédiatement, sans rien faire. Il y a trois cas pour les valeurs des
+    deux autres options :</p>
+<p class="Pp">
+  <br/>
+   (1) Si <i>callback</i> est NULL et <i>data</i> est NULL, un bloc interne de 32 Ko
+  <br/>
+   sur la pile de la machine est utilisé. C'est le comportement par défaut
+  <br/>
+   lors de la création d'un contexte de correspondance.</p>
+<p class="Pp">
+  <br/>
+   (2) Si <i>callback</i> est NULL et <i>data</i> n'est pas NULL, <i>data</i> doit
+  <br/>
+   être un pointeur vers une pile JIT valide, le résultat de l'appel à
+  <br/>
+   <b>pcre2_jit_stack_create()</b>.</p>
+<p class="Pp">
+  <br/>
+   (3) Si <i>callback</i> n'est pas NULL, il doit pointer vers une fonction qui est
+  <br/>
+   appelée avec <i>data</i> comme argument au début de la correspondance, afin
+  <br/>
+   de configurer une pile JIT. Si le retour de la fonction de rappel est NULL,
+  <br/>
+   la pile interne de 32 Ko est utilisée ; sinon, la valeur de retour doit
+  <br/>
+   être une pile JIT valide, le résultat de l'appel à
+  <br/>
+   <b>pcre2_jit_stack_create()</b>.</p>
+<p class="Pp">Une fonction de rappel est respectée chaque fois que le code JIT est
+    sur le point de s'exécuter ; elle n'est pas respectée lorsque
+    <b>pcre2_match()</b> est appelée avec des options incompatibles pour la
+    correspondance JIT. Une fonction de rappel peut donc être utilisée pour
+    déterminer si une opération de correspondance a été exécutée par JIT ou par
+    l'interpréteur.</p>
+<p class="Pp">Vous pouvez utiliser en toute sécurité la même pile JIT pour plusieurs
+    motifs (soit en l'assignant directement, soit par rappel), tant que les motifs
+    sont mis en correspondance séquentiellement dans le même thread. Actuellement,
+    la seule façon de configurer des correspondances non séquentielles dans un
+    thread est d'utiliser des appels de rappel : si une fonction de rappel démarre
+    une autre correspondance, cette correspondance doit utiliser une pile JIT
+    différente de celle utilisée pour la ou les correspondances actuellement
+    suspendues.</p>
+<p class="Pp">Dans une application multithread, si vous ne spécifiez pas de pile JIT,
+    ou si vous assignez ou retournez NULL depuis un rappel, c'est thread-safe, car
+    chaque thread a sa propre pile machine. Cependant, si vous assignez ou retournez
+    une pile JIT non-NULL, il doit s'agir d'une pile différente pour chaque thread
+    afin que l'application soit thread-safe.</p>
+<p class="Pp">Strictement parlant, encore plus est autorisé. Vous pouvez assigner la
+    même pile non-NULL à un contexte de correspondance utilisé par un nombre quelconque
+    de motifs, tant qu'ils ne sont pas utilisés pour la correspondance par plusieurs
+    threads en même temps. Par exemple, vous pourriez utiliser la même pile dans
+    tous les motifs compilés, avec un mutex global dans le rappel pour attendre que
+    la pile soit disponible. Cependant, c'est une solution inefficace et non
+    recommandée.</p>
+<p class="Pp">Voici une suggestion sur la manière dont un programme multithread qui a
+    besoin de configurer des piles JIT non par défaut pourrait fonctionner :</p>
+<p class="Pp">
+  <br/>
+   Lors de l'initialisation du thread
+  <br/>
+   variable_locale_thread = pcre2_jit_stack_create(...)</p>
+<p class="Pp">
+  <br/>
+   Lors de la sortie du thread
+  <br/>
+   pcre2_jit_stack_free(variable_locale_thread)</p>
+<p class="Pp">
+  <br/>
+   Utiliser une fonction de rappel en une ligne
+  <br/>
+   retourner variable_locale_thread</p>
+<p class="Pp">Toutes les fonctions décrites dans cette section ne font rien si JIT
+    n'est pas disponible.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='JIT_STACK_FAQ'><a class='permalink' href='#JIT_STACK_FAQ'>FAQ SUR LA PILE JIT</a></h1>
+<p class="Pp">(1) Pourquoi avons-nous besoin de piles JIT ?</p>
+<p class="Pp">PCRE2 (et JIT) est un moteur récursif en profondeur, il a donc besoin
+    d'une pile où les données locales du nœud actuel sont poussées avant de vérifier
+    ses nœuds enfants. L'allocation d'une pile machine réelle sur certaines plateformes
+    est difficile. Par exemple, la chaîne de piles doit être mise à jour à chaque
+    fois si nous étendons la pile sur PowerPC. Bien que ce soit possible, le temps
+    d'overhead de mise à jour diminue les performances. Nous effectuons donc la
+    récursion en mémoire.</p>
+<p class="Pp">(2) Pourquoi ne pas simplement allouer des blocs de mémoire avec
+    <b>malloc()</b> ?</p>
+<p class="Pp">Les systèmes d'exploitation modernes ont une fonctionnalité intéressante :
+    ils peuvent réserver un espace d'adressage au lieu d'allouer de la mémoire. Nous
+    pouvons allouer en toute sécurité des pages de mémoire à l'intérieur de cet espace
+    d'adressage, de sorte que la pile puisse croître sans déplacer les données mémoire
+    (ce qui est important à cause des pointeurs). Ainsi, nous pouvons allouer un espace
+    d'adressage de 1 Mo, et n'utiliser qu'une seule page de mémoire (généralement 4 Ko)
+    si cela suffit. Cependant, nous pouvons toujours croître jusqu'à 1 Mo à tout moment
+    si nécessaire.</p>
+<p class="Pp">(3) Qui "possède" une pile JIT ?</p>
+<p class="Pp">Le propriétaire de la pile est le programme utilisateur, et non le motif
+    JIT étudié ou quoi que ce soit d'autre. Le programme utilisateur doit s'assurer
+    que si une pile est utilisée par <b>pcre2_match()</b> (c'est-à-dire qu'elle est
+    assignée à un contexte de correspondance qui est passé au motif en cours d'exécution),
+    cette pile ne doit pas être utilisée par d'autres threads (pour éviter de
+    réécrire la même zone mémoire). La meilleure pratique pour les programmes
+    multithreads est d'allouer une pile pour chaque thread, et de retourner cette
+    pile via la fonction de rappel JIT.</p>
+<p class="Pp">(4) Quand une pile JIT doit-elle être libérée ?</p>
+<p class="Pp">Vous pouvez libérer une pile JIT à tout moment, tant qu'elle ne sera plus
+    utilisée par <b>pcre2_match()</b>. Lorsque vous assignez la pile à un contexte de
+    correspondance, seul un pointeur est défini. Il n'y a pas de comptage de
+    références ni aucune autre magie. Vous pouvez libérer les motifs compilés, les
+    contextes et les piles dans n'importe quel ordre, à tout moment. Ne appelez pas
+    <b>pcre2_match()</b> avec un contexte de correspondance pointant vers une pile déjà
+    libérée, car cela provoquera un SEGFAULT. (De plus, ne libérez pas une pile
+    actuellement utilisée par <b>pcre2_match()</b> dans un autre thread). Vous pouvez
+    également remplacer la pile dans un contexte à tout moment lorsqu'elle n'est pas
+    utilisée. Vous devriez libérer la pile précédente avant d'en assigner une nouvelle.</p>
+<p class="Pp">(5) Dois-je allouer/libérer une pile à chaque fois avant/après avoir
+    appelé <b>pcre2_match()</b> ?</p>
+<p class="Pp">Non, car cela coûte trop cher en termes de ressources. Cependant, vous
+    pourriez implémenter une idée astucieuse qui libère la pile si elle n'est pas
+    utilisée pendant, disons, deux minutes. Le rappel JIT peut aider à y parvenir sans
+    maintenir une liste de motifs.</p>
+<p class="Pp">(6) OK, la pile est pour l'allocation mémoire à long terme. Mais que se
+    passe-t-il si un motif provoque un dépassement de pile avec une pile de 1 Mo ? Ce
+    Mo est-il conservé jusqu'à ce que la pile soit libérée ?</p>
+<p class="Pp">En particulier sur les systèmes embarqués, il peut être judicieux de libérer
+    la mémoire parfois sans libérer la pile. Il n'y a pas d'API pour cela pour le
+    moment. Probablement, une fonction qui retourne la mémoire actuellement allouée
+    pour n'importe quelle pile et une autre qui permet de libérer la mémoire (réduire
+    la pile) serait une bonne idée si quelqu'un en a besoin.</p>
+<p class="Pp">(7) C'est trop compliqué. N'y a-t-il pas de meilleure solution pour la
+    gestion des piles JIT ?</p>
+<p class="Pp">Non, merci Windows. Si les threads POSIX étaient utilisés partout, nous
+    pourrions nous débarrasser de cette API compliquée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FREEING_JIT_SPECULATIVE_MEMORY'><a class='permalink' href='#FREEING_JIT_SPECULATIVE_MEMORY'>LIBÉRATION DE LA MÉMOIRE SPÉCULATIVE JIT</a></h1>
+<pre><b>void pcre2_jit_free_unused_memory(pcre2_general_context *<i>gcontext</i>);</b></pre>
+<p class="Pp">L'allocateur exécutable JIT ne libère pas toute la mémoire lorsque c'est
+    possible. Il s'attend à de nouvelles allocations et garde de la mémoire libre pour
+    améliorer la vitesse d'allocation. Cependant, dans des conditions de faible mémoire,
+    il peut être préférable de libérer toute la mémoire possible. Vous pouvez y parvenir
+    en appelant pcre2_jit_free_unused_memory(). Son argument est un contexte général,
+    pour la gestion personnalisée de la mémoire, ou NULL pour la gestion standard de
+    la mémoire.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_CODE'><a class='permalink' href='#EXAMPLE_CODE'>EXEMPLE DE CODE</a></h1>
+<p class="Pp">Voici un exemple mono-thread qui spécifie une pile JIT sans utiliser de
+    rappel. Un programme réel devrait inclure une vérification des erreurs après tous
+    les appels de fonction.</p>
+<p class="Pp">
+  <br/>
+   int rc;
+  <br/>
+   pcre2_code *re;
+  <br/>
+   pcre2_match_data *match_data;
+  <br/>
+   pcre2_match_context *mcontext;
+  <br/>
+   pcre2_jit_stack *jit_stack;</p>
+<p class="Pp">
+  <br/>
+   re = pcre2_compile(pattern, PCRE2_ZERO_TERMINATED, 0,
+  <br/>
+   &amp;errornumber, &amp;erroffset, NULL);
+  <br/>
+   rc = pcre2_jit_compile(re, PCRE2_JIT_COMPLETE);
+  <br/>
+   mcontext = pcre2_match_context_create(NULL);
+  <br/>
+   jit_stack = pcr
+<section class="Sh">
+<h1 class="Sh" id='PCRE2_JUST-IN-TIME_COMPILER_SUPPORT'><a class='permalink' href='#PCRE2_JUST-IN-TIME_COMPILER_SUPPORT'>PCRE2 JUST-IN-TIME COMPILER SUPPORT</a></h1>
+<p class="Pp">The PCRE2 library contains a Just-In-Time (JIT) compiler that can
+    significantly speed up matching for many patterns. This support is optional
+    and is enabled by passing
+    <code class="Nm">PCRE2_CONFIG_JIT</code> to
+    <a href="../functions/pcre2_config.html">pcre2_config(3)</a>.</p>
+<p class="Pp">When JIT is supported, the library can compile a pattern into native
+    machine code that can be executed much faster than the standard interpreter.
+    The JIT compiler is invoked by calls to
+    <a href="../functions/pcre2_jit_compile.html">pcre2_jit_compile(3)</a>, which
+    compiles a regex pattern into JIT code. If the compilation is successful, the
+    compiled code can be used in subsequent matching operations.</p>
+<p class="Pp">The JIT compilation is only triggered if the pattern is suitable for
+    compilation. Some features of the PCRE2 syntax are not supported by the JIT
+    compiler, and if such features are present, the pattern may be compiled into
+    bytecode for the interpreter instead, or compilation may fail entirely.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AVAILABILITY_OF_JIT_SUPPORT'><a class='permalink' href='#AVAILABILITY_OF_JIT_SUPPORT'>AVAILABILITY OF JIT SUPPORT</a></h1>
+<p class="Pp">You can check if JIT support is available by calling
+    <a href="../functions/pcre2_config.html">pcre2_config(3)</a> with the
+    argument <code class="Nm">PCRE2_CONFIG_JIT</code>:</p>
+<p class="Pp"><code class="Nd">int jit_available;</code><br/>
+    <code class="Nd">jit_available = pcre2_config(PCRE2_CONFIG_JIT, NULL);</code><br/>
+    <code class="Nd">if (jit_available) { /* JIT is available */ }</code></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIMPLE_USE_OF_JIT'><a class='permalink' href='#SIMPLE_USE_OF_JIT'>SIMPLE USE OF JIT</a></h1>
+<p class="Pp">The easiest way to use the JIT compiler is to compile the pattern as
+    usual with
+    <a href="../functions/pcre2_compile.html">pcre2_compile(3)</a>, and then call
+    <a href="../functions/pcre2_jit_compile.html">pcre2_jit_compile(3)</a>.</p>
+<p class="Pp"><code class="Nd">regex *re;</code><br/>
+    <code class="Nd">pcre2_code *code;</code><br/>
+    <code class="Nd">pcre2_jit_stack *jit_stack;</code><br/>
+    <code class="Nd">int errorcode;</code><br/>
+    <code class="Nd">PCRE2_SPTR errormessage;</code><br/>
+    <code class="Nd">int rc;</code></p>
+<p class="Pp"><code class="Nd">code = pcre2_compile("pattern", PCRE2_SPTR_LEN, 0, &amp;errorcode, &amp;errormessage, NULL);</code><br/>
+    <code class="Nd">if (code == NULL) { /* handle error */ }</code></p>
+<p class="Pp"><code class="Nd">rc = pcre2_jit_compile(code, PCRE2_JIT_COMPLETE);</code><br/>
+    <code class="Nd">if (rc == PCRE2_ERROR_JIT_BADOPTION) { /* pattern not suitable for JIT */ }</code><br/>
+    <code class="Nd">else if (rc &lt; 0) { /* other JIT compilation error */ }</code></p>
+<p class="Pp">If <code class="Nm">pcre2_jit_compile()</code> returns 0 or a positive
+    value, the pattern has been successfully compiled for JIT execution.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MATCHING_SUBJECTS_CONTAINING_INVALID_UTF'><a class='permalink' href='#MATCHING_SUBJECTS_CONTAINING_INVALID_UTF'>MATCHING SUBJECTS CONTAINING INVALID UTF</a></h1>
+<p class="Pp">If you are matching a subject string that might contain invalid UTF-8
+    sequences, and you did not compile the pattern with
+    <code class="Nm">PCRE2_MATCH_INVALID_UTF</code>, then the behavior of the JIT
+    compiler is undefined. In this case, you should not use the JIT compiler, or
+    you should ensure that the subject string is valid UTF-8 before matching.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UNSUPPORTED_OPTIONS_AND_PATTERN_ITEMS'><a class='permalink' href='#UNSUPPORTED_OPTIONS_AND_PATTERN_ITEMS'>UNSUPPORTED OPTIONS AND PATTERN ITEMS</a></h1>
+<p class="Pp">The JIT compiler does not support all PCRE2 options and pattern
+    constructs. If an unsupported option or construct is encountered,
+    <a href="../functions/pcre2_jit_compile.html">pcre2_jit_compile(3)</a> will
+    return <code class="Nm">PCRE2_ERROR_JIT_BADOPTION</code>. In this case, you
+    should fall back to using the standard interpreter.</p>
+<p class="Pp">Unsupported options include:</p>
+<ul class="Pd">
+    <li><code class="Nm">PCRE2_ANCHORED</code></li>
+    <li><code class="Nm">PCRE2_ENDANCHORED</code></li>
+    <li><code class="Nm">PCRE2_NO_JIT</code></li>
+</ul>
+<p class="Pp">Unsupported pattern items include:</p>
+<ul class="Pd">
+    <li>Recursive patterns</li>
+    <li>Subroutine calls</li>
+    <li>Lookbehind assertions (except for fixed-length ones)</li>
+    <li>Atomic groups</li>
+    <li>Conditional expressions</li>
+</ul>
+<p class="Pp">For a complete list of unsupported features, consult the PCRE2
+    documentation.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RETURN_VALUES_FROM_JIT_MATCHING'><a class='permalink' href='#RETURN_VALUES_FROM_JIT_MATCHING'>RETURN VALUES FROM JIT MATCHING</a></h1>
+<p class="Pp">When matching is performed using JIT-compiled code, the return values
+    from the matching functions are the same as for the standard interpreter, with
+    the addition of:</p>
+<ul class="Pd">
+    <li><code class="Nm">PCRE2_ERROR_JIT_BADOPTION</code>: If a matching mode (partial or
+        complete) is requested that was not compiled.</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONTROLLING_THE_JIT_STACK'><a class='permalink' href='#CONTROLLING_THE_JIT_STACK'>CONTROLLING THE JIT STACK</a></h1>
+<p class="Pp">The JIT compiler uses a stack for its internal operations. This stack
+    can be controlled by the user to prevent excessive memory usage. The stack is
+    created using
+    <a href="../functions/pcre2_jit_stack_create.html">pcre2_jit_stack_create(3)</a>
+    and assigned to the matching context using
+    <a href="../functions/pcre2_jit_stack_assign.html">pcre2_jit_stack_assign(3)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='JIT_STACK_FAQ'><a class='permalink' href='#JIT_STACK_FAQ'>JIT STACK FAQ</a></h1>
+<p class="Pp"><b>Q: How large should the JIT stack be?</b><br/>
+    A: The size of the JIT stack depends on the complexity of the pattern and the
+    subject string. A typical starting point is 32KB for the initial size and
+    512KB for the maximum size. You may need to adjust these values based on your
+    specific use case.</p>
+<p class="Pp"><b>Q: When should I use a JIT stack?</b><br/>
+    A: You should use a JIT stack whenever you are using the JIT compiler,
+    especially for complex patterns or long subject strings, to avoid potential
+    stack overflows or excessive memory consumption.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FREEING_JIT_SPECULATIVE_MEMORY'><a class='permalink' href='#FREEING_JIT_SPECULATIVE_MEMORY'>FREEING JIT SPECULATIVE MEMORY</a></h1>
+<p class="Pp">The JIT compiler may allocate speculative memory for certain operations.
+    This memory should be freed after matching is complete using
+    <a href="../functions/pcre2_jit_stack_free.html">pcre2_jit_stack_free(3)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_CODE'><a class='permalink' href='#EXAMPLE_CODE'>EXAMPLE CODE</a></h1>
+<p class="Pp"><code class="Nd">#include &lt;pcre2.h&gt;</code><br/>
+    <code class="Nd">#include &lt;stdio.h&gt;</code></p>
+<p class="Pp"><code class="Nd">int main() {</code><br/>
+    <code class="Nd">    pcre2_code *re;</code><br/>
+    <code class="Nd">    pcre2_match_context *mcontext;</code><br/>
+    <code class="Nd">    pcre2_jit_stack *jit_stack;</code><br/>
+    <code class="Nd">    pcre2_match_data *match_data;</code><br/>
+    <code class="Nd">    PCRE2_SPTR subject = (PCRE2_SPTR) "This is a test string.";</code><br/>
+    <code class="Nd">    PCRE2_SIZE subject_length = 24;</code><br/>
+    <code class="Nd">    int rc;</code></p>
+<p class="Pp"><code class="Nd">    // Compile the regex</code><br/>
+    <code class="Nd">    re = pcre2_compile("test", 4, 0, NULL, NULL, NULL);</code><br/>
+    <code class="Nd">    if (re == NULL) {</code><br/>
+    <code class="Nd">        fprintf(stderr, "pcre2_compile failed\n");</code><br/>
+    <code class="Nd">        return 1;</code><br/>
+    <code class="Nd">    }</code></p>
+<p class="Pp"><code class="Nd">    // Create a JIT stack</code><br/>
+    <code class="Nd">    jit_stack = pcre2_jit_stack_create(32 * 1024, 512 * 1024, NULL);</code><br/>
+    <code class="Nd">    if (jit_stack == NULL) {</code><br/>
+    <code class="Nd">        fprintf(stderr, "pcre2_jit_stack_create failed\n");</code><br/>
+    <code class="Nd">        pcre2_code_free(re);</code><br/>
+    <code class="Nd">        return 1;</code><br/>
+    <code class="Nd">    }</code></p>
+<p class="Pp"><code class="Nd">    // Create a match context and assign the JIT stack</code><br/>
+    <code class="Nd">    mcontext = pcre2_match_context_create(NULL);</code><br/>
+    <code class="Nd">    if (mcontext == NULL) {</code><br/>
+    <code class="Nd">        fprintf(stderr, "pcre2_match_context_create failed\n");</code><br/>
+    <code class="Nd">        pcre2_jit_stack_free(jit_stack);</code><br/>
+    <code class="Nd">        pcre2_code_free(re);</code><br/>
+    <code class="Nd">        return 1;</code><br/>
+    <code class="Nd">    }</code><br/>
+    <code class="Nd">    pcre2_jit_stack_assign(mcontext, NULL, jit_stack);</code></p>
+<p class="Pp"><code class="Nd">    // Create match data</code><br/>
+    <code class="Nd">    match_data = pcre2_match_data_create(re, 10);</code><br/>
+    <code class="Nd">    if (match_data == NULL) {</code><br/>
+    <code class="Nd">        fprintf(stderr, "pcre2_match_data_create failed\n");</code><br/>
+    <code class="Nd">        pcre2_match_context_free(mcontext);</code><br/>
+    <code class="Nd">        pcre2_jit_stack_free(jit_stack);</code><br/>
+    <code class="Nd">        pcre2_code_free(re);</code><br/>
+    <code class="Nd">        return 1;</code><br/>
+    <code class="Nd">    }</code></p>
+<p class="Pp"><code class="Nd">    // Perform the match using JIT</code><br/>
+    <code class="Nd">    rc = pcre2_match(re, subject, subject_length, 0, 0, match_data, mcontext);</code><br/>
+    <code class="Nd">    if (rc &lt; 0) {</code><br/>
+    <code class="Nd">        fprintf(stderr, "pcre2_match failed, error code: %d\n", rc);</code><br/>
+    <code class="Nd">    } else {</code><br/>
+    <code class="Nd">        printf("Match found!\n");</code><br/>
+    <code class="Nd">    }</code></p>
+<p class="Pp"><code class="Nd">    // Clean up</code><br/>
+    <code class="Nd">    pcre2_code_free(re);</code><br/>
+    <code class="Nd">    pcre2_match_data_free(match_data);</code><br/>
+    <code class="Nd">    pcre2_match_context_free(mcontext);</code><br/>
+    <code class="Nd">    pcre2_jit_stack_free(jit_stack);</code><br/>
+    <code class="Nd">    return 0;</code><br/>
+    <code class="Nd">}</code></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='JIT_FAST_PATH_API'><a class='permalink' href='#JIT_FAST_PATH_API'>JIT FAST PATH API</a></h1>
+<p class="Pp">Because the API described above falls back to interpreted matching
+    when JIT is not available, it is convenient for programs that are written
+    for general use in many environments. However, calling JIT via
+    <b>pcre2_match()</b> does have a performance impact. Programs that are
+    written for use where JIT is known to be available, and which need the best
+    possible performance, can instead use a &quot;fast path&quot; API to call
+    JIT matching directly instead of calling <b>pcre2_match()</b> (obviously
+    only for patterns that have been successfully processed by
+    <b>pcre2_jit_compile()</b>).</p>
+<p class="Pp">The fast path function is called <b>pcre2_jit_match()</b>, and it
+    takes exactly the same arguments as <b>pcre2_match()</b>. However, the
+    subject string must be specified with a length; PCRE2_ZERO_TERMINATED is not
+    supported. Unsupported option bits (for example, PCRE2_ANCHORED and
+    PCRE2_ENDANCHORED) are ignored, as is the PCRE2_NO_JIT option. The return
+    values are also the same as for <b>pcre2_match()</b>, plus
+    PCRE2_ERROR_JIT_BADOPTION if a matching mode (partial or complete) is
+    requested that was not compiled.</p>
+<p class="Pp">When you call <b>pcre2_match()</b>, as well as testing for invalid
+    options, a number of other sanity checks are performed on the arguments. For
+    example, if the subject pointer is NULL but the length is non-zero, an
+    immediate error is given. Also, unless PCRE2_NO_UTF_CHECK is set, a UTF
+    subject string is tested for validity. In the interests of speed, these
+    checks do not happen on the JIT fast path. If invalid UTF data is passed
+    when PCRE2_MATCH_INVALID_UTF was not set for <b>pcre2_compile()</b>, the
+    result is undefined. The program may crash or loop or give wrong results. In
+    the absence of PCRE2_MATCH_INVALID_UTF you should call
+    <b>pcre2_jit_match()</b> in UTF mode only if you are sure the subject is
+    valid.</p>
+<p class="Pp">Bypassing the sanity checks and the <b>pcre2_match()</b> wrapping
+    can give speedups of more than 10%.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE ALSO</a></h1>
+<p class="Pp"><a href='/man/pcre2api.3.en'>pcre2api(3)</a>, <a href='/man/pcre2unicode.3.en'>pcre2unicode(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTHOR</a></h1>
+<pre>Philip Hazel (FAQ by Zoltan Herczeg)
+Retired from University Computing Service
+Cambridge, England.</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REVISION'><a class='permalink' href='#REVISION'>REVISION</a></h1>
+<pre>Last updated: 22 August 2024
+Copyright (c) 1997-2024 University of Cambridge.</pre>
+</section>

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>sd_event_get_fd(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">sd_event_get_fd(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/systemd-libs/">systemd-libs</a></p>
+<p class="lic">Licences: LGPL-2.1-or-later, CC0-1.0, GPL-2.0-or-later WITH Linux-syscall-note</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SD_EVENT_GET_FD(3)</td>
+    <td class="head-vol">sd_event_get_fd</td>
+    <td class="head-rtitle">SD_EVENT_GET_FD(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">sd_event_get_fd - Obtenir un descripteur de fichier pour interroger les événements de la boucle d'événements</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre>#include &lt;systemd/sd-event.h&gt;</pre>
+<p class="Pp HP"><b>int sd_event_get_fd(sd_event *</b><i>event</i><b>);</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><b>sd_event_get_fd()</b> retourne le descripteur de fichier qu'un objet de boucle d'événements retourné par la fonction <a href='/man/sd_event_new.3.fr'>sd_event_new(3)</a> utilise pour attendre les événements. Ce descripteur de fichier peut lui-même être interrogé pour les événements <b>POLLIN</b>/<b>EPOLLIN</b>. Cela permet d'intégrer une boucle d'événements <a href='/man/sd-event.3.fr'>sd-event(3)</a> dans une autre boucle d'événements, potentiellement étrangère.</p>
+<p class="Pp">Le descripteur de fichier retourné fait référence à un objet <a href='/man/epoll.7.fr'>epoll(7)</a>. Il est recommandé de ne pas le modifier en invoquant <a href='/man/epoll_ctl.2.fr'>epoll_ctl(2)</a> dessus, afin d'éviter d'interférer avec la logique interne et les hypothèses de la boucle d'événements.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VALEUR_DE_RETOUR'><a class='permalink' href='#VALEUR_DE_RETOUR'>VALEUR DE RETOUR</a></h1>
+<p class="Pp">En cas de succès, <b>sd_event_get_fd()</b> retourne un descripteur de fichier non négatif. En cas d'échec, il retourne un code d'erreur négatif de type errno.</p>
+<section class="Ss">
+<h2 class="Ss" id='Erreurs'><a class='permalink' href='#Erreurs'>Erreurs</a></h2>
+<p class="Pp">Les erreurs retournées peuvent indiquer les problèmes suivants :</p>
+<p class="Pp"><b>-EINVAL</b></p>
+<div class="Bd-indent"><i>event</i> n'est pas un pointeur valide vers une structure sd_event.</div>
+<p class="Pp"><b>-ECHILD</b></p>
+<div class="Bd-indent">La boucle d'événements a été créée dans un autre processus, bibliothèque ou instance de module.</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp"><b>Exemple&#x00A0;1.&#x00A0;Intégration dans la boucle d'événements GLib</b></p>
+<div class="Bd-indent">
+<pre>/* SPDX-License-Identifier: MIT-0 */
+#include &lt;stdlib.h&gt;
+#include &lt;glib.h&gt;
+#include &lt;systemd/sd-event.h&gt;
+typedef struct SDEventSource {
+  GSource source;
+  GPollFD pollfd;
+  sd_event *event;
+} SDEventSource;
+static gboolean event_prepare(GSource *source, gint *timeout_) {
+  return sd_event_prepare(((SDEventSource *)source)-&gt;event) &gt; 0;
+}
+static gboolean event_check(GSource *source) {
+  return sd_event_wait(((SDEventSource *)source)-&gt;event, 0) &gt; 0;
+}
+static gboolean event_dispatch(GSource *source, GSourceFunc callback, gpointer user_data) {
+  return sd_event_dispatch(((SDEventSource *)source)-&gt;event) &gt; 0;
+}
+static void event_finalize(GSource *source) {
+  sd_event_unref(((SDEventSource *)source)-&gt;event);
+}
+static GSourceFuncs event_funcs = {
+  .prepare = event_prepare,
+  .check = event_check,
+  .dispatch = event_dispatch,
+  .finalize = event_finalize,
+};
+GSource *g_sd_event_create_source(sd_event *event) {
+  SDEventSource *source;
+  source = (SDEventSource *)g_source_new(&amp;event_funcs, sizeof(SDEventSource));
+  source-&gt;event = sd_event_ref(event);
+  source-&gt;pollfd.fd = sd_event_get_fd(event);
+  source-&gt;pollfd.events = G_IO_IN | G_IO_HUP | G_IO_ERR;
+  g_source_add_poll((GSource *)source, &amp;source-&gt;pollfd);
+  return (GSource *)source;
+}</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">Les fonctions décrites ici sont disponibles sous forme de bibliothèque partagée, qui peut être compilée et liée avec le fichier <a href='/man/pkg-config.1.fr'>pkg-config(1)</a> de <b>libsystemd</b>.</p>
+<p class="Pp">Le code décrit ici utilise <a href='/man/getenv.3.fr'>getenv(3)</a>, qui est déclaré comme n'étant pas sûr pour les threads multiples. Cela signifie que le code appelant les fonctions décrites ici ne doit pas appeler <a href='/man/setenv.3.fr'>setenv(3)</a> depuis un thread parallèle. Il est recommandé de n'effectuer des appels à <b>setenv()</b> que dans une phase précoce du programme, lorsqu'aucun autre thread n'a été démarré.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTORIQUE'><a class='permalink' href='#HISTORIQUE'>HISTORIQUE</a></h1>
+<p class="Pp"><b>sd_event_get_fd()</b> a été ajouté dans la version 217.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/sd-event.3.fr'>sd-event(3)</a>, <a href='/man/sd_event_new.3.fr'>sd_event_new(3)</a>,
+    <a href='/man/sd_event_wait.3.fr'>sd_event_wait(3)</a>, <a href='/man/epoll_ctl.2.fr'>epoll_ctl(2)</a>, <a href='/man/epoll.7.fr'>epoll(7)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os">systemd 258.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/systemd-libs/">core/systemd-libs</a></dd>
+        <dt>Version :</dt>
+        <dd>258.2-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.github.com/systemd/systemd">https://www.github.com/systemd/systemd</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.1-or-later, CC0-1.0, GPL-2.0-or-later WITH Linux-syscall-note</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/systemd-libs/">/listing/core/systemd-libs/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#VALEUR_DE_RETOUR">VALEUR DE RETOUR</a></li>
+        
+            <li><a href="#EXEMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+            <li><a href="#HISTORIQUE">HISTORIQUE</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/sd_event_get_fd.3.fr.txt">txt</a>, 
+        
+            <a href="/man/sd_event_get_fd.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>, à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gdnsd-plugin-geoip(8) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">gdnsd-plugin-geoip(8)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/gdnsd/">gdnsd</a></p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">GDNSD-PLUGIN-GEOIP(8)</td>
+    <td class="head-vol">gdnsd</td>
+    <td class="head-rtitle">GDNSD-PLUGIN-GEOIP(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">gdnsd-plugin-geoip - méta-plugin gdnsd pour GSLB + basculement via
+    les bases de données GeoIP2 de MaxMind</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp">Exemple minimal de fichier de configuration gdnsd utilisant ce plugin :</p>
+<pre>plugins =&gt; { geoip =&gt; {
+  maps =&gt; {
+    my_prod_map =&gt; {
+      geoip2_db =&gt; GeoIP2-City.mmdb,
+      datacenters =&gt; [dc-03, dc-02, dc-01, dc-fail],
+      map =&gt; {
+          EU =&gt; {
+              DE =&gt; [dc-03, dc-01, dc-fail],
+              CH =&gt; [dc-01, dc-03, dc-fail]
+          },
+          NA =&gt; { MX =&gt; [dc-02, dc-fail] }
+      }
+    },
+    my_auto_map =&gt; {
+      geoip2_db =&gt; GeoIP2-Country.mmdb,
+      datacenters =&gt; [dc1, dc2],
+      auto_dc_coords =&gt; {
+         dc1 =&gt; [ 38.9, -77 ],
+         dc2 =&gt; [ 50.1, 8.7 ],
+      }
+    }
+  },
+  resources =&gt; {
+    prod_www =&gt; {
+      map =&gt; my_prod_map
+      service_types =&gt; up
+      dcmap =&gt; {
+        dc-01 =&gt; 192.0.2.1,
+        dc-02 =&gt; { lb01 =&gt; 192.0.2.2, lb02 =&gt; 192.0.2.3 },
+        dc-03 =&gt; [ 192.0.2.4, 192.0.2.5, 192.0.2.6 ],
+        dc-fail =&gt; last.resort.cname.example.net.
+      }
+    }
+    corp_www =&gt; {
+      map =&gt; my_auto_map
+      dcmap =&gt; {
+        dc1 =&gt; 192.0.2.100,
+        dc2 =&gt; 192.0.2.101
+      }
+    }
+  }
+}}</pre>
+<p class="Pp">Exemples d'enregistrements de fichiers de zone dans example.com :</p>
+<pre>www      600 DYNA geoip!prod_www
+www-dc01 600 DYNA geoip!prod_www/dc-01
+www.corp 600 DYNA geoip!corp_www</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><b>gdnsd-plugin-geoip</b> utilise les bases de données binaires
+    GeoIP2 de MaxMind pour mapper les adresses et les résultats CNAME en fonction
+    de la géographie et de la disponibilité des services surveillés. Il prend en
+    charge pleinement IPv6 et la norme émergente edns-client-subnet. Si une
+    requête contient l'option edns-client-subnet avec un masque réseau source
+    supérieur à zéro, les informations edns-client-subnet seront utilisées à la
+    place de l'adresse IP source de la requête (l'adresse IP du cache qui
+    interroge).</p>
+<p class="Pp">Il prend en charge les bases de données au format GeoIP2, qui se
+    terminent généralement par <i>.mmdb</i>. Il ne prend pas en charge les bases
+    de données au format GeoIP1 (qui se terminent généralement par
+    <i>.dat</i>).</p>
+<p class="Pp">Il peut également être utilisé sans aucune base de données GeoIP,
+    auquel cas la seule entrée de mappage réseau provient des données de
+    configuration <span class="Li">&quot;nets&quot;</span> ou d'un fichier
+    <span class="Li">&quot;nets&quot;</span> externe, qui mappe explicitement
+    les sous-réseaux à des listes de centres de données.</p>
+<p class="Pp">Ce plugin peut fonctionner dans un mode automatique basé sur la
+    distance (utilisant les informations de coordonnées d'une base de données de
+    niveau Ville). Il peut également fonctionner sans coordonnées et s'appuyer
+    sur l'utilisateur pour configurer une carte hiérarchique de mappages
+    défaut en cascade de localisation utilisateur vers centre de données, en
+    commençant au niveau du continent.</p>
+<p class="Pp">Les deux modes peuvent également être efficacement mélangés aux
+    limites géographiques.</p>
+<p class="Pp">Pour chaque <span class="Li">&quot;map&quot;</span> que vous définissez
+    (qui mappe des codes de localisation géographique à des listes ordonnées de
+    vos emplacements de centres de données), ce plugin fusionne tous les sous-réseaux
+    GeoIP bruts dans les super-réseaux les plus grands possibles qui contiennent
+    des réponses identiques dans votre configuration. Ceux-ci sont ensuite utilisés
+    pour définir des masques de portée edns-client-subnet plus grands que ceux que
+    vous obtiendriez en renvoyant simplement des résultats GeoIP bruts.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='METAFO_DU_PLUGIN'><a class='permalink' href='#METAFO_DU_PLUGIN'>METAFO DU PLUGIN</a></h1>
+<p class="Pp">La documentation de <a href='/man/gdnsd-plugin-metafo.8.en'>gdnsd-plugin-metafo(8)</a> est
+    une lecture obligatoire pour comprendre la documentation du plugin geoip
+    ici. Le plugin geoip est un sur-ensemble exact du plugin metafo, et réutilise
+    presque tout le code source du plugin metafo. Metafo effectue le basculement
+    le long d'une seule liste globale ordonnée de centres de données. Ce que le
+    plugin_geoip ajoute aux fonctionnalités de metafo est la capacité pour la liste
+    de basculement des centres de données de devenir dynamique par requête en
+    fonction d'indices géographiques dérivés de l'adresse réseau du client.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EMPLACEMENTS_DES_FICHIERS'><a class='permalink' href='#EMPLACEMENTS_DES_FICHIERS'>EMPLACEMENTS DES FICHIERS</a></h1>
+<p class="Pp">La configuration de ce plugin peut référencer plusieurs fichiers
+    externes de configuration et/ou de données. Par défaut, tous les fichiers
+    référencés dans la configuration de ce plugin sont chargés à partir du
+    sous-répertoire <i>geoip</i> du répertoire de configuration du démon (par
+    défaut <i>/etc/gdnsd</i>). Vous pouvez charger à partir d'autres
+    emplacements en spécifiant des chemins de fichiers absolus.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_NIVEAU_SUPÉRIEUR'><a class='permalink' href='#CONFIGURATION_-_NIVEAU_SUPÉRIEUR'>CONFIGURATION - NIVEAU SUPÉRIEUR</a></h1>
+<p class="Pp">Le niveau supérieur de la configuration du plugin geoip (c'est-à-dire
+    <span class="Li">&quot;plugins =&gt; {</span> <span class="Li">geoip =&gt; {
+    ... } }&quot;</span>) ne prend en charge que trois clés explicites. L'une est le
+    paramètre facultatif <span class="Li">&quot;undefined_datacenters_ok&quot;</span>.</p>
+<p class="Pp">Les deux autres sont obligatoires et développées en détail dans les
+    deux sections suivantes : <span class="Li">&quot;maps&quot;</span> et
+    <span class="Li">&quot;resources&quot;</span>. La section
+    <span class="Li">&quot;maps&quot;</span> définit un ou plusieurs mappages nommés
+    d'informations géographiques à partir de bases de données binaires GeoIP vers
+    des sous-ensembles ordonnés de noms de centres de données. La section
+    <span class="Li">&quot;resources&quot;</span> définit une ou plusieurs ressources
+    nommées, chacune faisant référence à l'une des cartes nommées et résolvant
+    les noms de centres de données en ensembles spécifiques d'adresses ou de
+    CNAME.</p>
+<p class="Pp">Toutes les autres clés présentes à ce niveau seront héritées à
+    l'intérieur de chaque hachage par ressource dans la section
+    <span class="Li">&quot;resources&quot;</span>, agissant comme valeurs par
+    défaut par ressource pour tout ce qui n'est pas explicitement défini là.</p>
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;undefined_datacenters_ok_=_false&amp;quot;'><a class='permalink' href='#&amp;quot;undefined_datacenters_ok_=_false&amp;quot;'>&quot;undefined_datacenters_ok   = false&quot;</a></h2>
+<p class="Pp">Booléen, par défaut false. S'il est défini sur true, les ressources
+    geoip sont autorisées à laisser certains des centres de données spécifiés dans
+    leur <span class="Li">&quot;map&quot;</span> non définis dans leur
+    <span class="Li">&quot;dcmap&quot;</span> au niveau de la ressource. Par exemple,
+    une carte M pourrait définir 3 centres de données nommés A, B et C, mais une
+    ressource utilisant la carte M pourrait seulement définir des adresses de
+    résultat pour les centres de données B et C dans son
+    <span class="Li">&quot;dcmap&quot;</span>. Ce serait autrement une erreur de
+    configuration majeure.</p>
+<p class="Pp"><b>!!! DANGER !!!</b> - Définir cette valeur sur true est une bonne
+    façon de se tirer une balle dans le pied si vous ne faites pas très attention
+    à la façon dont vos cartes et vos ressources sont configurées les unes par
+    rapport aux autres, en particulier en "Mode Auto Ville". Les cartes sont
+    calculées sans aucune connaissance des ressources qui les utilisent. Si un
+    réseau ou un emplacement spécifique correspond à une liste de centres de données
+    qui ne contient aucun des centres de données définis pour une ressource donnée,
+    les résultats des requêtes d'exécution pour cette ressource à partir de cet
+    emplacement ou réseau seront l'ensemble vide (aucun enregistrement de réponse
+    du tout). Cela se produira presque à coup sûr en "Mode Auto Ville" si le
+    nombre de centres de données non définis dans une ressource est supérieur ou
+    égal à la <span class="Li">&quot;auto_dc_limit&quot;</span> de la carte.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_CARTES'><a class='permalink' href='#CONFIGURATION_-_CARTES'>CONFIGURATION - CARTES</a></h1>
+<p class="Pp">Toutes les clés de configuration au niveau <span class="Li">&quot;maps&quot;</span>
+    sont les noms des cartes que vous choisissez de définir. Une carte, conceptuellement,
+    est un mappage entre la géographie et/ou la topologie réseau vers divers sous-ensembles
+    ordonnés de centres de données. La valeur de chaque carte nommée doit être une
+    table de hachage, et les clés de configuration suivantes s'appliquent à l'intérieur :</p>
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;geoip2_db_=_GeoIP2-City.mmdb&amp;quot;'><a class='permalink' href='#&amp;quot;geoip2_db_=_GeoIP2-City.mmdb&amp;quot;'>&quot;geoip2_db   = GeoIP2-City.mmdb&quot;</a></h2>
+<p class="Pp">Chaîne de caractères, nom de fichier, facultatif. C'est le nom de
+    fichier d'une base de données au format MaxMind GeoIP2. Elle doit contenir le
+    modèle de données Ville ou Pays. Aucune distinction n'est faite ici pour la
+    version IP, et il est normal que ces bases de données contiennent à la fois
+    des données IPv4 et IPv6 ensemble. Si l'une ou l'autre est manquante, les
+    clients utilisant cette famille d'adresses seront par défaut.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;datacenters_=_[_un,_deux,_trois,_..._]&amp;quot;'><a class='permalink' href='#&amp;quot;datacenters_=_%5B_un,_deux,_trois,_..._%5D&amp;quot;'>&quot;datacenters   = [ un, deux, trois, ... ]&quot;</a></h2>
+<p class="Pp">Tableau de chaînes de caractères, requis. C'est l'ensemble total de
+    noms de centres de données utilisés par cette carte. Vous devez définir au
+    moins un nom de centre de données (bien que 2 ou plus seraient infiniment
+    plus utiles). À l'heure actuelle, il y a une limite maximale de 254 noms de
+    centres de données par carte, bien que cela puisse être augmenté si quelqu'un
+    en a besoin. L'ordre spécifié ici est l'ordre de résultat par défaut de repli
+    dans divers cas par défaut (par exemple, si aucune liste de défauts de carte
+    explicite de niveau supérieur n'est donnée).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='&ignore_ecs_=_true&'&gt;<a class='permalink' href='#&amp;quot;ignore_ecs_=_true&amp;quot;'>"ignore_ecs   = true"
+</a></h2>Booléen,
+<p class="Pp">faux par défaut. Si cette option est définie à
+"true",
+    <span class="Li">toutes </span>les ressources utilisant cette carte
+    ignoreront les informations EDNS Client Subnet (ECS) lors des recherches
+    effectuées contre la carte, en se fiant uniquement à l'adresse IP source du
+    DNS pour la recherche. Si le client a fourni ECS dans une telle requête, la
+    réponse contiendra également l'option ECS pour signaler que nous prenons en
+    charge ECS en général, mais le masque de portée ECS de la réponse sera
+    défini à zéro pour signaler au cache que les données ECS n'ont pas été
+    utilisées et que le résultat est mis en </p>cache
+<p class="Pp">globalement.
+Ceci est utile dans les situations où la carte est
+    intentionnellement destinée à fonctionner uniquement sur les IP des
+    recursors plutôt que sur les IP ECS, mais que d'autres cartes prises en
+    charge par le même authserver utilisent les données ECS, et que
+    <b>l'option de
+    configuration glob</b>ale
+edns_client_subnet ne peut don</p>c pas être utilisée pour désactiver</section>
+    complètement le traitement de
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;nets_=_{_..._}&amp;quot;'><a class='permalink' href='#&amp;quot;nets_=_{_..._}&amp;quot;'>l'option pour </a></h2>l'ensemble
+<p class="Pp">du serveur.
+"nets   = { ... }"
+Table de hachage clé-valeur, facultative (voir ci-dessous pour la
+    forme alternative). Si spécifiée, le contenu
+    <span class="Li">doit être des paires </span>clé-valeur de
+"network/netmask" mappées à un nom de
+    centre de données (ou à un tableau de noms de centres de données). Toute
+    correspondance réseau-vers-centre-de-données spécifiée ici remplacera les
+    correspondances déterminées via GeoIP. Notez qu'il est interdit de spécifier
+    des réseaux dans les sous-espaces IPv4-like d'IPv6 autres que v4compat,
+    mais qu'il est légal de spécifier des réseaux IPv4 réels (qui sont traités
+    de manière identique à v4compat). Voir la section sur les adresses IPv4
+    compatibles plus loin dans ce document pour plus de détails. L'ordre des
+    réseaux n'est pas important ; ils seront toujours triés et insérés de sorte
+    qu'une entrée qui est un sous-réseau d'une autre entrée ne soit pas
+    oblitérée par </p>le
+<pre>superréseau parent.
+nets =&gt; {
+    10.0.0.0/8 =&gt; [ dc1, dc2 ],
+    192.0.2.128/25 =&gt; dc3
+    2001:DB8::/32 =&gt; [ dc4, dc5, dc6 ],
+}
+Dans </pre>le
+<p class="Pp">cas où une entrée est un sous-réseau d'une autre avec une
+    liste de centres de données (dclist) différente, les entrées sont fusionnées
+    correctement de sorte que le superréseau englobe le sous-réseau</p>. Dans le cas
+    d'une entrée en double exacte (ou effective, après fusion des sous-réseaux
+    plus petits) avec une dclist différente, c'est arbitraire laquelle "gagne"
+    et la condition est signalée pa</section>r un avertissement. Si ce cas vous
+    préoccupe, vous devriez assainir vos données nets au préalable avec un
+    outil externe et/ou analyser les messages d'avertissement dans les sorties de
+    log.
+"nets
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;nets_=_nets_file_name&amp;quot;'><a class='permalink' href='#&amp;quot;nets_=_nets_file_name&amp;quot;'>= nets_file_name"
+Chemin </a></h2>de
+<p class="Pp">fichier chaîne, facultatif. Une variante de ce qui précède,
+    mais le contenu de la table de hachage clé-valeur est chargé depuis le
+    fichier externe nommé. Cela facilite la vie des outils et scripts externes
+    générant de grands ensembles d'entrées nets (par exemple à partir de données
+    BGP). Le fichier sera surveillé pour les changements et rechargé à l'exécution
+    tout comme les bases de données GeoIP.
+"map  </p> </section>=
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;map_=_{_..._}&amp;quot;'><a class='permalink' href='#&amp;quot;map_=_{_..._}&amp;quot;'>{ ... }"
+Table </a></h2>de
+<p class="Pp">hachage clé-valeur, facultative. C'est le cœur d'une carte
+    nommée qui utilise GeoIP : la carte elle-même, qui mappe des lieux à des
+    listes ordonnées de centres de données. Elle requiert <span class="Li">"geoip2_db" </span>est
+    également spécifié, et n'a pas de sens sans lui.
+Ceci est </p>une
+<p class="Pp">table de hachage clé-valeur imbriquée. À chaque niveau,
+    les clés sont des codes de localisation (continent, pays, région/sous-division,
+    ou informations de ville selon la profondeur), et les valeurs sont soit un
+    tableau ordonné de centres de données (par ex.
+"[
+dc03, <span class="Li">dc0</span>1, <span class="Li">dc04
+    ]"), soit une </span>sous-table de hachage contenant un niveau de distinction plus
+    profond. À chaque couche, une clé spéciale nommée <span class="Li">"default"
+ </span>   est disponible, qui définit la valeur par défaut pour tout ce qui se trouve
+    dans la portée courante. Le niveau supérieur default lui-même a comme valeur
+    par défaut la liste
+    <span class="Li">ordonnée de
+</span>"datacenters" dans le cas normal. Si
+    l'ensemble <span class="Li">du
+</span>"map" est manquant ou vide,
+    vous obtenez simplement le comportement par défaut de
+"default".
+    <span class="Li">Un tableau de centres de
+    données peut également être vide, ce qui implique que ce lieu est mappé pour
+    </span>ne recevoir aucune donnée de réponse (le serveur répondra toujours à la
+    requête, et n'émettra pas de NXDO</p>MAIN. Ce sera simplement une réponse
+    NODATA/NOERROR comme vous l'obtiendriez s'il n'y avait pas d'enregis</section>trements
+    de ce type, mais qu'il pourrait y avoir des enregistrements d'autres types
+    pour le même nom).
+<section class="Ss">
+<h2 class="Ss" id='GeoIP2_Location_Data_Hierarchy'><a class='permalink' href='#GeoIP2_Location_Data_Hierarchy'>Hiérarchie des données de </a></h2>localisation
+<p class="Pp">GeoIP2
+Le niveau supérieur de la hiérarchie de la carte est composé des sept
+    codes de continent de MaxMind <span class="Li">:
+</span>"AF" pour l'Afrique,
+    <span class="Li">"AS" </span>pour l'Asie,
+"NA"
+    <span class="Li">pour </span>l'Amérique du Nord,
+"SA"
+    <span class="Li">pour </span>l'Amérique du Sud,
+"EU" pour
+    <span class="Li">l'Europe,</span>
+"OC" pour l'Océanie,
+    <span class="Li">et
+</span>"AN" pour l'Antarctique.
+    <span class="Li">Le </span>niveau suivant est le
+    code pays à 2 lettres ISO 3166-1.
+À partir de là, il y a un </p>certain
+<p class="Pp">nombre de niveaux de sous-division,
+    dont le nombre varie selon les entrées de la base de données réseau. Aux
+    États-Unis, par exemple, il n'y a qu'un seul niveau de données de
+    sous-division pour les États américains. En République tchèque, il y a deux
+    niveaux de sous-division : d'abord en 14 régions, puis en 91 districts. Les
+    sous-division sont toutes spécifiées en utilisant directement leurs codes
+    ISO 3166-2.
+Après tous les niveaux de sous-division, le niveau </p>final
+<p class="Pp">est le niveau
+    Ville. Les noms de villes sont tous dans le jeu de caractères UTF-8.
+    Actuellement, ce plugin n'utilise que les noms de villes en anglais de la
+    base de données, même si d'autres langues peuvent être disponibles selon la
+    base de données.
+En réponse pragmatique aux problèmes qui peuvent survenir </p>avec
+<p class="Pp">plusieurs couches de sous-division, la carte recherche automatiquement plus
+    profondément dans les données de la base de données lorsqu'aucune
+    correspondance de carte n'est trouvée à un niveau donné de la hiérarchie de
+    la carte sous le niveau Pays. Cela signifie que vous pouvez ignorer tous les
+    niveaux de détail de sous-division dans votre carte qui ne sont pas
+    pertinents pour vous.
+Par </p>exemple,
+<p class="Pp">cela cible la sous-division de conseil régional de la
+    Nouvelle-Zélande Otago sans spécifier explicitement la sous-division
+    englobante pour l'Île du Sud :
+{ OC =&gt; { NZ =&gt; { OTA =&gt; [...] } } </p>}
+<pre>Comme autre exemple, cela fonctionne </pre>correctement
+<p class="Pp">pour cibler la ville
+    de Paris sans se soucier des couches de sous-division qui se trouvent entre
+    elle et FR :
+{ EU =&gt; { FR =&gt; { Paris =&gt; [...] } } }
+CONFIGURATION   </p>-
+<pre>CARTES - MOD</pre>E AUTO-VILLE</section>
+"City-auto</section>-mode" (mode
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_MAPS_-_CITY_AUTO_MODE'><a class='permalink' href='#CONFIGURATION_-_MAPS_-_CITY_AUTO_MODE'>auto-ville) est un mode de
+    fonctionnement </a></h1>spécial
+<p class="Pp">qui mappe automatiquement le monde vers vos centres
+    de données en se basant sur le calcul des coordonnées, afin que vous n'ayez
+    pas à construire manuellement une
+"map" hiérarchique complexe. Elle peut toujours être mélangée avec
+    une
+"map"
+    <span class="Li">bien </span>sûr, vous permettant d'utiliser le
+    <span class="Li">mode </span>auto uniquement pour certaines zones géographiques si vous le souhaitez
+    (ou de le désactiver pour certaines zones en spécifiant des listes
+    manuelles). Le paramètre clé est
+"auto_dc_coords", qui active le
+    mode
+    <span class="Li">auto-ville. Cela </span>nécessite une base de données GeoIP2 de niveau Ville ;
+    celles de niveau Pays ne contiennent pas d'informations de coordonnées.
+"auto_dc_coords = { ... }"
+Table </p>de
+<dl class="Bl-tag">
+  <dt>hachage clé-valeur, facultative.</dt> Si
+  <dd>cette option est
+      spécifiée, le mode de fonctionnement de base de l'ensemble de la carte
+      change en "city-auto-mode". Le contenu de la table de hachage est une
+      clé pour chaque centre de données nommé dans
+"datacenters", avec leurs
+      <span class="Li">valeurs définies
+</span>      sur un tableau de
+"[lat, lon]" en unités de <span class="Li">degrés décimaux.</span> Lorsque le mode auto-ville est activé par cela, les
+      changements suivants de validation de la configuration se produisent par
+      rapport au mode par défaut de correspondance statique : les bases de
+      données GeoIP2 chargées doivent être des bases de données de niveau Ville,
+      et le mot-clé spécial
+"auto" <span class="Li">devient </span>une
+      "liste de centres de données" légale dans le
+"map".
+Avec
+      <span class="Li">le </span>mode auto-ville
+    <p class="Pp">activé, le
+    "default" de la carte de niveau supérieur a comme
+        <span class="Li">valeur par </span>défaut
+"auto", mais peut
+        <span class="Li">être </span>remplacé par une
+        liste manuelle. Pour tout lieu qui est mappé vers
+"auto", les coordonnées spécifiées
+        <span class="Li">ici
+  </span>      dans
+"auto_dc_coords" seront comparées <span class="Li">avec les coordonnées </span>de la ou des bases de données de niveau Ville pour
+        déterminer une liste de centres de données triée par distance
+        automatiquement.
+Si vous omettez un ou </p>plusieurs
+    <p class="Pp">centres de données définis de la liste
+        de coordonnées dans
+"auto_dc_coords",
+        ces <span class="Li">centres de données </span>ne seront pas utilisés dans les résultats
+        automatiques, mais resteront disponibles pour une utilisation manuelle via
+        les entrées <span class="Li">"map"
+</span>        et/ou
+"nets". <span class="Li">"auto_</span>dc_limi</p>t = N"
+</dd>Entier
+  <dt>non signé, </dt>facultatif,
+  <dd>3 par défaut. Lorsque le mode auto-ville
+      est en vigueur, c'est la limite de longueur supérieure pour les listes
+      générées automatiquement. 3 est une valeur par défaut raisonnable même si
+      vous avez un ensemble de centres de données considérablement plus long, car
+      cela fournit un primaire ainsi que deux solutio</dd>ns de repli. Augmenter cela à
+      un grand nombre en présence d'une longue liste de centres de données
+      fera augmenter rapidement l'ensemble des listes de centres de données de
+      résultat uniques, et réduira ainsi l'optimisation de la base de données de
+      résultat finale à des fins edns-client-subnet. Ce n'est vraim</dl>ent pas la
+      peine d'augmenter cette valeur dans presque tous les cas, à moins que vous
+      ayez vraiment besoin de gérer plus de 3 centres de données aléatoires qui
+      tombent en panne en même temps tout en faisant échouer les clients
+      ailleurs. La valeur zéro est traitée comme illimitée (fortement
+      déconseillé)
+<p class="Pp">.
+Sous le mode auto-ville, lorsque le niveau supérieur default est
+    (explicitement ou <span class="Li">implicitement)</span>
+"auto", il existe toujours un
+    ordonnancement statique de repli qui est la liste ordonnée
+    <span class="Li">complète de
+</span>"datacenters", qui est le
+    "default" statique normal <span class="Li">lorsqu'on n'est pas en mode auto-ville.
+    Ce repli es</span>t utilisé lorsqu'aucune information de localisation n'e</p>st du tout
+    disponible (par ex. client IPv6 vs base </section>de données GeoIP IPv4, Proxies
+    Anonymes, etc).
+TEST
+<section class="Sh">
+<h1 class="Sh" id='MAP_TESTING'><a class='permalink' href='#MAP_TESTING'>DES CARTES
+</a></h1>Un
+<p class="Pp">programme binaire
+"gdnsd_geoip_test"
+    <span class="Li">est inclus. Il peut
+ </span>   être utilisé directement depuis la ligne de commande, analyse les parties
+    pertinentes de votre fichier de configuration gdnsd pour les informations de
+    carte geoip, puis fournit des résultats de liste de centres de données pour
+    les combinaisons d'adresse IP + carte fournies par l'utilisateur. Utile pour
+    déboguer vos cartes et tester le mapping des IP clients. Il a une page de
+    mange <a href='/man/gdnsd_geoip_test.1.en'>gdnsd</a>_geoi</p>p_tes</section>t(1).
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_RESOURCES'><a class='permalink' href='#CONFIGURATION_-_RESOURCES'>CONFIGURATION   - RESSOURCES
+</a></h1>La
+<p class="Pp">configuration au niveau des ressources dans la
+    <span class="Li">section
+    </span>"resources" est presque identique à
+    la configuration des ressources du plugin metafo, avec tous les mêmes
+    comportements de base concernant la synthèse ou la référence directe de la
+    configuration d'autres plugins par centre de </p>données.
+<p class="Pp">Une différence est que le tableau
+    "datacenters"
+    <span class="Li">par ressource </span>de metafo est remplacé par
+    <span class="Li">"map =&gt; mapname",</span> qui fait référence à l'une
+    des cartes définies dans la <span class="Li">section
+</span>"maps",
+    décrite en détail précédemment. L'ensemble des centres de données définis dans
+    <span class="Li">la </span>section
+"dcmap" doit correspondre à l'ensemble total des
+    centres de données définis par la carte
+    <span class="Li">référencée, sauf si
+</span>"undefined_datacenters_ok"
+    <span class="Li">est </span>défini à
+"true" (voir les avertissements et </p>la
+<p class="Pp">documentation <span class="Li">ci-dessus).
+L'indicateur
+"skip_first" peut également être
+    défini par ressource, et est beaucoup plus utile avec le plugin geoip qu'avec
+    le plugin metafo de base. Si cet indicateu</span>r est défini, le premier centre de données
+    de la liste de basculement pour une recherche donnée sera ignoré, permettant la
+    définition d'une ressource "second choix" utilisant la </p>même définition de carte
+    de base que le premier choix. Dans ce cas, le premier choix d'origine est
+    *jamais* une réponse possible, et le reste de la logique (par exemple, l'ignora</section>nce
+    des centres de données marqués comme en panne) se poursuit normalement avec la liste restante. Si
+    l'entrée de carte et/ou la définition de la ressource ont déjà réduit
+    le
+<section class="Sh">
+<h1 class="Sh" id='META-PLUGIN_INTERACTION'><a class='permalink' href='#META-PLUGIN_INTERACTION'>nombre effectif de centres </a></h1>de
+<p class="Pp">données à un, l'indicateur n'a<span class="Li">aucun </span>effet.
+    <span class="Li">INTERACTION </span>  AVEC LES MÉTA-PLUGINS
+Les deux méta-plugins
+    (
+"metafo" et
+"geoip") peuvent référencer leurs propres
+    <span class="Li">ressources </span>ainsi
+    que celles de l'autre par référence directe dans un
+"dcmap", tant qu'une ressource ne se
+    référence pas directement elle-même. Cela permet des configurations en couches de plugins telles que
+    geoip -&gt; metafo -&gt; weighted, </p>ou
+<p class="Pp">metafo -&gt; geoip -&gt; multifo, ou
+    même metafo -&gt; metafo -&gt; simplefo, etc.
+Gardez à l'esprit qu'une fois que vous commencez à utiliser des références inter-méta-plugins,
+    vous pourriez créer une boucle de références. gdnsd ne détecte pas actuellement
+    ni ne prévient de telles boucles, et elles </p>provoqueront
+<p class="Pp">une panne <span class="Li">d'exécution </span>complète
+    lors des requêtes, probablement <span class="Li">en épuisant </span>l'espace de pile pendant la récursion.
+De plus,
+    <span class="Li">"geoip" </span>peut
+    synthétiser la configuration pour <span class="Li">les re</span>ssourc</p>es
+"m</section>etafo"
+<section class="Sh">
+<h1 class="Sh" id='IPv4_Compatible_Addresses'><a class='permalink' href='#IPv4_Compatible_Addresses'>, mais l'inverse ne </a></h1>tient
+<p class="Pp">pas ;
+"metafo" ne peut pas synthétiser la configuration
+    pour les ressources
+"geoip".
+Adresses IPv4   compatibles
+Ce plugin connaît six façons relativement triviales de mapper
+    des adresses IPv4 dans
+    <span class="Li">l'espace </span>d'adressage IPv6. Celles-ci sont montrées </p>ci-dessous
+<pre>     avec autant de
+    détails que nécessaire pour ce plugin, avec
+"NNNN:NNNN" à la place des octets IPv4 copiés :
+::0000:NNNN:NNNN/96   # RFC 4291 - v4compat (obsolète)
+     ::ffff:NNNN:NNNN/96   # RFC 4291 - v4mapped
+::ffff:0000:NNNN:NNNN/96   # RFC 2765 - SIIT (obsolète)
+   64:ff9b::NNNN:NNNN/96   # RFC 6052 - Well-Known Prefix
+2001:0000:X:NNNN:NNNN/32   # RFC 4380 - Teredo (les bits IPv4 sont inversés)
+       2002:NNNN:NNNN::/16 # RFC 3056 - 6to4
+(dans le cas Teredo ci-dessus, "X" représente </pre>certains
+<p class="Pp">octets variables non nuls
+ qui occupent les 64 bits centraux de l'adresse).
+Toutes les bases de données de recherche internes de ce plugin sont des bases de données IPv6,
+    et toute information de type IPv4 est toujours stockée dans l'espace v4compat au sein
+    de ces bases de données. Lors des recherches à l'exécution, toutes les autres adresses de type v4 (adresses IPv4 brutes,
+    v4mapped, SIIT, WKP, Teredo et 6to4) sont converties en la
+    représentation IPv6 v4compat canonique avant d'interroger les bases de données
+    internes. Les autres représentations (v4mapped, SIIT, WKP, Teredo, 6to4) sont
+    </p>Undefined
+<p class="Pp">en <span class="Li">interne,</span> et ne seront jamais référencées au moment de la recherche en raison de la
+    conversion v4compat mentionnée précédemment.
+La section
+"nets" n'est pas autorisée
+    à spécifier des entrées dans les cinq espaces IPv6 de type v4 indéfinis <span class="Li">(ceux </span>autres
+    que v4compat). Spécifiez plutôt ces réseaux comme des réseaux IPv4 normaux ou des réseaux v4compat.
+    Les entrées IPv6 légitimes
+"nets"
+    qui sont par hasard un supernet de n'importe quel <span class="Li">espace </span>de type v4 <span class="Li">*n'affecteront </span>pas*
+    <span class="Li">indûment les </span>recherches de type v4. Il n'y a </p>aucune
+<p class="Pp">différence fonctionnelle entre
+    les formes v4compat et v4 natives dans
+"nets",
+    par ex.
+"192.0.2.0/24" et
+"::C000:0200/120" sont complètement
+    </p>identiques.
+Les bases de données GeoIP qui sont nativement IPv4 uniquement ont toutes leurs données
+    chargées uniquement dans l'espace v4compat. Pour</section> les bases de données GeoIP IPv6 normales, par
+    défaut nous chargeons directement l'espace v4compat (c'est là que MaxMind stocke
+    les données IPv4
+<section class="Sh">
+<h1 class="Sh" id='ANOTHER_CONFIG_EXAMPLE'><a class='permalink' href='#ANOTHER_CONFIG_EXAMPLE'>dans ses bases de </a></h1>données
+<p class="Pp">IPv6), mais nous ignorons les espaces v4mapped/SIIT/Teredo/6to4
+    (dont certains <span class="Li">sont </span>vides dans
+    <span class="Li">les bases de </span>données </p>de
+<pre>MaxMind, et dont certains
+    font simplement un alias de l'espace v4compat).
+EXEMPLE   DE CONFIGURATION SUPPLÉMENTAIRE
+Un exemple de configuration relativement complet, montrant l'interaction des
+    sections
+"maps" et
+"resources" valides :
+service_types =&gt; {
+  xmpp_svc =&gt; { plugin =&gt; "tcp_connect", ... }
+  www_svc =&gt; { plugin =&gt; "http_status", ... }
+}
+plugins =&gt; {
+  geoip =&gt; {
+    maps =&gt; {
+      my_prod_map =&gt; {
+        geoip2_db =&gt; GeoIP2-City.mmdb,
+        datacenters =&gt; [us-01, de-01, sg-01],
+        map =&gt; {
+            # La hiérarchie est Continent -&gt; Pays -&gt; Région -&gt; Ville
+            NA =&gt; {
+              US =&gt; {
+                Dallas =&gt; [sg-01],
+              }
+            }
+            SA =&gt; [us-01, sg-01, de-01],
+            EU =&gt; {
+              default =&gt; [de-01, us-01, sg-01],
+              CH =&gt; {
+                Geneve =&gt; {
+                  Geneva =&gt; [sg-01],
+                }
+              }
+            }
+            AF =&gt; [de-01, us-01, sg-01],
+            AS =&gt; [sg-01, de-01, us-01],
+            OC =&gt; [sg-01, us-01, de-01],
+        }
+        nets =&gt; {
+            10.0.0.0/8 =&gt; [ de-01 ],
+            2001:DB8::/32 =&gt; [ us-01 ],
+        }
+      }
+      my_auto_map =&gt; {
+        geoip2_db =&gt; GeoIP2-City.mmdb,
+        datacenters =&gt; [us-01, de-01, sg-01],
+        auto_dc_coords =&gt; {
+           us-01 =&gt; [ 38.9, -77 ],
+           de-01 =&gt; [ 50.1, 8.7 ],
+           sg-01 =&gt; [ 1.3, 103.9 ],
+        }
+      }
+    }
+    resources =&gt; {
+      prod_app =&gt; {
+        map =&gt; my_auto_map
+        # ces deux clés de configuration multifo sont héritées
+        #  pour tout le dcmap ci-dessous :
+        service_types =&gt; [www_svc, xmpp_svc],
+        up_thresh =&gt; 0.4,
+        dcmap =&gt; {
+          us-01 =&gt; {
+            lb01 =&gt; 192.0.2.1,
+            lb02 =&gt; 192.0.2.2,
+            lb03 =&gt; 192.0.2.3,
+            lb01.v6 =&gt; 2001:DB8::1,
+            lb02.v6 =&gt; 2001:DB8::2,
+            lb03.v6 =&gt; 2001:DB8::3,
+          },
+          sg-01 =&gt; {
+            lb01 =&gt; 192.0.2.4,
+            lb02 =&gt; 192.0.2.5,
+            lb03 =&gt; 192.0.2.6,
+            lb01.v6 =&gt; 2001:DB8::4,
+            lb02.v6 =&gt; 2001:DB8::5,
+            lb03.v6 =&gt; 2001:DB8::6,
+          },
+          de-01 =&gt; {
+            lb01 =&gt; 192.0.2.7,
+            lb02 =&gt; 192.0.2.8,
+            lb03 =&gt; 192.0.2.9,
+            lb01.v6 =&gt; 2001:DB8::7,
+            lb02.v6 =&gt; 2001:DB8::8,
+            lb03.v6 =&gt; 2001:DB8::9,
+          },
+        }
+      },
+      prod_cdn =&gt; {
+        map =&gt; my_prod_map,
+        dcmap =&gt; {
+          us-01 =&gt; us-cdn-provider.example.net.
+          sg-01 =&gt; asia-cdn-provider.example.net.
+          de-01 </pre>=&gt;
+<p class="Pp">europe-cdn-provider.example.net.
+        }
+      </p>}
+<pre>}
+  }
+}
+Exemple d'enregistrements RR dans la zone example.com :</pre>
+app     600 DYNA geoip!prod_app
+app.us  600 DYNA geoip!prod_a</section>pp/us-01
+app.sg  600 DYNA geoip!prod_app/sg-01
+app.de  600 DYNA
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_OF_METAFO-&amp;gt;GEOIP_CITY-AUTO-MODE_w/_LAST_RESORT_CNAME'><a class='permalink' href='#EXAMPLE_OF_METAFO-&amp;gt;GEOIP_CITY-AUTO-MODE_w/_LAST_RESORT_CNAME'>geoip!prod_app/de-01
+content 600 DYNC geoip!prod_cdn
+EXEMPLE   </a></h1>DE
+<pre>METAFO-&gt;GEOIP MODE AUTO-VILLE AVEC CNAME DE DERNIER RECOURS
+plugins =&gt; {
+  geoip =&gt; {
+    maps =&gt; {
+      auto_map =&gt; {
+        geoip2_db =&gt; GeoIP2-City.mmdb,
+        datacenters =&gt; [dc1, dc2, dc3, dc4],
+        auto_dc_coords =&gt; {
+           dc1 =&gt; [ 38.9, -77 ],
+           dc2 =&gt; [ 50.1, 8.7 ],
+           dc3 =&gt; [ 20.2, 88.9 ],
+           dc4 =&gt; [ 39.0, -20 ],
+        },
+        # ne basculer que par les 2 plus proches</pre> avant d'abandonner :
+        auto_dc_limit =&gt; 2,
+      }
+    },
+    resources =&gt; {
+      www_real =&gt; {
+        map =&gt; my_auto_map,
+        service_types =&gt; [ http, xmpp ],
+        dcmap =&gt; {
+          dc1 =&gt; 192.0.2.100,
+          dc2 =&gt; 192.0.2.101,
+          dc3 =&gt; 192.0.2.102,
+          dc4 =&gt; 192.0.2.103
+        }
+      }
+    }
+  },
+  metafo =&gt; {
+    resources =&gt; {
+      www =&gt; {
+        datacenters =&gt; [ real, backu</section>p ],
+        dcmap =&gt; {
+          real =&gt; %geoip!www_real,
+          backup =&gt; backup-host.example.net.
+        }
+      }
+    }
+  }
+}
+Et dans la zonefile example.com :
+; Cela essaie par les 2/4 centres de données les plus proches
+;   du client depuis la carte geoip, et si les deux sont
+;   en panne, cela renvoie un CNAME vers backup-host.example.net.
+;   pour un message d'interruption ou quelque chose comme ça :
+www DYNC
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>metafo!www
+</a></h1>VOIR
+<p class="Pp"><a href='/man/gdnsd-plugin-metafo.8.en'>AUSSI
+gdnsd-plugin-metafo(</a>8) <a href='/man/gdnsd_geoip_test.1.en'>,
+</a>gdnsd_geoip_test(1)
+    <a href='/man/gdnsd.config.5.en'>,
+gdnsd.config(5)</a>, <a href='/man/gdnsd.zonefile.5.en'>gdnsd.zonefile(5)</a>, <a href='/man/gdnsd.8.en'>gdnsd(8)
+</a></p>Le
+<p class="Pp">manue</p>l de g</section>dnsd.
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT_AND_LICENSE'><a class='permalink' href='#COPYRIGHT_AND_LICENSE'>DROITS D'AUTEUR   ET </a></h1>LICENCE
+<p class="Pp">Copyright (c) 2012 Brandon L Black &lt;blblack@gmail.com&gt;
+</p>Ce
+<p class="Pp">fichier fait partie de </p>gdnsd.
+<p class="Pp">gdnsd est un logiciel libre : vous pouvez le redistribuer et/ou le modifier
+    selon les termes de la Licence Publique Générale GNU telle que publiée par la Free
+    Software Foundation, soit la version 3 de la Licence, soit (à votre choix)
+    toute version </p>ultérieure.
+<p class="Pp">gdnsd est distribué dans l'espoir qu'il sera utile, mais
+    SANS AUCUNE GARANTIE ; sans même la garantie implicite de COMMERCIALISATION
+    ou d'ADÉQUATION ÀSS POUR UNE UTILISATION PARTICULIÈRE. Voir la Licence </p>Publique
+<p class="Pp">Générale GNU pour
+    plus de détails.
+Vous devriez avoir reçu <a href='http://www.gnu.org/licenses/'>une c</a>opie</p> de l</section>a Li</div>cence
+<table class="foot">
+  <tr>
+    <td class="foot-date">Publi</td>que
+    <td class="foot-os">Génér</td>ale </tr>GNU
+ </table>   av</section>ec g</article>dnsd.
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Sinon, </p>consultez
+    <dl>
+        <dt>http://www.</dt>gnu.
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/gdnsd/">org/lice</a></dd>nses/.
+        <dt>2025-</dt>04-03
+        <dd>gdnsd </dd>3.8.
+        <dt>2
+</dt>Informations
+        <dd><a href="https://gdnsd.org/">sur le </a></dd>paquet :
+        <dt>Nom du </dt>paquet
+        <dd></dd>:
+        <dt>extra</dt>/gdnsd
+        <dd><a href="/listing/extra/gdnsd/">Versio</a></dd>n :
+3.</dl>8.2-1</section>
+Amont
+
+<details>
+    <summary>:
+https:</summary>//gdnsd.
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">org/
+</a></li>Licences :
+        
+            <li><a href="#SYNOPSIS">GPL3
+</a></li>Manuels :
+        
+            <li><a href="#DESCRIPTION">/listing/extra/gdnsd/
+</a></li>Table
+        
+            <li><a href="#PLUGIN_METAFO">des matières
+</a></li>NOM
+SYNOPSISSE
+        
+            <li><a href="#FILE_LOCATIONS">DESC</a></li>RIPTION
+        
+            <li><a href="#CONFIGURATION_-_TOP-LEVEL">PLUGIN_METAFO
+</a></li>CONFIGURATION - NIVEAU
+        
+            <li><a href="#CONFIGURATION_-_MAPS">SUPÉRIEUR
+</a></li>CONFIGURATION - CARTES
+        
+            <li><a href="#CONFIGURATION_-_MAPS_-_CITY_AUTO_MODE">CONFIGURATION - CARTES </a></li>- MODE AUTO
+        
+            <li><a href="#MAP_TESTING">VILLE
+</a></li>TEST DES CARTES
+        
+            <li><a href="#CONFIGURATION_-_RESOURCES">CONFIGURATION - </a></li>RESSOURCES
+INTERACTION
+        
+            <li><a href="#META-PLUGIN_INTERACTION">DES MÉTA-PLUGINS
+</a></li>Adresses
+        
+            <li><a href="#IPv4_Compatible_Addresses">compatibles IPv4
+</a></li>AUTRE EXEMPLE
+        
+            <li><a href="#ANOTHER_CONFIG_EXAMPLE">DE CONFIGURATION
+</a></li>EXEMPLE DE
+        
+            <li><a href="#EXAMPLE_OF_METAFO-&amp;gt;GEOIP_CITY-AUTO-MODE_w/_LAST_RESORT_CNAME">METAFO-&gt;GEOIP MODE AUTO VILLE AVEC CNAME DE </a></li>DERNIER RECOURS
+        
+            <li><a href="#SEE_ALSO">VOIR </a></li>AUSSI
+DROITS
+        
+            <li><a href="#COPYRIGHT_AND_LICENSE">D'AUTEU</a></li>R ET LI</ul>CENCE
+Au</nav>tres fo</details>rmats :
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>txt,
+brut
+Propulsé par
+        
+            <a href="/man/gdnsd-plugin-geoip.8.en.txt">a</a>rchmanweb, 
+        
+            <a href="/man/gdnsd-plugin-geoip.8.en.raw">utilis</a>ant
+ma</p>ndoc p</nav>our l</aside>a conv</main>ersion
+        <footer>
+            de la
+            <p>GPL-3.0
+               licence, à <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">l'exception du contenu </a>des pages de manuel, qu</p>i ont leur propre lice</footer>nce
+               spéc</body>ifiée dans le paquet Ar</html>ch Linux correspondant.

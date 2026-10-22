@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>tracefs_sql(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">tracefs_sql(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libtracefs/">libtracefs</a></p>
+<p class="lic">Licences: GPL-2.0-only, LGPL-2.1-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBTRACEFS(3)</td>
+    <td class="head-vol">Manuel libtracefs</td>
+    <td class="head-rtitle">LIBTRACEFS(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">tracefs_sql - Créer un événement synthétique via une instruction SQL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><b>#include &lt;tracefs.h&gt;</b>
+struct tracefs_synth *<b>tracefs_sql</b>(struct tep_handle *<i>tep</i>, const char *<i>name</i>,
+                                        const char *<i>sql_buffer</i>, char **<i>err</i>);</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Les événements synthétiques sont des événements créés dynamiquement qui lient deux événements existants via une ou plusieurs correspondances de champs entre les deux événements. Ils peuvent être utilisés pour trouver la latence entre les événements, ou simplement pour transmettre les champs du premier événement au second événement afin de les afficher comme un seul événement.</p>
+<p class="Pp">L'interface du noyau Linux pour créer des événements synthétiques est complexe, et il faut une meilleure façon de créer des événements synthétiques qui soit facile à comprendre via la technologie existante.</p>
+<p class="Pp">Si l'on considère chaque événement comme une table, où les champs sont les colonnes de la table et chaque instance de l'événement comme une ligne, on peut comprendre comment SQL peut être utilisé pour lier deux événements et former un autre événement (une autre table). En utilisant la syntaxe SQL <b>SELECT</b> <b>FROM</b> <b>JOIN</b> <b>ON</b> [ <b>WHERE</b> ], un événement synthétique peut être facilement créé à partir de deux événements différents.</p>
+<p class="Pp">Pour des requêtes SQL simples permettant de créer un histogramme au lieu d'un événement synthétique, voir HISTOGRAMMES ci-dessous.</p>
+<p class="Pp"><b>tracefs_sql</b>() prend un gestionnaire <i>tep</i> (Voir <a href='/man/tep_local_events.3.en'>tep_local_events(3)</a>) qui est utilisé pour vérifier les événements dans l'expression <i>sql_buffer</i>. Le <i>name</i> est le nom de l'événement synthétique à créer. Si <i>err</i> pointe vers une adresse de chaîne, elle sera remplie d'un message détaillé sur tout type d'erreur d'analyse syntaxique, y compris les champs qui n'appartiennent pas à un événement, ou si les événements ou les champs ne sont pas correctement comparés.</p>
+<p class="Pp">L'exemple de programme ci-dessous est un analyseur entièrement fonctionnel qui créera un événement synthétique à partir d'une syntaxe SQL passée via la ligne de commande ou un fichier.</p>
+<p class="Pp">Le format SQL est le suivant :</p>
+<p class="Pp"><b>SELECT</b> &lt;champs&gt; <b>FROM</b> &lt;événement-de-début&gt;
+    <b>JOIN</b> &lt;événement-de-fin&gt; <b>ON</b> &lt;champs-correspondants&gt; <b>WHERE</b>
+    &lt;filtre&gt;</p>
+<p class="Pp">Notez que, bien que les exemples montrent les commandes SQL en majuscules, elles ne sont pas obligatoires. C'est-à-dire que vous pouvez utiliser &quot;SELECT&quot; ou &quot;select&quot; ou &quot;sElEct&quot;.</p>
+<p class="Pp">Par exemple :</p>
+<div class="Bd-indent">
+<pre>SELECT syscalls.sys_enter_read.fd, syscalls.sys_exit_read.ret FROM syscalls.sys_enter_read
+   JOIN syscalls.sys_exit_read
+   ON syscalls.sys_enter_read.common_pid = syscalls.sys_exit_write.common_pid</pre>
+</div>
+<p class="Pp">Créera un événement synthétique avec les champs :</p>
+<div class="Bd-indent">
+<pre>u64 fd; s64 ret;</pre>
+</div>
+<p class="Pp">Parce que la fonction prend un gestionnaire <i>tep</i>, et que généralement tous les noms d'événements sont uniques, vous pouvez omettre le nom du système (groupe) de l'événement, et <b>tracefs_sql</b>() le découvrira pour vous.</p>
+<p class="Pp">C'est-à-dire que l'instruction ci-dessus fonctionnerait avec :</p>
+<div class="Bd-indent">
+<pre>SELECT sys_enter_read.fd, sys_exit_read.ret FROM sys_enter_read JOIN sys_exit_read
+   ON sys_enter_read.common_pid = sys_exit_write.common_pid</pre>
+</div>
+<p class="Pp">Le mot-clé <b>AS</b> peut être utilisé pour nommer les champs ainsi que pour donner un alias aux événements, de sorte que ce qui précède peut être encore simplifié comme suit :</p>
+<div class="Bd-indent">
+<pre>SELECT start.fd, end.ret FROM sys_enter_read AS start JOIN sys_exit_read AS end ON start.common_pid = end.common_pid</pre>
+</div>
+<p class="Pp">Ce qui précède aliaste <i>sys_enter_read</i> en <b>start</b> et
+    <i>sys_exit_read</i> en <b>end</b> et utilise ces alias pour faire référence à
+    l'événement tout au long de l'instruction.</p>
+<p class="Pp">L'utilisation du mot-clé <b>AS</b> dans la partie sélection de
+    l'instruction SQL définira comment ces champs seront nommés dans l'événement
+    synthétique.</p>
+<div class="Bd-indent">
+<pre>SELECT start.fd AS filed, end.ret AS return FROM sys_enter_read AS start JOIN sys_exit_read AS end
+   ON start.common_pid = end.common_pid</pre>
+</div>
+<p class="Pp">Ce qui précède étiquette le <i>fd</i> de <i>start</i> comme
+    <b>filed</b> et le <i>ret</i> de <i>end</i> comme <b>return</b>, où l'événement
+    synthétique créé aura maintenant les champs :</p>
+<div class="Bd-indent">
+<pre>u64 filed; s64 return;</pre>
+</div>
+<p class="Pp">Les champs peuvent également être calculés avec des résultats
+    transmis à l'événement synthétique :</p>
+<div class="Bd-indent">
+<pre>select start.truesize, end.len, (start.truesize - end.len) as diff from napi_gro_receive_entry as start
+   JOIN netif_receive_skb as end ON start.skbaddr = end.skbaddr</pre>
+</div>
+<p class="Pp">Ce qui montrerait la <b>truesize</b> de l'événement
+    <i>napi_gro_receive_entry</i>, la longueur réelle <i>len</i> du contenu,
+    montrée par <i>netif_receive_skb</i>, et la différence entre les deux,
+    exprimée par le champ <b>diff</b>.</p>
+<p class="Pp">Le code prend également en charge l'enregistrement des horodatages
+    à l'un ou l'autre des événements, et l'exécution de calculs sur ceux-ci. Pour
+    la latence de réveil, vous avez :</p>
+<div class="Bd-indent">
+<pre>select start.pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as lat from sched_waking as start
+   JOIN sched_switch as end ON start.pid = end.next_pid</pre>
+</div>
+<p class="Pp">Ce qui précède créera un événement synthétique qui enregistre le
+    <i>pid</i> de la tâche qui est réveillée, et la différence de temps entre
+    l'événement <i>sched_waking</i> et l'événement <i>sched_switch</i>.
+    <b>TIMESTAMP_USECS</b> tronquera le temps à la microseconde, car l'horodatage
+    généralement enregistré dans le tampon de traçage a une résolution en
+    nanosecondes. Si vous ne voulez pas cette troncature, utilisez
+    <b>TIMESTAMP</b> à la place de
+    <b>TIMESTAMP_USECS</b>.</p>
+<p class="Pp">Parce que c'est très courant d'avoir :</p>
+<div class="Bd-indent">
+<pre>   (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS)</pre>
+</div>
+<p class="Pp">Ce qui précède peut être représenté par
+    <b>TIMESTAMP_DELTA_USECS</b> ou si les nanosecondes sont acceptables, vous
+    pouvez utiliser <b>TIMESTAMP_DELTA</b>. C'est-à-dire que la sélection
+    précédente peut également être représentée par :</p>
+<div class="Bd-indent">
+<pre>select start.pid, TIMESTAMP_DELTA_USECS as lat from sched_waking as start JOIN sched_switch as end ON start.pid = end.next_pid</pre>
+</div>
+<p class="Pp">Enfin, la clause <b>WHERE</b> peut être ajoutée, ce qui vous
+    permettra d'ajouter des filtres sur l'un ou l'autre des événements.</p>
+<div class="Bd-indent">
+<pre>select start.pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as lat from sched_waking as start
+   JOIN sched_switch as end ON start.pid = end.next_pid
+   WHERE start.prio &lt; 100 &amp;&amp; (!(end.prev_pid &lt; 1 || end.prev_prio &gt; 100) || end.prev_pid == 0)</pre>
+</div>
+<p class="Pp"><b>NOTE</b></p>
+<p class="Pp">Bien que les deux événements puissent être utilisés ensemble dans la
+    clause <b>WHERE</b>, ils ne doivent pas être mélangés en dehors des
+    instructions &quot;&amp;&amp;&quot; les plus externes. Vous ne pouvez pas utiliser
+    OR (||) pour combiner les événements, où un filtre d'un événement est OR'd
+    à un filtre de l'autre événement. Cela n'a pas de sens, car l'événement
+    synthétique nécessite que les deux événements se produisent pour être
+    enregistrés. Si l'un est filtré, l'événement synthétique ne s'exécute pas.</p>
+<div class="Bd-indent">
+<pre>select start.pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as lat from sched_waking as start
+   JOIN sched_switch as end ON start.pid = end.next_pid
+   WHERE start.prio &lt; 100 &amp;&amp; end.prev_prio &lt; 100</pre>
+</div>
+<p class="Pp">Ce qui précède est valide.</p>
+<p class="Pp">Alors que ce qui suit ne l'est pas.</p>
+<div class="Bd-indent">
+<pre>select start.pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as lat from sched_waking as start
+   JOIN sched_switch as end ON start.pid = end.next_pid
+   WHERE start.prio &lt; 100 || end.prev_prio &lt; 100</pre>
+</div>
+<p class="Pp">Si le noyau le prend en charge, vous pouvez passer une trace de pile
+    entre les événements.</p>
+<div class="Bd-indent">
+<pre>select start.prev_pid as pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as delta, start.STACKTRACE as stack
+   FROM sched_switch as start JOIN sched_switch as end ON start.prev_pid = end.next_pid
+   WHERE start.prev_state == 2</pre>
+</div>
+<p class="Pp">Ce qui précède enregistrera une trace de pile lorsqu'une tâche est dans
+    l'état UNINTERRUPTIBLE (bloqué), et déclenchera l'événement synthétique
+    lorsqu'elle sera à nouveau planifiée, enregistrant la différence de temps
+    pendant laquelle elle était bloquée. Il enregistrera la trace de pile de
+    l'endroit où elle se trouvait lorsqu'elle a été retirée de la planification,
+    ainsi que la delta.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MOTS-CLÉS_EN_TANT_QUE_CHAMPS_DÉVÉNEMENT'><a class='permalink' href='#MOTS-CLÉS_EN_TANT_QUE_CHAMPS_DÉVÉNEMENT'>MOTS-CLÉS EN TANT QUE CHAMPS D'ÉVÉNEMENT</a></h1>
+<p class="Pp">Dans certains cas, un événement peut avoir un mot-clé. Par exemple,
+    regcache_drop_region a &quot;from&quot; comme champ et ce qui suit ne fonctionnera
+    pas :</p>
+<div class="Bd-indent">
+<pre>  select from from regcache_drop_region</pre>
+</div>
+<p class="Pp">Dans de tels cas, ajoutez une barre oblique inverse au champ
+    conflit, et cela indiquera à l'analyseur que &quot;from&quot; est un champ et
+    non un mot-clé :</p>
+<div class="Bd-indent">
+<pre>  select \from from regcache_drop_region</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTOGRAMMES'><a class='permalink' href='#HISTOGRAMMES'>HISTOGRAMMES</a></h1>
+<p class="Pp">Des instructions SQL simples sans <b>JOIN</b> <b>ON</b
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">The <code class="Nm">tracefs_sql</code> function is used to
+    convert an SQL-like query language into a synthetic event definition that
+    can be used by libtracefs to capture events. This function parses the
+    given <code class="Args">buffer</code>, which should be a string containing
+    the SQL-like command, and creates a synthetic event structure based on it.
+    The <code class="Args">name</code> parameter specifies the name of the
+    synthetic event, and <code class="Args">tep</code> is a handle to the
+    trace event parser. The <code class="Args">trace_dir</code> parameter
+    allows specifying a custom tracefs mount point.</p>
+<p class="Pp">The SQL-like language supports filtering, joining, and transforming
+    event data. The <code class="Nm">tracefs_sql</code> function is the primary
+    way to define complex event capturing rules for libtracefs. The generated
+    synthetic event can be a simple event or a histogram.</p>
+<p class="Pp">When generating a histogram, the <code class="Nm">tracefs_sql</code>
+    function returns a synthetic event descriptor that can be further processed
+    to retrieve histogram-specific information. The
+    <a href="/man/tracefs_synth_get_start_hist.3.en">tracefs_synth_get_start_hist(3)</a>
+    function can be used to obtain the
+    <code class="cStructure">struct tracefs_hist</code> descriptor from the
+    returned synthetic event descriptor when a histogram is created.</p>
+<p class="Pp">To utilize the histogram types (see xxx), the CAST command of SQL
+    can be used.</p>
+<p class="Pp">That is:</p>
+<div class="Bd-indent">
+<pre>  select CAST(common_pid AS comm), CAST(id AS syscall) FROM sys_enter</pre>
+</div>
+<p class="Pp">Which produces:</p>
+<div class="Bd-indent">
+<pre># echo 'hist:keys=common_pid.execname,id.syscall' &gt; events/raw_syscalls/sys_enter/trigger
+# cat events/raw_syscalls/sys_enter/hist
+{ common_pid: bash            [     18248], id: sys_setpgid                   [109] } hitcount:          1
+{ common_pid: sendmail        [      1812], id: sys_read                      [  0] } hitcount:          1
+{ common_pid: bash            [     18247], id: sys_getpid                    [ 39] } hitcount:          1
+{ common_pid: bash            [     18247], id: sys_dup2                      [ 33] } hitcount:          1
+{ common_pid: gmain           [     13684], id: sys_inotify_add_watch         [254] } hitcount:          1
+{ common_pid: cat             [     18247], id: sys_access                    [ 21] } hitcount:          1
+{ common_pid: bash            [     18248], id: sys_getpid                    [ 39] } hitcount:          1
+{ common_pid: cat             [     18247], id: sys_fadvise64                 [221] } hitcount:          1
+{ common_pid: sendmail        [      1812], id: sys_openat                    [257] } hitcount:          1
+{ common_pid: less            [     18248], id: sys_munmap                    [ 11] } hitcount:          1
+{ common_pid: sendmail        [      1812], id: sys_close                     [  3] } hitcount:          1
+{ common_pid: gmain           [      1534], id: sys_poll                      [  7] } hitcount:          1
+{ common_pid: bash            [     18247], id: sys_execve                    [ 59] } hitcount:          1</pre>
+</div>
+<p class="Pp">Note, string fields may not be cast.</p>
+<p class="Pp">The possible types to cast to are:</p>
+<p class="Pp"><b>HEX</b> - convert the value to use hex and not decimal</p>
+<p class="Pp"><b>SYM</b> - convert a pointer to symbolic (kallsyms values)</p>
+<p class="Pp"><b>SYM-OFFSET</b> - convert a pointer to symbolic and include the
+    offset.</p>
+<p class="Pp"><b>SYSCALL</b> - convert the number to the mapped system call
+    name</p>
+<p class="Pp"><b>EXECNAME</b> or <b>COMM</b> - can only be used with the
+    common_pid field. Will show the task name of the process.</p>
+<p class="Pp"><b>LOG</b> or <b>LOG2</b> - bucket the key values in a log 2
+    values (1, 2, 3-4, 5-8, 9-16, 17-32, ...)</p>
+<p class="Pp">The above fields are not case sensitive, and &quot;LOG2&quot;
+    works as good as &quot;log&quot;.</p>
+<p class="Pp">A special CAST to <i>COUNTER</i> or <i>COUNTER</i> will make the
+    field a value and not a key. For example:</p>
+<div class="Bd-indent">
+<pre>  SELECT common_pid, CAST(bytes_req AS _COUNTER_) FROM kmalloc</pre>
+</div>
+<p class="Pp">Which will create</p>
+<div class="Bd-indent">
+<pre>  echo 'hist:keys=common_pid:vals=bytes_req' &gt; events/kmem/kmalloc/trigger
+  cat events/kmem/kmalloc/hist
+{ common_pid:       1812 } hitcount:          1  bytes_req:         32
+{ common_pid:       9111 } hitcount:          2  bytes_req:        272
+{ common_pid:       1768 } hitcount:          3  bytes_req:       1112
+{ common_pid:          0 } hitcount:          4  bytes_req:        512
+{ common_pid:      18297 } hitcount:         11  bytes_req:       2004</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RETURN_VALUE'><a class='permalink' href='#RETURN_VALUE'>RETURN   VALUE</a></h1>
+<p class="Pp">Returns 0 on success and -1 on failure. On failure, if <i>err</i>
+    is defined, it will be allocated to hold a detailed description of what went
+    wrong if it the error was caused by a parsing error, or that an event, field
+    does not exist or is not compatible with what it was combined with.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CREATE_A_TOOL'><a class='permalink' href='#CREATE_A_TOOL'>CREATE   A TOOL</a></h1>
+<p class="Pp">The below example is a functional program that can be used to
+    parse SQL commands into synthetic events.</p>
+<div class="Bd-indent">
+<pre>   man tracefs_sql | sed -ne '/^EXAMPLE/,/FILES/ { /EXAMPLE/d ; /FILES/d ; p}' &gt; sqlhist.c
+   gcc -o sqlhist sqlhist.c `pkg-config --cflags --libs libtracefs`</pre>
+</div>
+<p class="Pp">Then you can run the above examples:</p>
+<div class="Bd-indent">
+<pre>  sudo ./sqlhist 'select start.pid, (end.TIMESTAMP_USECS - start.TIMESTAMP_USECS) as lat from sched_waking as start
+                  JOIN sched_switch as end ON start.pid = end.next_pid
+                  WHERE start.prio &lt; 100 || end.prev_prio &lt; 100'</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE'><a class='permalink' href='#EXAMPLE'>EXAMPLE</a></h1>
+<div class="Bd-indent">
+<pre>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdarg.h&gt;
+#include &lt;string.h&gt;
+#include &lt;errno.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;tracefs.h&gt;
+static void usage(char **argv)
+{
+        fprintf(stderr, &quot;usage: %s [-ed][-n name][-s][-S fields][-m var][-c var][-T][-t dir][-f file | sql-command-line]\n&quot;
+                &quot;  -n name - name of synthetic event 'Anonymous' if left off\n&quot;
+                &quot;  -t dir - use dir instead of /sys/kernel/tracing\n&quot;
+                &quot;  -e - execute the commands to create the synthetic event\n&quot;
+                &quot;  -m - trigger the action when var is a new max.\n&quot;
+                &quot;  -c - trigger the action when var changes.\n&quot;
+                &quot;  -s - used with -m or -c to do a snapshot of the tracing buffer\n&quot;
+                &quot;  -S - used with -m or -c to save fields of the end event (comma deliminated)\n&quot;
+                &quot;  -T - used with -m or -c to do both a snapshot and a trace\n&quot;
+                &quot;  -f file - read sql lines from file otherwise from the command line\n&quot;
+                &quot;            if file is '-' then read from standard input.\n&quot;,
+                argv[0]);
+        exit(-1);
+}
+enum action {
+        ACTION_DEFAULT          = 0,
+        ACTION_SNAPSHOT         = (1 &lt;&lt; 0),
+        ACTION_TRACE            = (1 &lt;&lt; 1),
+        ACTION_SAVE             = (1 &lt;&lt; 2),
+        ACTION_MAX              = (1 &lt;&lt; 3),
+        ACTION_CHANGE           = (1 &lt;&lt; 4),
+};
+#define ACTIONS ((ACTION_MAX - 1))
+static int do_sql(const char *instance_name,
+                  const char *buffer, const char *name, const char *var,
+                  const char *trace_dir, bool execute, int action,
+                  char **save_fields)
+{
+        struct tracefs_synth *synth;
+        struct tep_handle *tep;
+        struct trace_seq seq;
+        enum tracefs_synth_handler handler;
+        char *err;
+        int ret;
+        if ((action &amp; ACTIONS) &amp;&amp; !var) {
+                fprintf(stderr, &quot;Error: -s, -S and -T not supported without -m or -c&quot;);
+                exit(-1);
+        }
+        if (!name)
+                name = &quot;Anonymous&quot;;
+        trace_seq_init(&amp;seq);
+        tep = tracefs_local_events(trace_dir);
+        if (!tep) {
+                if (!trace_dir)
+                        trace_dir = &quot;tracefs directory&quot;;
+                perror(trace_dir);
+                exit(-1);
+        }
+        synth = tracefs_sql(tep, name, buffer, &amp;err);
+        if (!synth) {
+                perror(&quot;Failed creating synthetic event!&quot;);
+                if (err)
+                        fprintf(stderr, &quot;%s&quot;, err);
+                free(err);
+                exit(-1);
+        }
+        if (tracefs_synth_complete(synth)) {
+                if (var) {
+                        if (action &amp; ACTION_MAX)
+                                handler = TRACEFS_SYNTH_HANDLE_MAX;
+                        else
+                                handler = TRACEFS_SYNTH_HANDLE_CHANGE;
+                        if (action &amp; ACTION_SAVE) {
+                                ret = tracefs_synth_save(synth, handler, var, save_fields);
+                                if (ret &lt; 0) {
+                                        err = &quot;adding save&quot;;
+                                        goto failed_action;
+                                }
+                        }
+                        if (action &amp; ACTION_TRACE) {
+                                /*
+                                 * By doing the trace before snapshot, it will be included
+                                 * in the snapshot.
+                                 */
+                                ret = tracefs_synth_trace(synth, handler, var);
+                                if (ret &lt; 0) {
+                                        err = &quot;adding trace&quot;;
+                                        goto failed_action;
+                                }
+                        }
+                        if (action &amp; ACTION_SNAPSHOT) {
+                                ret = tracefs_synth_snapshot(synth, handler, var);
+                                if (ret &lt; 0) {
+                                        err = &quot;adding snapshot&quot;;
+ failed_action:
+                                        perror(err);
+                                        if (errno == ENODEV)
+                                                fprintf(stderr, &quot;ERROR: '%s' is not a variable\n&quot;,
+                                                        var);
+                                        exit(-1);
+                                }
+                        }
+                }
+                tracefs_synth_echo_cmd(&amp;seq, synth);
+                if (execute) {
+                        ret = tracefs_synth_create(synth);
+                        if (ret &lt; 0) {
+                                fprintf(stderr, &quot;%s\n&quot;, tracefs_error_last(NULL));
+                                exit(-1);
+                        }
+                }
+        } else {
+                struct tracefs_instance *instance = NULL;
+                struct tracefs_hist *hist;
+                hist = tracefs_synth_get_start_hist(synth);
+                if (!hist) {
+                        perror(&quot;get_start_hist&quot;);
+                        exit(-1);
+                }
+                if (instance_name) {
+                        if (execute)
+                                instance = tracefs_instance_create(instance_name);
+                        else
+                                instance = tracefs_instance_alloc(trace_dir,
+                                                                  instance_name);
+                        if (!instance) {
+                                perror(&quot;Failed to create instance&quot;);
+                                exit(-1);
+                        }
+                }
+                tracefs_hist_echo_cmd(&amp;seq, instance, hist, 0);
+                if (execute) {
+                        ret = tracefs_hist_start(instance, hist);
+                        if (ret &lt; 0) {
+                                fprintf(stderr, &quot;%s\n&quot;, tracefs_error_last(instance));
+                                exit(-1);
+                        }
+                }
+        }
+        tracefs_synth_free(synth);
+        trace_seq_do_printf(&amp;seq);
+        trace_seq_destroy(&amp;seq);
+        return 0;
+}
+int main (int argc, char **argv)
+{
+        char *trace_dir = NULL;
+        char *buffer = NULL;
+        char buf[BUFSIZ];
+        int buffer_size = 0;
+        const char *file = NULL;
+        const char *instance = NULL;
+        bool execute = false;
+        char **save_fields = NULL;
+        const char *nam
+</pre>
+e;
+        const char *var;
+        int action = 0;
+        char *tok;
+        FILE *fp;
+        size_t r;
+        int c;
+        int i;
+        for (;;) {
+                c = getopt(argc, argv, &quot;ht:f:en:m:c:sS:TB:&quot;);
+                if (c == -1)
+                        break;
+                switch(c) {
+                case 'h':
+                        usage(argv);
+                case 't':
+                        trace_dir = optarg;
+                        break;
+                case 'f':
+                        file = optarg;
+                        break;
+                case 'e':
+                        execute = true;
+                        break;
+                case 'm':
+                        action |= ACTION_MAX;
+                        var = optarg;
+                        break;
+                case 'c':
+                        action |= ACTION_CHANGE;
+                        var = optarg;
+                        break;
+                case 's':
+                        action |= ACTION_SNAPSHOT;
+                        break;
+                case 'S':
+                        action |= ACTION_SAVE;
+                        tok = strtok(optarg, &quot;,&quot;);
+                        while (tok) {
+                                save_fields = tracefs_list_add(save_fields, tok);
+                                tok = strtok(NULL, &quot;,&quot;);
+                        }
+                        if (!save_fields) {
+                                perror(optarg);
+                                exit(-1);
+                        }
+                        break;
+                case 'T':
+                        action |= ACTION_TRACE | ACTION_SNAPSHOT;
+                        break;
+                case 'B':
+                        instance = optarg;
+                        break;
+                case 'n':
+                        name = optarg;
+                        break;
+                }
+        }
+        if ((action &amp; (ACTION_MAX|ACTION_CHANGE)) == (ACTION_MAX|ACTION_CHANGE)) {
+                fprintf(stderr, &quot;Impossible d'utiliser -m et -c ensemble\n&quot;);
+                exit(-1);
+        }
+        if (file) {
+                if (!strcmp(file, &quot;-&quot;))
+                        fp = stdin;
+                else
+                        fp = fopen(file, &quot;r&quot;);
+                if (!fp) {
+                        perror(file);
+                        exit(-1);
+                }
+                while ((r = fread(buf, 1, BUFSIZ, fp)) &gt; 0) {
+                        buffer = realloc(buffer, buffer_size + r + 1);
+                        strncpy(buffer + buffer_size, buf, r);
+                        buffer_size += r;
+                }
+                fclose(fp);
+                if (buffer_size)
+                        buffer[buffer_size] = '\0';
+        } else if (argc == optind) {
+                usage(argv);
+        } else {
+                for (i = optind; i &lt; argc; i++) {
+                        r = strlen(argv[i]);
+                        buffer = realloc(buffer, buffer_size + r + 2);
+                        if (i != optind)
+                                buffer[buffer_size++] = ' ';
+                        strcpy(buffer + buffer_size, argv[i]);
+                        buffer_size += r;
+                }
+        }
+        do_sql(instance, buffer, name, var, trace_dir, execute, action, save_fields);
+        free(buffer);
+        return 0;
+}</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FICHIERS'><a class='permalink' href='#FICHIERS'>FICHIERS</a></h1>
+<div class="Bd-indent">
+<pre><b>tracefs.h</b>
+        Fichier d'en-tête pour inclure les API de la bibliothèque.
+<b>-ltracefs</b>
+        Option de l'éditeur de liens à ajouter lors de la compilation d'un programme utilisant la bibliothèque.</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/sqlhist.1.en'>sqlhist(1)</a>, <a href='/man/libtracefs.3.en'>libtracefs(3)</a>, <a href='/man/libtraceevent.3.en'>libtraceevent(3)</a>,
+    <a href='/man/trace-cmd.1.en'>trace-cmd(1)</a>, <a href='/man/tracefs_synth_init.3.en'>tracefs_synth_init(3)</a>,
+    <a href='/man/tracefs_synth_add_match_field.3.en'>tracefs_synth_add_match_field(3)</a>,
+    <a href='/man/tracefs_synth_add_compare_field.3.en'>tracefs_synth_add_compare_field(3)</a>,
+    <a href='/man/tracefs_synth_add_start_field.3.en'>tracefs_synth_add_start_field(3)</a>,
+    <a href='/man/tracefs_synth_add_end_field.3.en'>tracefs_synth_add_end_field(3)</a>,
+    <a href='/man/tracefs_synth_append_start_filter.3.en'>tracefs_synth_append_start_filter(3)</a>,
+    <a href='/man/tracefs_synth_append_end_filter.3.en'>tracefs_synth_append_end_filter(3)</a>, <a href='/man/tracefs_synth_create.3.en'>tracefs_synth_create(3)</a>,
+    <a href='/man/tracefs_synth_destroy.3.en'>tracefs_synth_destroy(3)</a>, <a href='/man/tracefs_synth_free.3.en'>tracefs_synth_free(3)</a>,
+    <a href='/man/tracefs_synth_echo_cmd.3.en'>tracefs_synth_echo_cmd(3)</a>, <a href='/man/tracefs_hist_alloc.3.en'>tracefs_hist_alloc(3)</a>,
+    <a href='/man/tracefs_hist_alloc_2d.3.en'>tracefs_hist_alloc_2d(3)</a>, <a href='/man/tracefs_hist_alloc_nd.3.en'>tracefs_hist_alloc_nd(3)</a>,
+    <a href='/man/tracefs_hist_free.3.en'>tracefs_hist_free(3)</a>, <a href='/man/tracefs_hist_add_key.3.en'>tracefs_hist_add_key(3)</a>,
+    <a href='/man/tracefs_hist_add_value.3.en'>tracefs_hist_add_value(3)</a>, <a href='/man/tracefs_hist_add_name.3.en'>tracefs_hist_add_name(3)</a>,
+    <a href='/man/tracefs_hist_start.3.en'>tracefs_hist_start(3)</a>, <a href='/man/tracefs_hist_destory.3.en'>tracefs_hist_destory(3)</a>,
+    <a href='/man/tracefs_hist_add_sort_key.3.en'>tracefs_hist_add_sort_key(3)</a>,
+    <a href='/man/tracefs_hist_sort_key_direction.3.en'>tracefs_hist_sort_key_direction(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<div class="Bd-indent">
+<pre><b>Steven Rostedt</b> &lt;<b>rostedt@goodmis.org</b>[1]&gt;
+<b>Tzvetomir Stoyanov</b> &lt;<b>tz.stoyanov@gmail.com</b>[2]&gt;
+<b>sameeruddin shaik</b> &lt;<b>sameeruddin.shaik8@gmail.com</b>[3]&gt;</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIGNALEMENT_DE_BOGUES'><a class='permalink' href='#SIGNALEMENT_DE_BOGUES'>SIGNALEMENT DE BOGUES</a></h1>
+<p class="Pp">Signalez les bogues à
+  &lt;<b>linux-trace-devel@vger.kernel.org</b>[4]&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENCE'><a class='permalink' href='#LICENCE'>LICENCE</a></h1>
+<p class="Pp">libtracefs est un logiciel libre sous licence GNU LGPL 2.1</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RESSOURCES'><a class='permalink' href='#RESSOURCES'>RESSOURCES</a></h1>
+<p class="Pp"><a href='https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/'>https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPIE'><a class='permalink' href='#COPIE'>COPIE</a></h1>
+<p class="Pp">Copyright (C) 2020 VMware, Inc. L'utilisation de ce logiciel est
+    gratuite et soumise aux termes de la Licence Publique Générale GNU (GPL).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>rostedt@goodmis.org</dd>
+</dl>
+<div class="Bd-indent">mailto:rostedt@goodmis.org</div>
+<dl class="Bl-tag">
+  <dt> 2.</dt>
+  <dd>tz.stoyanov@gmail.com</dd>
+</dl>
+<div class="Bd-indent">mailto:tz.stoyanov@gmail.com</div>
+<dl class="Bl-tag">
+  <dt> 3.</dt>
+  <dd>sameeruddin.shaik8@gmail.com</dd>
+</dl>
+<div class="Bd-indent">mailto:sameeruddin.shaik8@gmail.com</div>
+<dl class="Bl-tag">
+  <dt> 4.</dt>
+  <dd>linux-trace-devel@vger.kernel.org</dd>
+</dl>
+<div class="Bd-indent">mailto:linux-trace-devel@vger.kernel.org</div>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">24/08/2025</td>
+    <td class="foot-os">libtracefs 1.8.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libtracefs/">extra/libtracefs</a></dd>
+        <dt>Version :</dt>
+        <dd>1.8.2-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/about/">https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/about/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only, LGPL-2.1-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libtracefs/">/listing/extra/libtracefs/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#MOTS_CLES_COMME_CHAMP_DEVENEMENT">MOTS CLÉS COMME CHAMP D'ÉVÉNEMENT</a></li>
+        
+            <li><a href="#HISTOGRAMMES">HISTOGRAMMES</a></li>
+        
+            <li><a href="#VALEUR_DE_RETOUR">VALEUR DE RETOUR</a></li>
+        
+            <li><a href="#CREER_UN_OUTIL">CRÉER UN OUTIL</a></li>
+        
+            <li><a href="#EXEMPLE">EXEMPLE</a></li>
+        
+            <li><a href="#FICHIERS">FICHIERS</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#SIGNALEMENT_DE_BOGUES">SIGNALEMENT DE BOGUES</a></li>
+        
+            <li><a href="#LICENCE">LICENCE</a></li>
+        
+            <li><a href="#RESSOURCES">RESSOURCES</a></li>
+        
+            <li><a href="#COPIE">COPIE</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/tracefs_sql.3.fr.txt">txt</a>, 
+        
+            <a href="/man/tracefs_sql.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

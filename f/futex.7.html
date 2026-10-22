@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>futex(7) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+        <link rel="alternate" href="/man/futex.7.es" hreflang="es">
+    
+        <link rel="alternate" href="/man/futex.7.fr" hreflang="fr">
+    
+        <link rel="alternate" href="/man/futex.7.ro" hreflang="ro">
+    
+        <link rel="alternate" href="/man/futex.7.ru" hreflang="ru">
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">futex(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/any/man-pages/">man-pages</a></p>
+<p class="lic">Licences: BSD-2-Clause, BSD-3-Clause, BSD-4.3TAHOE, BSD-4-Clause-UC, GPL-1.0-or-later, GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-or-later, LGPL-3.0-or-later, LGPL-3.0-linking-exception, LicenseRef-Public-Domain, LicenseRef-UltraPermissive, Linux-man-pages-1-para, Linux-man-pages-copyleft, Linux-man-pages-copyleft-2-para, Linux-man-pages-copyleft-var, MIT, Spencer-94</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">futex(7)</td>
+    <td class="head-vol">Manuel d'informations diverses</td>
+    <td class="head-rtitle">futex(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">futex - verrouillage rapide en espace utilisateur</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><b>#include &lt;linux/futex.h&gt;</b></pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Le noyau Linux fournit des futexes (« verrous rapides en espace utilisateur »)
+    comme bloc de construction pour des verrous et des sémaphores rapides en
+    espace utilisateur. Les futexes sont très basiques et se prêtent bien à la
+    création d'abstractions de verrouillage de plus haut niveau telles que les
+    mutex, les variables de condition, les verrous de lecture-écriture, les
+    barrières et les sémaphores.</p>
+<p class="Pp">La plupart des programmeurs n'utiliseront en fait pas les futexes
+    directement, mais s'appuieront plutôt sur des bibliothèques système qui
+    s'en servent, comme la bibliothèque native POSIX Thread Library (NPTL)
+    (voir <a href='/man/pthreads.7.en'>pthreads(7)</a>).</p>
+<p class="Pp">Un futex est identifié par une portion de mémoire qui peut être
+    partagée entre des processus ou des threads. Dans ces différents processus,
+    le futex n'a pas besoin d'avoir des adresses identiques. Sous sa forme brute,
+    un futex a la sémantique d'un sémaphore ; c'est un compteur qui peut être
+    incrémenté et décrémenté de manière atomique ; les processus peuvent attendre
+    que la valeur devienne positive.</p>
+<p class="Pp">L'opération futex se déroule entièrement en espace utilisateur pour le
+    cas non contesté. Le noyau n'intervient que pour arbitrer le cas contesté.
+    Comme toute conception raisonnable visera la non-contention, les futexes sont
+    également optimisés pour cette situation.</p>
+<p class="Pp">Sous sa forme brute, un futex est un entier aligné qui n'est manipulé
+    que par des instructions d'assembleur atomiques. Cet entier a quatre octets
+    de long sur toutes les plateformes. Les processus peuvent partager cet entier
+    en utilisant <a href='/man/mmap.2.en'>mmap(2)</a>, via des segments de mémoire partagée, ou parce qu'ils
+    partagent un espace mémoire, auquel cas l'application est couramment appelée
+    multithreadée.</p>
+<section class="Ss">
+<h2 class="Ss" id='S%C3%89MANTIQUE'><a class='permalink' href='#S%C3%89MANTIQUE'>SÉMANTIQUE</a></h2>
+<p class="Pp">Toute opération futex commence en espace utilisateur, mais il peut être
+    nécessaire de communiquer avec le noyau en utilisant l'appel système
+    <a href='/man/futex.2.en'>futex(2)</a>.</p>
+<p class="Pp">Pour « lever » un futex, exécutez les instructions d'assembleur appropriées
+    qui amèneront le CPU hôte à incrémenter le compteur de manière atomique.
+    Ensuite, vérifiez s'il est passé de 0 à 1, auquel cas il n'y avait aucun
+    attendant et l'opération est terminée. C'est le cas non contesté, qui est
+    rapide et devrait être fréquent.</p>
+<p class="Pp">Dans le cas contesté, l'incrémentation atomique a changé le compteur
+    de -1 (ou d'un autre nombre négatif). Si cela est détecté, il y a des
+    attendants. L'espace utilisateur doit alors définir le compteur à 1 et
+    demander au noyau de réveiller tous les attendants en utilisant l'opération
+    <b>FUTEX_WAKE</b>.</p>
+<p class="Pp">Attendre sur un futex, pour le « baisser », est l'opération inverse.
+    Décrémentez atomiquement le compteur et vérifiez s'il est passé à 0, auquel
+    cas l'opération est terminée et le futex n'était pas contesté. Dans toutes
+    les autres circonstances, le processus doit définir le compteur à -1 et
+    demander au noyau d'attendre qu'un autre processus lève le futex. Ceci est
+    fait en utilisant l'opération <b>FUTEX_WAIT</b>.</p>
+<p class="Pp">L'appel système <a href='/man/futex.2.en'>futex(2)</a> peut éventuellement recevoir un
+    délai d'attente spécifiant combien de temps le noyau doit attendre que le
+    futex soit levé. Dans ce cas, la sémantique est plus complexe et le
+    programmeur est renvoyé vers <a href='/man/futex.2.en'>futex(2)</a> pour plus de détails. Il en va de même
+    pour l'attente asynchrone de futex.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSIONS'><a class='permalink' href='#VERSIONS'>VERSIONS</a></h1>
+<p class="Pp">Le support initial des futexes a été intégré dans Linux 2.5.7 mais
+    avec une sémantique différente de celle décrite ci-dessus. La sémantique
+    actuelle est disponible à partir de Linux 2.5.40.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">Pour réitérer, les futexes bruts ne sont pas destinés à être une
+    abstraction facile à utiliser pour les utilisateurs finaux. Les
+    implémenteurs sont censés maîtriser l'assembleur et avoir lu les sources de
+    la bibliothèque d'espace utilisateur futex référencée ci-dessous.</p>
+<p class="Pp">Cette page de manuel illustre l'utilisation la plus courante des
+    primitives <a href='/man/futex.2.en'>futex(2)</a> ; ce n'est en aucun cas la seule.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/clone.2.en'>clone(2)</a>, <a href='/man/futex.2.en'>futex(2)</a>, <a href='/man/get_robust_list.2.en'>get_robust_list(2)</a>,
+    <a href='/man/set_robust_list.2.en'>set_robust_list(2)</a>, <a href='/man/set_tid_address.2.en'>set_tid_address(2)</a>, <a href='/man/pthreads.7.en'>pthreads(7)</a></p>
+<p class="Pp"><i>Fuss, Futexes and Furwocks: Fast Userlevel Locking in Linux</i>
+    (actes du Ottawa Linux Symposium 2002), bibliothèque d'exemple futex,
+    futex-*.tar.bz2
+    <a class="Lk" href="https://mirrors.kernel.org/pub/linux/kernel/people/rusty/">https://mirrors.kernel.org/pub/linux/kernel/people/rusty/</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-09-21</td>
+    <td class="foot-os">Pages du manuel Linux 6.16</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page du manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/any/man-pages/">core/man-pages</a></dd>
+        <dt>Version :</dt>
+        <dd>6.16-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.kernel.org/doc/man-pages/">https://www.kernel.org/doc/man-pages/</a></dd>
+        <dt>Licences :</dt>
+        <dd>BSD-2-Clause, BSD-3-Clause, BSD-4.3TAHOE, BSD-4-Clause-UC, GPL-1.0-or-later, GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-or-later, LGPL-3.0-or-later, LGPL-3.0-linking-exception, LicenseRef-Public-Domain, LicenseRef-UltraPermissive, Linux-man-pages-1-para, Linux-man-pages-copyleft, Linux-man-pages-copyleft-2-para, Linux-man-pages-copyleft-var, MIT, Spencer-94</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/man-pages/">/listing/core/man-pages/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#VERSIONS">VERSIONS</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+<nav class="other-languages">
+    <p>Dans d'autres langues :</p>
+    <ul>
+    
+        <li><a href="/man/futex.7.es">es</a></li>
+    
+        <li><a href="/man/futex.7.fr">fr</a></li>
+    
+        <li><a href="/man/futex.7.ro">ro</a></li>
+    
+        <li><a href="/man/futex.7.ru">ru</a></li>
+    
+    </ul>
+</nav>
+
+
+
+<nav class="other-sections">
+    <p>Dans d'autres sections :</p>
+    <ul>
+    
+        <li><a href="/man/futex.2.en">futex(2)</a></li>
+    
+    </ul>
+</nav>
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/futex.7.en.txt">txt</a>, 
+        
+            <a href="/man/futex.7.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>, à l'exception du contenu des pages du manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlhacktut(1perl) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlhacktut.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLHACKTUT(1perl)</td>
+    <td class="head-vol">Guide de référence du programmeur Perl</td>
+    <td class="head-rtitle">PERLHACKTUT(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">perlhacktut — Parcourt la création d'un patch simple en code C</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce document vous guide à travers un exemple de patch simple.</p>
+<p class="Pp">Si vous n'avez pas encore lu perlhack, allez le faire d'abord ! Vous voudrez peut-être aussi parcourir perlsource.</p>
+<p class="Pp">Une fois que vous avez terminé ici, consultez perlhacktips ensuite.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_OF_A_SIMPLE_PATCH'><a class='permalink' href='#EXAMPLE_OF_A_SIMPLE_PATCH'>EXEMPLE DE PATCH SIMPLE</a></h1>
+<p class="Pp">Prenons un patch simple, du début à la fin.</p>
+<p class="Pp">Voici quelque chose que Larry a suggéré : si un format <span class="Li">&quot;U&quot;</span> est le premier format actif lors d'un <span class="Li">&quot;pack&quot;</span> (par exemple, <span class="Li">&quot;pack &quot;U3C8&quot;, @stuff&quot;</span>), alors la chaîne résultante doit être traitée comme étant encodée en UTF-8.</p>
+<p class="Pp">Si vous travaillez avec un clone git du dépôt Perl, vous voudrez créer une branche pour vos modifications. Cela rendra la création d'un patch approprié beaucoup plus simple. Voir perlgit pour les détails sur la façon de faire cela.</p>
+<section class="Ss">
+<h2 class="Ss" id='Writing_the_patch'><a class='permalink' href='#Writing_the_patch'>Écrire le patch</a></h2>
+<p class="Pp">Comment nous préparons-nous à corriger cela ? D'abord, nous localisons le code en question - le <span class="Li">&quot;pack&quot;</span> se produit à l'exécution, donc il sera dans l'un des fichiers <i>pp</i>. En effet, <span class="Li">&quot;pp_pack&quot;</span> se trouve dans <i>pp.c</i>. Comme nous allons modifier ce fichier, copions-le dans <i>pp.c~</i>.</p>
+<p class="Pp">[Eh bien, il était dans <i>pp.c</i> quand ce tutoriel a été écrit. Il a maintenant été séparé avec <span class="Li">&quot;pp_unpack&quot;</span> dans son propre fichier, <i>pp_pack.c</i>]</p>
+<p class="Pp">Maintenant, regardons <span class="Li">&quot;pp_pack&quot;</span> : nous prenons un motif dans <span class="Li">&quot;pat&quot;</span>, puis nous parcourons le motif, prenant chaque caractère de format à tour de rôle dans <span class="Li">&quot;datum_type&quot;</span>. Ensuite, pour chaque caractère de format possible, nous avalons les autres arguments du motif (une largeur de champ, un astérisque, et ainsi de suite) et convertissons le prochain morceau d'entrée dans le format spécifié, l'ajoutant au SV de sortie <span class="Li">&quot;cat&quot;</span>.</p>
+<p class="Pp">Comment savons-nous si le <span class="Li">&quot;U&quot;</span> est le premier format dans le <span class="Li">&quot;pat&quot;</span> ? Eh bien, si nous avons un pointeur vers le début de <span class="Li">&quot;pat&quot;</span>, alors, si nous voyons un <span class="Li">&quot;U&quot;</span>, nous pouvons tester si nous sommes toujours au début de la chaîne. Donc, voici où <span class="Li">&quot;pat&quot;</span> est configuré :</p>
+<pre>STRLEN fromlen;
+char *pat = SvPVx(*++MARK, fromlen);
+char *patend = pat + fromlen;
+I32 len;
+I32 datumtype;
+SV *fromstr;</pre>
+<p class="Pp">Nous aurons un autre pointeur de chaîne là-dedans :</p>
+<pre>   STRLEN fromlen;
+   char *pat = SvPVx(*++MARK, fromlen);
+   char *patend = pat + fromlen;
++  char *patcopy;
+   I32 len;
+   I32 datumtype;
+   SV *fromstr;</pre>
+<p class="Pp">Et juste avant de commencer la boucle, nous allons définir <span class="Li">&quot;patcopy&quot;</span> pour qu'il pointe vers le début de <span class="Li">&quot;pat&quot;</span> :</p>
+<pre>   items = SP - MARK;
+   MARK++;
+   SvPVCLEAR(cat);
++  patcopy = pat;
+   while (pat &lt; patend) {</pre>
+<p class="Pp">Maintenant, si nous voyons un <span class="Li">&quot;U&quot;</span> qui était au début de la chaîne, nous activons le drapeau <span class="Li">&quot;UTF8&quot;</span> pour le SV de sortie, <span class="Li">&quot;cat&quot;</span> :</p>
+<pre>+  if (datumtype == 'U' &amp;&amp; pat==patcopy+1)
++      SvUTF8_on(cat);
+   if (datumtype == '#') {
+       while (pat &lt; patend &amp;&amp; *pat != '\n')
+           pat++;</pre>
+<p class="Pp">Rappelez-vous qu'il doit s'agir de <span class="Li">&quot;patcopy+1&quot;</span> car le premier caractère de la chaîne est le <span class="Li">&quot;U&quot;</span> qui a été avalé dans <span class="Li">&quot;datumtype!&quot;</span></p>
+<p class="Pp">Oups, nous avons oublié une chose : qu'en est-il si des espaces se trouvent au début du motif ? <span class="Li">&quot;pack(&quot; U*&quot;, @stuff)&quot;</span> aura <span class="Li">&quot;U&quot;</span> comme premier caractère actif, même si ce n'est pas la première chose dans le motif. Dans ce cas, nous devons avancer <span class="Li">&quot;patcopy&quot;</span> en même temps que <span class="Li">&quot;pat&quot;</span> lorsque nous rencontrons des espaces :</p>
+<pre>if (isSPACE(datumtype))
+    continue;</pre>
+<p class="Pp">devient</p>
+<pre>if (isSPACE(datumtype)) {
+    patcopy++;
+    continue;
+}</pre>
+<p class="Pp">OK. C'est la partie C terminée. Nous devons maintenant faire deux choses supplémentaires avant que ce patch ne soit prêt : nous avons modifié le comportement de Perl, nous devons donc documenter ce changement. Nous devons également fournir des tests de régression supplémentaires pour nous assurer que notre patch fonctionne et ne crée pas de bug ailleurs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Testing_the_patch'><a class='permalink' href='#Testing_the_patch'>Tester le patch</a></h2>
+<p class="Pp">Les tests de régression pour chaque opérateur se trouvent dans <i>t/op/</i>, nous faisons donc une copie de <i>t/op/pack.t</i> dans <i>t/op/pack.t~</i>. Maintenant, nous pouvons ajouter nos tests à la fin. D'abord, nous allons tester que le <span class="Li">&quot;U&quot;</span> crée bien des chaînes Unicode.</p>
+<p class="Pp">t/op/pack.t a une fonction <b>ok()</b> sensée, mais si ce n'était pas le cas, nous pourrions utiliser celle de t/test.pl.</p>
+<pre>require './test.pl';
+plan( tests =&gt; 159 );</pre>
+<p class="Pp">donc au lieu de cela :</p>
+<pre>print 'not ' unless &quot;1.20.300.4000&quot; eq sprintf &quot;%vd&quot;,
+                                              pack(&quot;U*&quot;,1,20,300,4000);
+print &quot;ok $test\n&quot;; $test++;</pre>
+<p class="Pp">nous pouvons écrire le plus sensé (voir Test::More pour une explication complète de <b>is()</b> et d'autres fonctions de test).</p>
+<pre>is( &quot;1.20.300.4000&quot;, sprintf &quot;%vd&quot;, pack(&quot;U*&quot;,1,20,300,4000),
+                                      &quot;U* produit de l'Unicode&quot; );</pre>
+<p class="Pp">Maintenant, nous allons tester que nous avons bien géré cette histoire d'espaces au début :</p>
+<pre>is( &quot;1.20.300.4000&quot;, sprintf &quot;%vd&quot;, pack(&quot;  U*&quot;,1,20,300,4000),
+                                    &quot;  avec des espaces au début&quot; );</pre>
+<p class="Pp">Et enfin, nous allons tester que nous ne créons pas de chaînes Unicode si <span class="Li">&quot;U&quot;</span> n'est **pas** le premier format actif :</p>
+<pre>isnt( v1.20.300.4000, sprintf &quot;%vd&quot;, pack(&quot;C0U*&quot;,1,20,300,4000),
+                                      &quot;U* pas le premier n'est pas Unicode&quot; );</pre>
+<p class="Pp">Il ne faut pas oublier de changer le nombre de tests qui apparaît en haut, sinon le testeur automatisé sera confus. Cela ressemblera soit à ceci :</p>
+<pre>print &quot;1..156\n&quot;;</pre>
+<p class="Pp">soit à ceci :</p>
+<pre>plan( tests =&gt; 156 );</pre>
+<p class="Pp">Nous compilons maintenant Perl et le faisons passer par la suite de tests. Nos nouveaux tests passent, hourra !</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Documenting_the_patch'><a class='permalink' href='#Documenting_the_patch'>Documenter le patch</a></h2>
+<p class="Pp">Enfin, la documentation. Le travail n'est jamais terminé tant que la paperasse n'est pas finie, alors décrivons le changement que nous venons d'apporter. L'endroit pertinent est <i>pod/perlfunc.pod</i> ; encore une fois, nous faisons une copie, puis nous insérerons ce texte dans la description de <span class="Li">&quot;pack&quot;</span> :</p>
+<pre>=item *
+Si le motif commence par un C&lt;U&gt;, la chaîne résultante sera traitée comme de l'Unicode encodé en UTF-8. Vous pouvez forcer l'encodage UTF-8 dans une chaîne avec un C&lt;U0&gt; initial, et les octets qui suivent seront interprétés comme des caractères Unicode. Si vous ne voulez pas que cela se produise, vous pouvez commencer votre motif par C&lt;C0&gt; (ou autre chose) pour forcer Perl à ne pas encoder votre chaîne en UTF-8, puis faire suivre cela d'un C&lt;U*&gt; quelque part dans votre motif.</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Submit'><a class='permalink' href='#Submit'>Soumettre</a></h2>
+<p class="Pp">Voir perlhack pour les détails sur la façon de soumettre ce patch.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Ce document a été initialement écrit par Nathan Torkington, et est maintenu par la liste de diffusion perl5-porters.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+    
+</dd>
+</dl>
+</section>
+
+            </aside>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+    <dd>Artistic-1.0-Perl OU GPL-1.0-ou-plus récent</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#EXEMPLE_DE_PATCH_SIMPLE">EXEMPLE DE PATCH SIMPLE</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlhacktut.1perl.en.txt">txt</a>, 
+        
+            <a href="/man/perlhacktut.1perl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

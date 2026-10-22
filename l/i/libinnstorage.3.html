@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libinnstorage(3) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">libinnstorage(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/inn/">inn</a></p>
+<p class="lic">Licences: custom:INN</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">libinnstorage(3)</td>
+    <td class="head-vol">InterNetNews Documentation</td>
+    <td class="head-rtitle">libinnstorage(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">libinnstorage - Routines pour la gestion du stockage INN</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNTAXE</a></h1>
+<pre>#include &lt;inn/storage.h&gt;
+typedef enum {
+    RETR_ALL,
+    RETR_HEAD,
+    RETR_BODY,
+    RETR_STAT
+} RETRTYPE;
+typedef enum {
+    SM_RDWR,
+    SM_PREOPEN
+} SMSETUP;
+typedef unsigned char STORAGECLASS;
+typedef unsigned char STORAGETYPE;
+typedef struct token {
+    STORAGETYPE  type;
+    STORAGECLASS class;
+    char         token[STORAGE_TOKEN_LENGTH];
+} TOKEN;
+typedef struct {
+    unsigned char type;
+    const char    *data;
+    struct iovec  *iov;
+    int           iovcnt;
+    size_t        len;
+    unsigned char nextmethod;
+    void          *private;
+    time_t        arrived;
+    time_t        expires;
+    char          *groups;
+    int           groupslen;
+    TOKEN         *token;
+} ARTHANDLE;
+typedef enum {
+    SELFEXPIRE,
+    SMARTNGNUM,
+    EXPENSIVESTAT
+} PROBETYPE;
+typedef enum {
+    SM_ALL,
+    SM_HEAD,
+    SM_CANCELLEDART
+} FLUSHTYPE;
+struct artngnum {
+    char   *groupname;
+    ARTNUM artnum;
+};
+bool IsToken(const char *text);
+char *TokenToText(const TOKEN token);
+TOKEN TextToToken(const char *text);
+bool SMsetup(SMSETUP type, void *value);
+bool SMinit(void);
+TOKEN SMstore(const ARTHANDLE article);
+ARTHANDLE *SMretrieve(const TOKEN token, const RETRTYPE amount);
+ARTHANDLE *SMnext(const ARTHANDLE *article, const RETRTYPE amount);
+void SMfreearticle(ARTHANDLE *article);
+bool SMcancel(TOKEN token);
+bool SMprobe(PROBETYPE type, TOKEN *token, void *value);
+void SMprintfiles(FILE *file, TOKEN token, char **xref,
+                  int ngroups);
+bool SMflushcacheddata(FLUSHTYPE type);
+char *SMexplaintoken(const TOKEN token);
+void SMshutdown(void);
+int SMerrno;
+char *SMerrorstr;
+#include &lt;inn/ov.h&gt;
+#define OV_NOSPACE ...
+typedef enum {
+    OVSPACE,
+    OVSORT,
+    OVCUTOFFLOW,
+    OVGROUPBASEDEXPIRE,
+    OVSTATICSEARCH,
+    OVSTATALL,
+    OVCACHEKEEP,
+    OVCACHEFREE
+} OVCTLTYPE;
+typedef enum {
+    OVNEWSGROUP,
+    OVARRIVED,
+    OVNOSORT
+} OVSORTTYPE;
+typedef enum {
+    OVADDCOMPLETED,
+    OVADDFAILED,
+    OVADDGROUPNOMATCH
+} OVADDRESULT;
+bool OVopen(int mode);
+bool OVctl(OVCTLTYPE type, void *val);
+bool OVgroupstats(char *group, int *lo, int *hi, int *count,
+                  int *flag);
+bool OVgroupadd(char *group, ARTNUM lo, ARTNUM hi, char *flag);
+bool OVgroupdel(char *group);
+OVADDRESULT OVadd(TOKEN token, char *data, int len, time_t arrived,
+                  time_t expires);
+bool OVcancel(TOKEN token);
+void *OVopensearch(char *group, int low, int high);
+bool OVsearch(void *handle, ARTNUM *artnum, char **data, int *len,
+                            TOKEN *token, time_t *arrived);
+void OVclosesearch(void *handle);
+bool OVgetartinfo(char *group, ARTNUM artnum, TOKEN *token);
+bool OVexpiregroup(char *group, int *lo, struct history *h);
+typedef struct _OVGE {
+    bool   delayrm;
+    bool   usepost;
+    bool   quiet;
+    bool   keep;
+    bool   earliest;
+    bool   ignoreselfexpire;
+    char   *filename;
+    time_t now;
+    float  timewarp;
+} OVGE;
+void OVclose(void);</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><b>libinnstorage</b> est une bibliothèque de routines utilitaires
+    communes (le gestionnaire de stockage) pour accéder aux articles Usenet et aux
+    données associées indépendamment des méthodes de stockage particulières; c'est
+    ce qu'on appelle l'API de stockage.</p>
+<p class="Pp">La fonction du gestionnaire de stockage est d'isoler les
+    applications des méthodes individuelles et de prendre les décisions de politique
+    quant à la méthode de stockage qui doit être appelée pour stocker un article.
+    L'un des concepts clés de l'API de stockage est que les articles ne sont pas
+    manipulés à l'aide de l'ID de message ou du numéro d'article, mais plutôt d'un
+    jeton qui identifie de manière unique l'article à la méthode qui l'a stocké.
+    Cela peut sembler redondant puisque l'ID du message est déjà un identifiant
+    unique de l'article; cependant, puisque la méthode de stockage génère le jeton,
+    elle peut encoder toutes les informations dont elle a besoin pour localiser
+    l'article dans le jeton.</p>
+<p class="Pp"><b>OV</b> est un ensemble de routines utilitaires courantes pour
+    accéder aux groupes de discussion et aux données de présentation (overview)
+    indépendamment des méthodes de présentation particulières.</p>
+<p class="Pp">La fonction <b>OV</b> consiste à isoler les applications des
+    méthodes individuelles. Tous les articles transmis via l'API de stockage sont
+    supposés être au format fil (wire format). Le format fil signifie que les
+    lignes se terminent par <span class="Li">&quot;\r\n&quot;</span>, les lignes
+    doublées par des points (c'est-à-dire que les lignes commençant par <span class="Li">&quot;.&quot;</span>
+    et qui commencent déjà par <span class="Li">&quot;.&quot;</span>), et que
+    <span class="Li">&quot;.\r\n&quot;</span> à la fin de l'article sur le flux NNTP
+    ne sont pas supprimés. Cela offre un gain de performance lors du transfert
+    d'articles. Notez que pour la méthode tradspool, le format fil peut être
+    désactivé. Ceci est juste pour la compatibilité, nécessaire à certains anciens
+    outils écrits pour le spool traditionnel.</p>
+<p class="Pp">La fonction <b>IsToken</b> vérifie si le texte est formaté comme une
+    chaîne de jeton textuelle. Elle renvoie true si le format est correct, false
+    sinon.</p>
+<p class="Pp">La fonction <b>TokenToText</b> convertit un jeton en une chaîne de
+    texte pour l'affichage.</p>
+<p class="Pp">La fonction <b>TextToToken</b> convertit une chaîne de texte en un
+    jeton.</p>
+<p class="Pp">La fonction <b>SMsetup</b> configure certains paramètres à utiliser
+    par le gestionnaire de stockage. <i>type</i> est l'un des éléments suivants:</p>
+<dl class="Bl-tag">
+  <dt>&quot;SM_RDWR&quot;</dt>
+  <dd>Autoriser l'ouverture en lecture/écriture pour les fichiers de stockage
+    (la valeur par défaut est false).</dd>
+  <dt>&quot;SM_PREOPEN&quot;</dt>
+  <dd>Ouvrir tous les fichiers de stockage au démarrage et les garder ouverts
+    (la valeur par défaut est false).</dd>
+</dl>
+<p class="Pp"><i>value</i> est le pointeur qui indique la valeur de chaque type.
+    La fonction renvoie true si la configuration réussit, false sinon.</p>
+<p class="Pp">La fonction <b>SMinit</b> appelle la fonction de configuration pour
+    toutes les méthodes configurées basées sur <b>SMsetup</b>. Cette fonction doit
+    être appelée avant toutes les autres fonctions de l'API de stockage commençant
+    par <span class="Li">&quot;SM&quot;</span>, à l'exception de
+    <b>SMsetup</b>. Elle renvoie true si l'initialisation réussit, false sinon.
+    <b>SMinit</b> renvoie true, sauf si toutes les méthodes de stockage échouent
+    à l'initialisation.</p>
+<p class="Pp">La fonction <b>SMstore</b> stocke un article spécifié par
+    <i>article</i>. Les en-têtes et le corps de l'article sont fournis à
+    <b>SMstore</b> via les membres <i>iov</i> et <i>iovcnt</i> de
+    <b>ARTHANDLE</b>. (<i>data</i> et <i>private</i> sont ignorés par
+    <b>SMstore</b>.) Si <i>arrived</i> est spécifié, <b>SMstore</b> utilise sa
+    valeur comme heure d'arrivée de l'article ; sinon, <b>SMstore</b> utilise
+    l'heure actuelle. <b>SMstore</b> renvoie le type de jeton ou
+    <b>TOKEN_EMPTY</b> si l'article n'est pas stocké en raison d'une erreur ou
+    simplement parce qu'il ne correspond à aucune expression <i>uwildmat</i> dans
+    <i>storage.conf</i>. <b>SMstore</b> échoue si <b>SM_RDWR</b> n'a pas été défini
+    sur true avec <b>SMsetup</b>.</p>
+<p class="Pp">La fonction <b>SMretrieve</b> récupère un article spécifié par
+    <i>token</i>. <i>amount</i> est l'une des options suivantes qui spécifie le type
+    de récupération :</p>
+<dl class="Bl-tag">
+  <dt>&quot;RETR_ALL&quot;</dt>
+  <dd>Récupérer l'article entier.</dd>
+  <dt>&quot;RETR_HEAD&quot;</dt>
+  <dd>Récupérer les en-têtes de l'article.</dd>
+  <dt>&quot;RETR_BODY&quot;</dt>
+  <dd>Récupérer le corps de l'article.</dd>
+  <dt>&quot;RETR_STAT&quot;</dt>
+  <dd>Vérifier simplement si l'article existe.</dd>
+</dl>
+<p class="Pp"><b>SMretrieve</b> fournit les données de l'article via les membres
+    <i>data</i> et <i>len</i> de <b>ARTHANDLE</b>. (<i>iov</i> n'est pas défini par
+    <b>SMretrieve</b>.) La zone de données indiquée par <b>ARTHANDLE</b> ne doit
+    pas être modifiée.</p>
+<p class="Pp">La fonction <b>SMnext</b> est similaire en fonction à
+    <b>SMretrieve</b>, sauf qu'elle est destinée à parcourir séquentiellement le
+    stockage d'articles de la méthode. Pour démarrer une requête,
+    <b>SMnext</b> doit être appelée avec un pointeur <b>ARTHANDLE</b> nul.
+    Ensuite, <b>SMnext</b> renvoie un <b>ARTHANDLE</b> qui doit être utilisé pour
+    la requête suivante. Si un pointeur <b>ARTHANDLE</b> nul est renvoyé, il n'y a
+    plus d'articles à interroger. Si <i>data</i> de <b>ARTHANDLE</b> est un pointeur
+    nul ou si <i>len</i> de <b>ARTHANDLE</b> est <span class="Li">0</span>, cela
+    indique que l'article est potentiellement corrompu et doit être annulé par
+    <i>SMcancel</i>. La zone de données indiquée par <b>ARTHANDLE</b> ne doit pas
+    être modifiée.</p>
+<p class="Pp">La fonction <b>SMfreearticle</b> libère toute la mémoire allouée
+    utilisée par <b>SMretrieve</b> et <b>SMnext</b>. Si <b>SMnext</b> est appelée
+    avec un <b>ARTHANDLE</b> précédemment renvoyé, <b>SMfreearticle</b> ne doit
+    pas être appelée car <b>SMnext</b> libère la mémoire allouée en interne.</p>
+<p class="Pp">La fonction <b>SMcancel</b> supprime l'article spécifié par
+    <i>token</i>. Elle renvoie true si l'annulation réussit, false sinon.
+    <b>SMcancel</b> échoue si <b>SM_RDWR</b> n'a pas été défini sur true avec
+    <b>SMsetup</b>.</p>
+<p class="Pp">La fonction <b>SMprobe</b> vérifie le jeton sur
+    <b>PROBETYPE</b>. <i>type</i> est l'un des éléments suivants :</p>
+<dl class="Bl-tag">
+  <dt>&quot;SELFEXPIRE&quot;</dt>
+  <dd>Vérifier si la méthode du jeton possède une fonctionnalité d'expiration
+    automatique.</dd>
+  <dt>&quot;SMARTNGNUM&quot;</dt>
+  <dd>Obtenir le nom du groupe de discussion et le numéro d'article du jeton.</dd>
+  <dt>&quot;EXPENSIVESTAT&quot;</dt>
+  <dd>Vérifier si la vérification de</dd>
+</dl>
+</div>
+</section>
+<p>l'état de l'article est coûteuse. La valeur est une variable entière : true si
+    coûteux, false si non.</p>
+<p class="Pp">La fonction <b>SMprintfiles</b> imprime les noms des fichiers
+    stockant l'article spécifié avec <i>token</i>. Elle renvoie true si l'impression
+    réussit ou false si une erreur se produit. <i>xref</i> est un tableau de
+    chaînes Xref pour l'article et <i>ngroups</i> est le nombre de groupes de
+    discussion dans le tableau.</p>
+<p class="Pp">La fonction <b>SMflushcacheddata</b> efface les données de cache
+    spécifiées par <i>type</i>. Elle renvoie true en cas de succès, false en cas
+    d'échec.</p>
+<p class="Pp">La fonction <b>SMexplaintoken</b> convertit un jeton en une chaîne
+    explicative. Elle renvoie un pointeur vers la chaîne allouée ou un pointeur nul
+    en cas d'erreur.</p>
+<p class="Pp">La fonction <b>SMshutdown</b> effectue le nettoyage nécessaire avant
+    la sortie de la bibliothèque. Elle doit être appelée avant la fin du programme.</p>
+<p class="Pp"><b>SMerrno</b> est une variable globale qui contient le code d'erreur
+    du dernier échec des routines de stockage. <b>SMerrorstr</b> est un pointeur
+    vers une chaîne décrivant l'erreur.</p>
+<p class="Pp"><b>OVopen</b> ouvre l'accès aux données de présentation.
+    <i>mode</i> est une combinaison de <span class="Li">O_RDONLY</span>,
+    <span class="Li">O_WRONLY</span>, ou <span class="Li">O_RDWR</span>. Elle renvoie
+    true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVctl</b> configure des paramètres pour les routines
+    de présentation. <i>type</i> est l'un des éléments suivants :</p>
+<dl class="Bl-tag">
+  <dt>&quot;OVSPACE&quot;</dt>
+  <dd>Vérifie s'il y a suffisamment d'espace pour une nouvelle présentation.
+    <i>val</i> pointe vers une structure <b>OVSPACE</b>.</dd>
+  <dt>&quot;OVSORT&quot;</dt>
+  <dd>Spécifie le type de tri pour la recherche. <i>val</i> pointe vers un
+    entier de type <b>OVSORTTYPE</b>.</dd>
+  <dt>&quot;OVCUTOFFLOW&quot;</dt>
+  <dd>Définit la limite inférieure pour l'ajout d'articles. <i>val</i> pointe
+    vers un entier.</dd>
+  <dt>&quot;OVGROUPBASEDEXPIRE&quot;</dt>
+  <dd>Active l'expiration basée sur le groupe. <i>val</i> pointe vers un entier
+    (true/false).</dd>
+  <dt>&quot;OVSTATICSEARCH&quot;</dt>
+  <dd>Active la recherche statique. <i>val</i> pointe vers un entier
+    (true/false).</dd>
+  <dt>&quot;OVSTATALL&quot;</dt>
+  <dd>Demande des statistiques pour tous les groupes. <i>val</i> pointe vers un
+    tableau de structures <b>OVGROUPSTATS</b>.</dd>
+  <dt>&quot;OVCACHEKEEP&quot;</dt>
+  <dd>Spécifie la durée de conservation des articles mis en cache. <i>val</i>
+    pointe vers un entier.</dd>
+  <dt>&quot;OVCACHEFREE&quot;</dt>
+  <dd>Libère les articles mis en cache. <i>val</i> pointe vers un entier
+    (nombre d'articles à libérer).</dd>
+</dl>
+<p class="Pp">La fonction <b>OVgroupstats</b> récupère les statistiques d'un
+    groupe de discussion spécifié. Elle renvoie true en cas de succès, false en cas
+    d'échec.</p>
+<p class="Pp">La fonction <b>OVgroupadd</b> ajoute un nouveau groupe de discussion.
+    Elle renvoie true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVgroupdel</b> supprime un groupe de discussion. Elle
+    renvoie true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVadd</b> ajoute un article à la base de données de
+    présentation. Elle renvoie un <b>OVADDRESULT</b> indiquant le résultat de
+    l'opération.</p>
+<p class="Pp">La fonction <b>OVcancel</b> supprime un article de la base de données
+    de présentation. Elle renvoie true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVopensearch</b> ouvre un handle de recherche pour
+    un intervalle d'articles dans un groupe de discussion spécifié. Elle renvoie
+    un pointeur vers le handle de recherche ou un pointeur nul en cas d'erreur.</p>
+<p class="Pp">La fonction <b>OVsearch</b> effectue une recherche dans la base de
+    données de présentation. Elle renvoie true en cas de succès, false en cas
+    d'échec.</p>
+<p class="Pp">La fonction <b>OVclosesearch</b> ferme un handle de recherche. Elle
+    ne renvoie aucune valeur.</p>
+<p class="Pp">La fonction <b>OVgetartinfo</b> récupère les informations d'un
+    article spécifique. Elle renvoie true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVexpiregroup</b> supprime les anciens articles d'un
+    groupe de discussion. Elle renvoie true en cas de succès, false en cas d'échec.</p>
+<p class="Pp">La fonction <b>OVclose</b> ferme l'accès aux données de présentation.
+    Elle ne renvoie aucune valeur.</p>
+</section>
+</div>
+</section>
+
+            </article>
+            <aside id="content-right">
+                <nav id="toc">
+                    <p class="toc_header">Contents</p>
+                    <ul>
+                        <li><a href="#NAME">NAME</a></li>
+                        <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+                        <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+                    </ul>
+                </nav>
+            </aside>
+        </main>
+        <footer>
+            <p>Arch Linux man pages : <a href="mailto:webmaster@archlinux.org">webmaster@archlinux.org</a></p>
+        </footer>
+    </body>
+</html>
+      pas de l'existence d'un article est coûteux ou non.</dd>
+</dl>
+<p class="Pp">La fonction <b>SMprintfiles</b> affiche le nom de fichier ou le jeton utilisable par <a href='/man/fastrm.1.en'>fastrm(1)</a>.</p>
+<p class="Pp">La fonction <b>SMflushcacheddata</b> vide les données mises en cache pour chaque méthode de stockage. <i>type</i> est l'un des suivants :</p>
+<dl class="Bl-tag">
+  <dt>&quot;SM_HEAD&quot;</dt>
+  <dd>Vide l'en-tête mis en cache.</dd>
+  <dt>&quot;SM_CANCELLEDART&quot;</dt>
+  <dd>Vide les articles qui doivent être annulés.</dd>
+  <dt>&quot;SM_ALL&quot;</dt>
+  <dd>Vide toutes les données mises en cache.</dd>
+</dl>
+<p class="Pp">La fonction <b>SMexplaintoken</b> renvoie une chaîne de texte lisible par l'homme avec une forme claire et décodée du jeton de l'API de stockage.</p>
+<p class="Pp">La fonction <b>SMshutdown</b> appelle l'arrêt pour chaque méthode de stockage configurée, puis libère toutes les ressources qu'elle a allouées pour elle-même.</p>
+<p class="Pp"><b>SMerrno</b> et <b>SMerrorstr</b> indiquent la raison de la dernière erreur concernant le gestionnaire de stockage.</p>
+<p class="Pp"><b>OVopen</b> appelle la fonction de configuration pour la méthode configurée qui est spécifiée comme <i>ovmethod</i> dans <i>inn.conf</i>. <i>mode</i> est construit à partir de ce qui suit :</p>
+<dl class="Bl-tag">
+  <dt>&quot;OV_READ&quot;</dt>
+  <dd>Autorise l'ouverture en lecture pour la méthode d'aperçu.</dd>
+  <dt>&quot;OV_WRITE&quot;</dt>
+  <dd>Autorise l'ouverture en écriture pour la méthode d'aperçu.</dd>
+</dl>
+<p class="Pp">Cette fonction doit être appelée avant toutes les autres fonctions OV qui commencent par <span class="Li">&quot;OV&quot;</span>.</p>
+<p class="Pp">La fonction <b>OVctl</b> sonde ou définit certains paramètres pour la méthode d'aperçu. <i>type</i> est l'un des suivants :</p>
+<dl class="Bl-tag">
+  <dt>&quot;OVGROUPBASEDEXPIRE&quot;</dt>
+  <dd>Configure la manière dont l'expiration basée sur les groupes est effectuée.</dd>
+  <dt>&quot;OVCUTOFFLOW&quot;</dt>
+  <dd>N'ajoute pas de données d'aperçu si les données sont inférieures à l'article le plus bas.</dd>
+  <dt>&quot;OVSORT&quot;</dt>
+  <dd>Sonde quelle clé convient à la méthode d'aperçu.</dd>
+  <dt>&quot;OVSPACE&quot;</dt>
+  <dd>Sonde l'utilisation de l'espace d'aperçu.</dd>
+  <dt>&quot;OVSTATALL&quot;</dt>
+  <dd>Statut de tous les articles lorsque <b>OVexpiregroup</b> est appelé.</dd>
+  <dt>&quot;OVSTATICSEARCH&quot;</dt>
+  <dd>Configure si les résultats de <b>OVsearch</b> sont stockés dans un tampon statique et doivent être copiés avant le prochain appel à <b>OVsearch</b>.</dd>
+  <dt>&quot;OVCACHEKEEP&quot;</dt>
+  <dd>Configure si le cache doit être conservé.</dd>
+  <dt>&quot;OVCACHEFREE&quot;</dt>
+  <dd>Libère le cache.</dd>
+</dl>
+<p class="Pp">La fonction <b>OVgroupstats</b> récupère les informations spécifiées du groupe de discussion auprès de la méthode d'aperçu.</p>
+<p class="Pp">La fonction <b>OVgroupadd</b> informe la méthode d'aperçu que le groupe de discussion spécifié est en cours d'ajout.</p>
+<p class="Pp">La fonction <b>OVgroupdel</b> informe la méthode d'aperçu que le groupe de discussion spécifié est en cours de suppression.</p>
+<p class="Pp">La fonction <b>OVadd</b> stocke des données d'aperçu.</p>
+<p class="Pp">La fonction <b>OVcancel</b> demande à la méthode d'aperçu de supprimer les données d'aperçu spécifiées avec le jeton.</p>
+<p class="Pp">La fonction <b>OVopensearch</b> demande à la méthode d'aperçu de préparer la récupération des données d'aperçu. La plage de la requête est déterminée par <i>low</i> et <i>high</i>. Le réglage de <b>OVSTATICSEARCH</b> détermine comment les données de résultat de recherche doivent être traitées. (Notez qu'avec certaines méthodes de stockage, chaque appel à <b>OVopensearch</b> peut entraîner la remappage du stockage interne. Par conséquent, plusieurs recherches simultanées peuvent nécessiter la copie des données entre les appels à <b>OVsearch</b> même si <b>OVSTATICSEARCH</b> est faux.)</p>
+<p class="Pp">La fonction <b>OVsearch</b> récupère des informations, un numéro d'article, des données d'aperçu ou l'heure d'arrivée. Elle doit être appelée avec un handle NULL lors du premier appel ; les appels ultérieurs à <b>OVsearch</b> doivent utiliser le handle renvoyé par l'appel précédent à <b>OVsearch</b>. <b>OVsearch</b> renvoie vrai, sauf si elle atteint <i>high</i>, qui est spécifié par <b>OVopensearch</b>. Les données d'aperçu récupérées sont triées par numéro d'article, et <i>len</i> est <span class="Li">0</span> s'il n'y a pas de données d'aperçu pour l'article. Notez que les données récupérées ne sont pas nécessairement terminées par null ; vous ne devez vous fier qu'aux octets <i>len</i> de données d'aperçu présents.</p>
+<p class="Pp">La fonction <b>OVclosesearch</b> libère toutes les ressources qui ont été allouées par <b>OVopensearch</b>.</p>
+<p class="Pp">La fonction <b>OVgetartinfo</b> récupère les données d'aperçu et le jeton spécifiés avec <i>artnum</i>.</p>
+<p class="Pp">La fonction <b>OVexpiregroup</b> expire les données d'aperçu du groupe de discussion. Elle vérifie l'existence de l'article et purge les données d'aperçu si l'article n'existe plus. Si <i>groupbaseexpiry</i> dans <i>inn.conf</i> est vrai, <b>OVexpiregroup</b> expire également les articles.</p>
+<p class="Pp">La fonction <b>OVclose</b> libère toutes les ressources utilisées par la méthode d'aperçu.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTORY'><a class='permalink' href='#HISTORY'>HISTORIQUE</a></h1>
+<p class="Pp">Écrit par Katsuhiro Kondou &lt;kondou@nec.co.jp&gt; pour InterNetNews. Converti en POD par Julien Elie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/expire.8.en'>expire(8)</a>, <a href='/man/fastrm.1.en'>fastrm(1)</a>, <a href='/man/inn.conf.5.en'>inn.conf(5)</a>,
+    <a href='/man/libinn_uwildmat.3.en'>libinn_uwildmat(3)</a>, <a href='/man/storage.conf.5.en'>storage.conf(5)</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2023-03-07</td>
+    <td class="foot-os">INN 2.7.3</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/inn/">extra/inn</a></dd>
+        <dt>Version :</dt>
+        <dd>2.7.3-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.isc.org/othersoftware/">https://www.isc.org/othersoftware/</a></dd>
+        <dt>Licences :</dt>
+        <dd>custom:INN</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/inn/">/listing/extra/inn/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#HISTORY">HISTORIQUE</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/libinnstorage.3.en.txt">txt</a>, 
+        
+            <a href="/man/libinnstorage.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

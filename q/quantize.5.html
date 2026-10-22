@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>quantize(5) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">quantize(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/graphicsmagick/">graphicsmagick</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">quantize(5)</td>
+    <td class="head-vol">Formats de Fichier Manuel</td>
+    <td class="head-rtitle">quantize(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">Quantize - Algorithme de réduction de couleurs d'ImageMagick.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp"><b>#include &lt;magick.h&gt;</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce document décrit comment <b>ImageMagick</b> effectue la réduction de couleurs sur une image. Pour comprendre pleinement ce document, vous devriez avoir une connaissance des techniques d'imagerie de base et de la structure de données en arbre ainsi que de sa terminologie.</p>
+<p class="Pp">Aux fins de l'allocation de couleurs, une image est un ensemble de <i>n</i> pixels, où chaque pixel est un point dans l'espace RGB. L'espace RGB est un espace vectoriel à 3 dimensions, et chaque pixel, <i>pi</i>, est défini par un triplet ordonné de coordonnées rouge, verte et bleue, (<i>ri,</i> <i>gi,</i> <i>bi</i>).</p>
+<p class="Pp">Chaque composante de couleur primaire (rouge, verte ou bleue) représente une intensité qui varie linéairement de 0 à une valeur maximale, <i>cmax</i>, qui correspond à la saturation complète de cette couleur. L'allocation de couleurs est définie sur un domaine consistant en le cube dans l'espace RGB avec des sommets opposés à (0,0,0) et (<i>cmax,cmax,cmax</i>). <b>ImageMagick</b> requiert <i>cmax = 255</i>.</p>
+<p class="Pp">L'algorithme mappe ce domaine sur un arbre dans lequel chaque nœud représente un cube au sein de ce domaine. Dans la discussion suivante, ces cubes sont définis par les coordonnées de deux sommets opposés : le sommet le plus proche de l'origine dans l'espace RGB et le sommet le plus éloigné de l'origine.</p>
+<p class="Pp">Le nœud racine de l'arbre représente le domaine entier, (0,0,0) à (<i>cmax,cmax,cmax</i>). Chaque niveau inférieur de l'arbre est généré en subdivisant le cube d'un nœud en huit cubes plus petits de taille égale. Cela correspond à la bissection du cube parent par des plans passant par les milieux de chaque arête.</p>
+<p class="Pp">L'algorithme de base opère en trois phases : <b>Classification,</b> <b>Réduction</b> et <b>Assignation</b>. La <b>Classification</b> construit un arbre de description des couleurs pour l'image. La <b>Réduction</b> effondre l'arbre jusqu'à ce que le nombre qu'il représente, au maximum, soit le nombre de couleurs souhaité dans l'image de sortie. L'<b>Assignation</b> définit la palette de couleurs de l'image de sortie et attribue à chaque pixel sa couleur par reclassement dans l'arbre réduit. Notre objectif est de minimiser les divergences numériques entre les couleurs originales et les couleurs quantifiées. Pour en savoir plus sur l'erreur de quantification, consultez MESURER L'ERREUR DE RÉDUCTION DES COULEURS plus loin dans ce document.</p>
+<p class="Pp">La <b>Classification</b> commence par initialiser un arbre de description des couleurs d'une profondeur suffisante pour représenter chaque couleur d'entrée possible dans une feuille. Cependant, il est peu pratique de générer un arbre de description des couleurs entièrement formé lors de la phase de classification pour des valeurs réalistes de <i>cmax</i>. Si les composantes de couleur de l'image d'entrée sont quantifiées à une précision de <i>k</i> bits, de sorte que <i>cmax =</i> <i>2k-1</i>, l'arbre nécessiterait <i>k</i> niveaux sous le nœud racine pour permettre la représentation de chaque couleur d'entrée possible dans une feuille. Cela devient prohibitif car le nombre total de nœuds de l'arbre est</p>
+<pre>        &#x03A3; ki=1 8k<i></i></pre>
+<p class="Pp">Un arbre complet nécessiterait 19 173 961 nœuds pour <i>k = 8,</i> <i>cmax = 255</i>. Par conséquent, afin d'éviter de construire un arbre entièrement peuplé, <b>ImageMagick</b> : (1) Initialise des structures de données pour les nœuds uniquement lorsqu'elles sont nécessaires ; (2) Choisit une profondeur maximale pour l'arbre en fonction du nombre de couleurs souhaité dans l'image de sortie (actuellement <i>log4(taille de la palette)+2</i>). Un arbre de cette profondeur permet généralement la meilleure représentation de l'image source avec la vitesse de calcul la plus rapide et la moindre quantité de mémoire. Cependant, la profondeur par défaut est inappropriée pour certaines images. Par conséquent, l'appelant peut demander une profondeur d'arbre spécifique.</p>
+<p class="Pp">Pour chaque pixel de l'image d'entrée, la classification parcourt vers le bas à partir de la racine de l'arbre de description des couleurs. À chaque niveau de l'arbre, elle identifie le seul nœud qui représente un cube dans l'espace RGB contenant la couleur du pixel. Elle met à jour les données suivantes pour chaque nœud de ce type :</p>
+<dl class="Bl-tag">
+  <dt id="n"><a class="permalink" href="#n"><b>n1:</b></a></dt>
+  <dd>Nombre de pixels dont la couleur est contenue dans le cube RGB que ce nœud représente ;</dd>
+  <dt id="n~2"><a class="permalink" href="#n~2"><b>n2:</b></a></dt>
+  <dd>Nombre de pixels dont la couleur n'est pas représentée dans un nœud de niveau inférieur dans l'arbre ; initialement, <i>n2 = 0</i> pour tous les nœuds sauf les feuilles de l'arbre.</dd>
+  <dt id="S"><a class="permalink" href="#S"><b>Sr, Sg, Sb:</b></a></dt>
+  <dd>Sommes des valeurs des composantes rouge, verte et bleue pour tous les pixels non classifiés à un niveau inférieur. La combinaison de ces sommes et de <i>n2</i> caractérisera finalement la couleur moyenne d'un ensemble de pixels représentés par ce nœud.</dd>
+  <dt id="E:"><a class="permalink" href="#E:"><b>E:</b></a></dt>
+  <dd>La distance au carré dans l'espace RGB entre chaque pixel contenu dans un nœud et le centre du nœud. Cela représente l'erreur de quantification pour un nœud.</dd>
+</dl>
+<p class="Pp">La <b>Réduction</b> élague répétitivement l'arbre jusqu'à ce que le nombre de nœuds avec <i>n2 &gt; 0</i> soit inférieur ou égal au nombre maximum de couleurs autorisées dans l'image de sortie. À chaque itération de l'arbre, elle sélectionne les nœuds dont la valeur <i>E</i> est minimale pour l'élagage et fusionne leurs statistiques de couleur vers le haut. Elle utilise un seuil d'élagage, <i>Ep</i>, pour régir la sélection des nœuds comme suit :</p>
+<p class="Pp">
+  <br/>
+   Ep = 0
+  <br/>
+   while nombre de nœuds avec (n2 &gt; 0) &gt; nombre maximal requis de couleurs
+  <br/>
+   élaguer tous les nœuds tels que E &lt;= Ep
+  <br/>
+   Définir Ep à la valeur minimale de E dans les nœuds restants</p>
+<p class="Pp">Cela a pour effet de minimiser toute erreur de quantification lors de la fusion de deux nœuds.</p>
+<p class="Pp">Lorsqu'un nœud à élaguer a des descendants, la procédure d'élagage s'appelle récursivement pour élaguer l'arbre en partant des feuilles. Les valeurs de <i>n2 Sr, Sg,</i> et <i>Sb</i> dans un nœud en cours d'élagage sont toujours ajoutées aux données correspondantes dans le parent de ce nœud. Cela conserve les caractéristiques de couleur du nœud élagué pour un moyennage ultérieur.</p>
+<p class="Pp">Pour chaque nœud, <i>n2</i> pixels existent pour lesquels ce nœud représente le plus petit volume dans l'espace RGB contenant les couleurs de ces pixels. Lorsque <i>n2 &gt; 0</i>, le nœud définira de manière unique une couleur dans l'image de sortie. Au début de la réduction, <i>n2 = 0</i> pour tous les nœuds, sauf les feuilles de l'arbre qui représentent les couleurs présentes dans l'image d'entrée.</p>
+<p class="Pp">L'autre décompte de pixels, <i>n1</i>, indique le nombre total de couleurs à l'intérieur du volume cubique que le nœud représente. Cela inclut <i>n1 - n2</i> pixels dont les couleurs doivent être définies par des nœuds à un niveau inférieur dans l'arbre.</p>
+<p class="Pp">L'<b>Assignation</b> génère l'image de sortie à partir de l'arbre élagué. L'image de sortie se compose de deux parties : (1) une palette de couleurs, qui est un tableau de descriptions de couleurs (triplets RGB) pour chaque couleur présente dans l'image de sortie ; (2) un tableau de pixels, qui représente chaque pixel comme un index dans le tableau de la palette de couleurs.</p>
+<p class="Pp">Premièrement, la phase d'assignation effectue un passage sur l'arbre de description des couleurs élagué pour établir la palette de couleurs de l'image. Pour chaque nœud avec <i>n2 &gt; 0</i>, elle divise <i>Sr,</i> <i>Sg</i> et <i>Sb</i> par <i>n2</i>. Cela produit la couleur moyenne de tous les pixels qui se classent à un niveau pas plus bas que ce nœud. Chacune de ces couleurs devient une entrée dans la palette de couleurs.</p>
+<p class="Pp">Enfin, la phase d'assignation reclassifie chaque pixel dans l'arbre élagué pour identifier le nœud le plus profond contenant la couleur du pixel. La valeur du pixel dans le tableau de pixels devient l'index de la couleur moyenne de ce nœud dans la palette de couleurs.</p>
+<p class="Pp">L'expérience empirique suggère que les distances dans des espaces colorimétriques tels que YUV ou YIQ correspondent plus étroitement aux différences de couleurs perceptuelles que les distances dans l'espace RGB. Ces espaces colorimétriques peuvent donner de meilleurs résultats lors de la réduction des couleurs d'une image. Ici, l'algorithme est tel que décrit, sauf que chaque pixel est un point dans l'espace colorimétrique alternatif. Par souci de commodité, les composantes de couleur sont normalisées dans la plage de 0 à une valeur maximale, <i>cmax</i>. La réduction des couleurs peut alors se poursuivre comme décrit.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MESURE_DE_LERRREUR_DE_REDUCTION_DES_COULEURS'><a class='permalink' href='#MESURE_DE_LERRREUR_DE_REDUCTION_DES_COULEURS'>MESURE DE L'ERREUR DE RÉDUCTION DES COULEURS</a></h1>
+<p class="Pp">Selon l'image, l'erreur de réduction des couleurs peut être évidente ou invisible. Les images avec des hautes fréquences spatiales (telles que les cheveux ou l'herbe) montreront l'erreur beaucoup moins que les images avec de grandes zones lissées (telles que les visages). En effet, les contours introduits par le processus de réduction des couleurs sont masqués par les hautes fréquences de l'image.</p>
+<p class="Pp">Pour mesurer la différence entre les images originale et réduite en couleur (l'erreur totale de réduction des couleurs), <b>ImageMagick</b> additionne sur tous les pixels d'une image la distance au carré dans l'espace RGB entre chaque valeur de pixel originale et sa valeur réduite en couleur. <b>ImageMagick</b> affiche plusieurs mesures d'erreur, y compris l'erreur moyenne par pixel, l'erreur moyenne normalisée et l'erreur maximale normalisée.</p>
+<p class="Pp">La mesure d'erreur normalisée peut être utilisée pour comparer des images. En gén</p>
+</div>
+</section>
+                
+            </article>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+ral, plus l'erreur moyenne est proche de zéro, plus l'image quantifiée ressemble à l'image source. Idéalement, l'erreur devrait être basée sur la perception, car l'œil humain est le juge final de la qualité de la quantification.</p>
+<p class="Pp">Ces erreurs sont mesurées et imprimées lorsque <b>-verbose</b> et <b>-colors</b> sont spécifiés sur la ligne de commande :</p>
+<dl class="Bl-tag">
+  <dt id="mean"><a class="permalink" href="#mean"><b>erreur moyenne par pixel :</b></a></dt>
+  <dd>est l'erreur moyenne pour un seul pixel de l'image.</dd>
+  <dt id="normalized"><a class="permalink" href="#normalized"><b>erreur quadratique moyenne normalisée :</b></a></dt>
+  <dd>est l'erreur de quantification quadratique moyenne normalisée pour un seul pixel de l'image.
+    <p class="Pp">Cette mesure de distance est normalisée sur une plage comprise entre 0 et 1. Elle est indépendante de la plage des valeurs rouges, vertes et bleues de l'image.</p>
+  </dd>
+  <dt id="normalized~2"><a class="permalink" href="#normalized~2"><b>erreur quadratique maximale normalisée :</b></a></dt>
+  <dd>est la plus grande erreur de quantification quadratique normalisée pour un seul pixel de l'image.
+    <p class="Pp">Cette mesure de distance est normalisée sur une plage comprise entre 0 et 1. Elle est indépendante de la plage des valeurs rouges, vertes et bleues de l'image.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><b>display(1), animate(1), mogrify(1), import(1), miff(5)</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (C) 2002 ImageMagick Studio, une organisation à but non lucratif dédiée à la mise à disposition gratuite de solutions d'imagerie logicielle.</p>
+<p class="Pp">La permission est accordée par la présente, gratuitement, à toute personne obtenant une copie de ce logiciel et des fichiers de documentation associés (« ImageMagick »), de traiter ImageMagick sans restriction, y compris sans limitation les droits d'utiliser, copier, modifier, fusionner, publier, distribuer, sous-licencier et/ou vendre des copies d'ImageMagick, et de permettre aux personnes auxquelles ImageMagick est fourni de le faire, sous réserve des conditions suivantes :</p>
+<p class="Pp">L'avis de droit d'auteur ci-dessus et cet avis de permission doivent être inclus dans toutes les copies ou portions substantielles d'ImageMagick.</p>
+<p class="Pp">Le logiciel est fourni « tel quel », sans garantie d'aucune sorte, expresse ou implicite, y compris, mais sans s'y limiter, les garanties de qualité marchande, d'adéquation à un usage particulier et de non-contrefaçon. En aucun cas ImageMagick Studio ne pourra être tenu responsable de toute réclamation, dommage ou autre responsabilité, que ce soit dans une action contractuelle, délictuelle ou autre, découlant de, hors de, ou en relation avec ImageMagick ou l'utilisation ou d'autres transactions dans ImageMagick.</p>
+<p class="Pp">Sauf dans la mesure prévue par cet avis, le nom d'ImageMagick Studio ne doit pas être utilisé dans la publicité ou autrement pour promouvoir la vente, l'utilisation ou d'autres transactions dans ImageMagick sans autorisation écrite préalable d'ImageMagick Studio.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REMERCIEMENTS'><a class='permalink' href='#REMERCIEMENTS'>REMERCIEMENTS</a></h1>
+<p class="Pp">Paul Raveling, USC Information Sciences Institute, pour l'idée originale d'utiliser la subdivision spatiale pour l'algorithme de réduction de couleur. Avec la permission de Paul, ce document est une adaptation d'un document qu'il a écrit.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEURS'><a class='permalink' href='#AUTEURS'>AUTEURS</a></h1>
+<p class="Pp">John Cristy, ImageMagick Studio</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">$Date$</td>
+    <td class="foot-os">ImageMagick</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/graphicsmagick/">extra/graphicsmagick</a></dd>
+        <dt>Version :</dt>
+        <dd>1.3.46-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="http://www.graphicsmagick.org/">http://www.graphicsmagick.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>MIT</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/graphicsmagick/">/listing/extra/graphicsmagick/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#MEASURING_COLOR_REDUCTION_ERROR">MESURE DE L'ERREUR DE RÉDUCTION DE COULEUR</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#ACKNOWLEDGEMENTS">REMERCIEMENTS</a></li>
+        
+            <li><a href="#AUTHORS">AUTEURS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/quantize.5.en.txt">txt</a>, 
+        
+            <a href="/man/quantize.5.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

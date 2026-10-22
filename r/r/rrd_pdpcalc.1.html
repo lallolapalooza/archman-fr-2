@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>rrd_pdpcalc(1) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">rrd_pdpcalc(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/rrdtool/">rrdtool</a></p>
+<p class="lic">Licences: GPL-2.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">RRD_PDPCALC(1)</td>
+    <td class="head-vol">rrdtool</td>
+    <td class="head-rtitle">RRD_PDPCALC(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">rrd_pdpcalc - Logiques de calcul interne des PDP avec un exemple par
+    Tianpeng Xia</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cet article explique comment les PDP sont calculés de manière détaillée
+    mais facile à comprendre, avec un exemple.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Rappel_des_bases_sur_les_PDP'><a class='permalink' href='#Rappel_des_bases_sur_les_PDP'>Rappel   des bases sur les PDP</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Connaissances_fondamentales'><a class='permalink' href='#Connaissances_fondamentales'>Connaissances   fondamentales</a></h2>
+<p class="Pp">Si vous n'avez pas lu les tutoriels ou les pages de manuel sur le site
+    officiel ou ceux d'autres auteurs, je vous encourage vivement à le faire. Comme
+    indiqué dans la description, cet article explique uniquement comment un PDP
+    est calculé, mais pas sa définition. Veuillez donc lire les documents suivants
+    pour acquérir une compréhension de base des PDP :</p>
+<p class="Pp"><a href='http://rrdtool.vandenbogaerdt.nl/process.php'>http://rrdtool.vandenbogaerdt.nl/process.php</a> - Par Alex van
+    den Bogaerdt. Cet article expliquait les PDP de manière très détaillée et claire,
+    cependant, il n'explique pas le &quot;processus de normalisation&quot; dans sa
+    section &quot;Normalize interval&quot; de la bonne manière (contrairement à la
+    version officielle que j'ai confirmée avec <span class="Li">@oetiker</span>
+    lui-même). Le défaut peut être facilement observé dans les graphiques à barres,
+    discuté dans la section &quot;Logiques de calcul&quot;.</p>
+<p class="Pp"><a href='https://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html'>https://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html</a> -
+    Celle-ci se trouve sur le site officiel. En fait, c'est la page de manuel pour
+    &quot;rrdcreate&quot;, et elle révèle ce qui se passe sous le capot en ce qui
+    concerne le calcul des PDP dans sa section &quot;The HEARTBEAT and the STEP&quot;.</p>
+<p class="Pp">Le graphique texte de Don Baarda offre une explication vivante sur la
+    manière dont les données <b>UNKNOWN</b> sont produites et comment la valeur
+    heartbeat peut influencer l'échantillonnage. Malheureusement, il ne donne pas
+    une méthode claire par laquelle les PDP sont calculés.</p>
+<p class="Pp"><a href='https://oss.oetiker.ch/rrdtool/tut/rrdtutorial.en.html'>https://oss.oetiker.ch/rrdtool/tut/rrdtutorial.en.html</a> -
+    Un autre tutoriel officiel détaillé par Alex van den Bogaerdt. De même, il ne
+    fournit que des exemples avec des données régulièrement et exactement distribuées
+    selon le pas défini.</p>
+<p class="Pp">Si vous n'aimez pas faire d'expériences ou si les mécanismes internes
+    ne vous intéressent pas trop, vous pouvez vous arrêter ici et accorder plus
+    d'attention à des sujets plus pratiques comme l'exportation de graphiques ou
+    le manuel de commandes. Mais si vous êtes le genre de personne comme moi qui se
+    soucie autant des logiques de calcul, veuillez continuer à lire.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Logiques_de_calcul'><a class='permalink' href='#Logiques_de_calcul'>Logiques   de calcul</a></h1>
+<p class="Pp">Voici le cœur de cet article. Dans le contenu suivant de cette section,
+    je souhaite donner deux versions de méthodes de calcul, une par Alex van den
+    Bogaerdt et une autre par <span class="Li">@eotiker</span>.</p>
+<p class="Pp">Pour fournir une explication conviviale pour les caractères ASCII,
+    j'expliquerai les deux versions avec le caractère ci-dessous au lieu d'une image
+    réelle.</p>
+<pre> |
+ |    (v1)
+ | _______                        (v4)  (v5)
+ | |     |           (v3)        ____________
+ | |     |        ______________|     ||   |
+ | |     |        |            ||     ||   |
+ | |     |        |            ||     ||   |
+ | |     |   (v2) |            ||     ||   |
+ | |     |________|            ||     ||   |
+---------------------------------------------&gt;
+ 0 1     3        7            17     20   21</pre>
+<p class="Pp">L'axe X représente les créneaux horaires (chaque seconde représente un
+    créneau) et l'axe Y représente la valeur.</p>
+<p class="Pp">Clarifions un peu tout cela :</p>
+<p class="Pp">- Le pas est de 5</p>
+<p class="Pp">- chaque PDP est mis à jour uniquement si une valeur arrive à ou après
+    le dernier créneau du PDP, par exemple, le dernier créneau du PDP de 16 à 20
+    est 20</p>
+<p class="Pp">- Le heartbeat est de 20, donc les échantillons pendant toute la période
+    7-17 ne sont pas rejetés</p>
+<p class="Pp">- À la seconde 3, la première valeur arrive en tant que v1, et ainsi de
+    suite</p>
+<p class="Pp">- La seconde 0 est l'origine, et elle ne compte pas comme un échantillon</p>
+<section class="Ss">
+<h2 class="Ss" id='Version_Bogaerdt'><a class='permalink' href='#Version_Bogaerdt'>Version   Bogaerdt</a></h2>
+<p class="Pp">Comme on peut le voir sur cette page :
+    <a href='http://rrdtool.vandenbogaerdt.nl/process.php'>http://rrdtool.vandenbogaerdt.nl/process.php</a>, après que toutes les données
+    primaires soient transformées en débits (sauf pour GAUGE, bien sûr), elles doivent
+    passer par un <b>processus de normalisation</b> si elles ne sont pas distribuées
+    exactement selon le pas ou sur des frontières temporelles bien définies, selon
+    les mots de l'auteur.</p>
+<p class="Pp">Qu'est-ce que cela signifie ? Essentiellement, si toutes les données
+    <b>connues</b> (par opposition à une valeur <b>inconnue</b>) représentent au moins
+    50% de tous les créneaux pendant une période, alors un PDP est calculé à partir
+    d'elles.</p>
+<p class="Pp">Cette version semble bien fonctionner jusqu'à la partie des graphiques
+    à barres.</p>
+<p class="Pp">Selon le graphique à barres ASCII, nous avons les résultats suivants :</p>
+<p class="Pp">À partir de la seconde 1, le PDP de chaque période (1-5, 6-10, ...) est
+    calculé en moyennant toutes les valeurs à l'intérieur.</p>
+<p class="Pp">Donc : - le PDP de 1 à 5 est (v1*3+v2*2)/5</p>
+<p class="Pp">- le PDP de 6 à 10 est (v2*2+v3*3)/5</p>
+<p class="Pp">- le PDP de 11 à 15 est (v3*5)/5, puisque toutes les valeurs dans les
+    créneaux 11, 12, 13, 14 et 15 sont les mêmes, soit v3</p>
+<p class="Pp">- ...</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='La_version_officielle_(_aussi_version_@oetiker_):'><a class='permalink' href='#La_version_officielle_(_aussi_version_@oetiker_):'>La   version officielle ( aussi version @oetiker):</a></h2>
+<p class="Pp">En utilisant le même graphique, cette version suggère ce qui suit :</p>
+<p class="Pp">- le PDP de 1 à 5 est (v1*3+v2*2)/5</p>
+<p class="Pp">- les PDP de 6 à 10 et de 11 à 15 sont les <b>MÊMES</b>, soit (v2*2+v3*8)</p>
+<p class="Pp">- ...</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Une_comparaison_et_quelques_explications'><a class='permalink' href='#Une_comparaison_et_quelques_explications'>Une   comparaison et quelques explications</a></h2>
+<p class="Pp">Nous avons donc vu les deux versions ci-dessus et leurs PDP de 6 à 10 et
+    de 11 à 15 ne concordent pas.</p>
+<p class="Pp">Pourquoi est-ce ainsi ?</p>
+<p class="Pp">Parce que la différence entre la version officielle et la version
+    Bogaerdt vient de la manière dont ils effectuent le calcul pour les PDP(6-10)
+    et PDP(11-15).</p>
+<p class="Pp">Discutons-en plus en détail en utilisant le graphique à barres ci-dessus.</p>
+<p class="Pp"><i>Version de Bogaerdt,</i></p>
+<p class="Pp">Les PDP sont <b>toujours calculés individuellement</b>, peu importe comment
+    les valeurs arrivent.</p>
+<p class="Pp">Par exemple, la valeur au créneau 17 arrive après le dernier créneau
+    du PDP(11-15). De plus, la valeur immédiatement précédente avant le créneau 17
+    est à 7. Tous les créneaux de 7 à 17 sont assignés à v3. Étant donné que chaque
+    PDP est calculé individuellement, PDP(6-10) est (v2*2+v3*3)/5 tandis que
+    PDP(11-15) est (v3*5)/5.</p>
+<p class="Pp"><i>La version officielle</i></p>
+<p class="Pp">Les PDP sont <b>toujours calculés en termes des pas que le prochain
+    point de mise à jour couvre</b>, qu'il s'agisse de 1 pas, 2 pas ou n pas ; en
+    d'autres termes, les PDP peuvent être calculés <b>ensemble</b>.</p>
+<p class="Pp">Par exemple, la mise à jour au créneau 17 couvre les PDP(6-10) et
+    PDP(11-15) car la valeur <b>immédiatement</b> précédente est à 7 et 7 se trouve
+    dans l'intervalle 6 à 10, et 17 est après 15. PDP(1-5) et PDP(16-20) ne sont pas
+    inclus car la mise à jour au créneau 7 a déjà déclenché le calcul pour PDP(1-5)
+    et la mise à jour au créneau 17 arrive avant le dernier créneau du PDP(16-20)
+    qui est 20.</p>
+<p class="Pp">C'est la raison pour laquelle PDP(6-10) et PDP(11-15) ont la même
+    valeur, (v2*2+v3*8).</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Un_exemple'><a class='permalink' href='#Un_exemple'>Un   exemple</a></h1>
+<p class="Pp">Si vous êtes encore confus, ne vous inquiétez pas, un exemple est là pour
+    vous aider.</p>
+<p class="Pp">Mettons les mains dans le cambouis avec quelques commandes</p>
+<pre>rrdtool create target.rrd --start 1000000000  --step 5 DS:mem:GAUGE:20:0:100 RRA:AVERAGE:0.5:1:10
+rrdtool update target.rrd 1000000003:8 1000000006:1 1000000017:6 \
+1000000020:7 1000000021:7 1000000022:4 \
+1000000023:3 1000000036:1 1000000037:2 \
+1000000038:3 1000000039:3 1000000042:5
+rrdtool fetch target.rrd AVERAGE --start 1000000000 --end 1000000045</pre>
+<p class="Pp">Fondamentalement, les codes ci-dessus contiennent 3 commandes : create,
+    update et fetch. On crée d'abord un nouveau fichier rrd, puis on y injecte des
+    données et enfin on récupère tous les PDP du rrd.</p>
+<section class="Ss">
+<h2 class="Ss" id='Mise_au_point_sur_les_pas_uniques'><a class='permalink' href='#Mise_au_point_sur_les_pas_uniques'>Mise   au point sur les pas uniques</a></h2>
+<p class="Pp">Afin de fournir une explication détaillée, le processus de calcul de
+    chaque PDP est fourni.</p>
+<p class="Pp">Ci-dessous se trouve la sortie des commandes ci-dessus :</p>
+<pre>1000000005: 5.2000000000e+00
+1000000010: 5.5000000000e+00
+1000000015: 5.5000000000e+00
+1000000020: 6.6000000000e+00
+1000000025: 1.7333333333e+00
+1000000030: 1.7333333333e+00
+1000000035: 1.7333333333e+00
+1000000040: 2.8000000000e+00
+1000000045: nan
+1000000050: nan</pre>
+<p class="Pp">NOTE : 1000000005 signifie le PDP de 1000000001 à 1000000005, et
+    ainsi de suite. Pour des raisons de concision et de lisibilité, nous utilisons
+    uniquement les deux derniers chiffres, donc 05</p>
+</section>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+dénote 1000000005. Nous choisissons le type de la source de données comme jauge car
+    les valeurs originales seront traitées comme des taux, aucune transformation supplémentaire
+    n'est nécessaire, voir cet article
+    <a href='http://rrdtool.vandenbogaerdt.nl/process.php'>http://rrdtool.vandenbogaerdt.nl/process.php</a> pour plus de détails.</p>
+<p class="Pp">05: 5.2 = (8*3+1*2)/5</p>
+<p class="Pp">10: 5.5 = (1*1+6*9)/10</p>
+<p class="Pp">15: le même que le précédent</p>
+<p class="Pp">20: 6.6 = (6*2+7*3)/5</p>
+<p class="Pp">25: 1.73333 = (7+4+3+1*12)/15</p>
+<p class="Pp">...</p>
+<p class="Pp">45: nan, car la dernière valeur est à 42, ce qui ne déclenche pas le
+    calcul pour PDP (41-45)</p>
+<p class="Pp">50: nan, la raison pour laquelle ce PDP inconnu est affiché est expliquée dans cet
+    article <a href='https://oss.oetiker.ch/rrdtool/tut/rrdtutorial.en.html'>https://oss.oetiker.ch/rrdtool/tut/rrdtutorial.en.html</a></p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RÉSUMÉ'><a class='permalink' href='#RÉSUMÉ'>RÉSUMÉ</a></h1>
+<p class="Pp">Tout cela étant dit, j'espère que vous avez une compréhension claire de la
+    "magie" du calcul interne des PDP.</p>
+<section class="Ss">
+<h2 class="Ss" id='Autres_Références'><a class='permalink' href='#Autres_Références'>Autres Références</a></h2>
+<ul class="Bl-bullet">
+  <li>Un excellent script shell PowerShell pour générer des graphiques à barres ASCII :
+      <a href='https://gallery.technet.microsoft.com/scriptcenter/Sample-Script-to-Generate-59c80d4c'>https://gallery.technet.microsoft.com/scriptcenter/Sample-Script-to-Generate-59c80d4c</a></li>
+  <li><a href='https://stackoverflow.com/questions/18924450/rrd-wrong-values'>https://stackoverflow.com/questions/18924450/rrd-wrong-values</a></li>
+</ul>
+</section>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2024-07-29</td>
+    <td class="foot-os">1.9.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/rrdtool/">extra/rrdtool</a></dd>
+        <dt>Version :</dt>
+        <dd>1.9.0-8</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.rrdtool.org">https://www.rrdtool.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/rrdtool/">/listing/extra/rrdtool/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#Rafraîchissement_de_quelques_bases_sur_les_PDP">Rafraîchissement de quelques bases sur les PDP</a></li>
+        
+            <li><a href="#Logiques_de_calcul">Logiques de calcul</a></li>
+        
+            <li><a href="#Un_exemple">Un exemple</a></li>
+        
+            <li><a href="#RÉSUMÉ">RÉSUMÉ</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/rrd_pdpcalc.1.en.txt">txt</a>, 
+        
+            <a href="/man/rrd_pdpcalc.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlclassguts(1perl) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlclassguts.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLCLASSGUTS(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLCLASSGUTS(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlclassguts - Internes de la façon dont &quot;feature 'class'&quot; et la syntaxe des classes fonctionnent</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce document fournit des informations approfondies sur la manière dont
+    l'interpréteur Perl implémente la syntaxe <span class="Li">&quot;feature
+    'class'&quot;</span> et son comportement général. Il n'est pas destiné à être un
+    guide pour l'utilisateur final sur la façon d'utiliser cette fonctionnalité. Pour cela, voir perlclass.</p>
+<p class="Pp">Le lecteur est censé être généralement familier avec les internes
+    de l'interpréteur Perl en général. Pour un aperçu plus général de ces détails,
+    voir également perlguts.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='STOCKAGE_DES_DONNÉES'><a class='permalink' href='#STOCKAGE_DES_DONNÉES'>STOCKAGE DES DONNÉES</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Classes'><a class='permalink' href='#Classes'>Classes</a></h2>
+<p class="Pp">Une classe est fondamentalement un package et existe dans la table des
+    symboles en tant que HV avec une structure auxiliaire, exactement de la même
+    manière qu'un package non-classe. Elle est distinguée d'un package non-classe
+    par le fait que la macro <span class="Li">HvSTASH_IS_CLASS()</span> renvoie
+    vrai pour elle.</p>
+<p class="Pp">Des informations supplémentaires la concernant en tant que classe sont
+    stockées dans la structure <span class="Li">&quot;struct xpvhv_aux&quot;</span>
+    attachée au stash, dans les champs suivants :</p>
+<pre>HV          *xhv_class_superclass;
+CV          *xhv_class_initfields_cv;
+AV          *xhv_class_adjust_blocks;
+PADNAMELIST *xhv_class_fields;
+PADOFFSET    xhv_class_next_fieldix;
+HV          *xhv_class_param_map;</pre>
+<ul class="Bl-bullet">
+  <li><span class="Li">&quot;xhv_class_superclass&quot;</span> sera
+      <span class="Li">&quot;NULL&quot;</span> pour une classe sans superclasse.
+      Il pointera directement vers le stash de la classe parente si une a été définie
+      avec l'attribut de classe <span class="Li">:isa()</span>.</li>
+  <li><span class="Li">&quot;xhv_class_initfields_cv&quot;</span> contiendra un
+      <span class="Li">&quot;CV *&quot;</span> pointant vers une fonction à appeler
+      dans le cadre du constructeur de cette classe ou de toute sous-classe de
+      celle-ci. Ce CV est responsable de l'initialisation de tous les champs définis
+      par cette classe pour une nouvelle instance. Ce CV sera une fonction réelle anonyme
+      - c'est-à-dire que bien qu'il n'ait pas de nom ni de GV, ce n'est *pas* un
+      protosub et il peut être invoqué directement.</li>
+  <li><span class="Li">&quot;xhv_class_adjust_blocks&quot;</span> peut pointer vers un
+      AV contenant des pointeurs de CV vers chacun des blocs
+      <span class="Li">&quot;ADJUST&quot;</span> définis sur la classe. Si la classe
+      a une superclasse, ce tableau contiendra également des pointeurs dupliqués
+      des CV de sa classe parente. L'AV est créé paresseusement lors de la première
+      poussée d'un élément ; il est valide qu'il n'y en ait pas, et ce pointeur sera
+      <span class="Li">&quot;NULL&quot;</span> dans ce cas.
+    <p class="Pp">Les CV sont stockés directement, pas via des RV. Chaque CV sera une
+        fonction réelle anonyme.</p>
+  </li>
+  <li><span class="Li">&quot;xhv_class_fields&quot;</span> pointera vers une
+      <span class="Li">&quot;PADNAMELIST&quot;</span> contenant des
+      <span class="Li">&quot;PADNAME&quot;</span>s, chacun étant un champ défini
+      de la classe. Ils sont stockés dans l'ordre de déclaration. Notez cependant que
+      l'index dans ce tableau ne sera pas nécessairement égal au
+      <span class="Li">&quot;fieldix&quot;</span> de chaque champ, car dans le cas
+      d'une sous-classe, le tableau commencera à zéro mais l'index du premier champ
+      qu'il contient sera non nul si sa classe parente contient des champs.
+    <p class="Pp">Pour plus d'informations sur la façon dont les champs individuels
+        sont représentés, voir &quot;Champs&quot;.</p>
+  </li>
+  <li><span class="Li">&quot;xhv_class_next_fieldix&quot;</span> donne l'index de champ
+      qui sera assigné au prochain champ à ajouter à la classe. Il n'est utile qu'à
+      la compilation.</li>
+  <li><span class="Li">&quot;xhv_class_param_map&quot;</span> peut pointer vers un HV
+      qui mappe les noms d'attributs de champ <span class="Li">&quot;:param&quot;</span>
+      à l'index de champ du champ portant ce nom. Cette mappage est copié des classes
+      parentes ; chaque classe contiendra le total de ses parents en plus des siens.</li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Champs'><a class='permalink' href='#Champs'>Champs</a></h2>
+<p class="Pp">Un champ est toujours fondamentalement une variable lexicale déclarée
+    dans une portée, et existe dans la <span class="Li">&quot;PADNAMELIST&quot;</span>
+    de son CV correspondant. Les méthodes et autres CV de type méthode peuvent toujours
+    les capturer exactement comme elles le peuvent avec des lexicals régulières. Un
+    champ est distingué des autres types d'entrées de PAD par le fait que la macro
+    <span class="Li">PadnameIsFIELD()</span> renvoie vrai pour lui.</p>
+<p class="Pp">Des informations supplémentaires le concernant en tant que champ sont
+    stockées dans une structure supplémentaire accessible via la macro
+    <span class="Li">PadnameFIELDINFO()</span> sur le padname. Cette structure a
+    les champs suivants :</p>
+<pre>PADOFFSET  fieldix;
+HV        *fieldstash;
+OP        *defop;
+SV        *paramname;
+bool       def_if_undef;
+bool       def_if_false;</pre>
+<ul class="Bl-bullet">
+  <li><span class="Li">&quot;fieldix&quot;</span> stocke l'&quot;index de champ&quot;
+      du champ ; c'est-à-dire, l'index dans le tableau de champs de l'instance où la
+      valeur de ce champ sera stockée. Notez que le premier index du tableau n'est
+      pas spécialement réservé. Le premier champ d'une classe commencera à l'index
+      de champ 0.</li>
+  <li><span class="Li">&quot;fieldstash&quot;</span> stocke un pointeur vers le stash
+      de la classe qui a défini ce champ. Ceci est nécessaire au cas où il y aurait
+      plusieurs classes définies dans la même portée ; il est utilisé pour désambiguïser
+      les champs de chacune.
+        <pre>{
+    class C1; field $x;
+    class C2; field $x;
+}
+</pre>
+  </li>
+  <li><span class="Li">&quot;defop&quot;</span> peut stocker un pointeur vers un arbre
+      d'opérations d'expression par défaut pour ce champ. Les expressions par défaut
+      sont optionnelles ; ce champ peut être <span class="Li">&quot;NULL&quot;</span>.</li>
+  <li><span class="Li">&quot;paramname&quot;</span> peut pointer vers un SV de chaîne
+      régulier contenant l'attribut <span class="Li">&quot;:param&quot;</span> donné
+      au champ. S'il n'y en a pas, il sera <span class="Li">&quot;NULL&quot;</span>.</li>
+  <li>L'un de <span class="Li">&quot;def_if_undef&quot;</span> et
+      <span class="Li">&quot;def_if_false&quot;</span> sera vrai si l'expression par
+      défaut a été définie en utilisant respectivement les opérateurs
+      <span class="Li">&quot;//=&quot;</span> ou <span class="Li">&quot;||=&quot;</span>.</li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Méthodes'><a class='permalink' href='#Méthodes'>Méthodes</a></h2>
+<p class="Pp">Une méthode est toujours fondamentalement un CV, et a la même représentation
+    de base qu'un CV. Elle a un optree et un pad, et est stockée via un GV dans le
+    stash de son package contenant. Elle est distinguée d'un CV non-méthode par le
+    fait que la macro <span class="Li">CvIsMETHOD()</span> renvoie vrai pour
+    elle.</p>
+<p class="Pp">(Note : Cette macro ne doit pas être confondue avec celle qui était
+    précédemment appelée <span class="Li">CvMETHOD()</span>. Celle-ci n'est pas liée
+    au système de classes, et a été renommée en
+    <span class="Li">CvNOWARN_AMBIGUOUS()</span> pour éviter cette confusion.)</p>
+<p class="Pp">Il n'y a actuellement aucune information supplémentaire à stocker sur un
+    CV de méthode, donc la structure n'ajoute aucun nouveau champ.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Instances'><a class='permalink' href='#Instances'>Instances</a></h2>
+<p class="Pp">Les instances d'objets sont représentées par un tout nouveau type de SV,
+    dont le type de base est <span class="Li">&quot;SVt_PVOBJ&quot;</span>. Il doit
+    toujours être béni dans le stash de sa classe et enveloppé dans un RV de la
+    manière habituelle pour les objets classiques.</p>
+<p class="Pp">Comme il s'agit de leur propre type de conteneur unique, distinct des
+    hashes ou des arrays, la fonction principale <span class="Li">&quot;builtin::reftype&quot;</span>
+    renvoie une nouvelle valeur lorsqu'on l'interroge sur ces objets. Cette valeur est
+    <span class="Li">&quot;OBJECT&quot;</span>.</p>
+<p class="Pp">En interne, un tel objet est un tableau de pointeurs SV dont la taille est
+    fixée à la création (car le nombre de champs d'une classe est connu après la
+    compilation). Une instance d'objet stocke l'index de champ maximum à l'intérieur
+    (pour une vérification d'erreur de base lors de l'accès), et un tableau de taille
+    fixe de pointeurs SV stockant les valeurs des champs individuels.</p>
+<p class="Pp">Les champs de type tableau et hash stockent directement des pointeurs AV ou
+    HV dans le tableau ; ils ne sont pas stockés via un RV intermédiaire.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='API'><a class='permalink' href='#API'>API</a></h1>
+<p class="Pp">Les structures de données décrites ci-dessus sont supportées par les
+    fonctions API suivantes.</p>
+<section class="Ss">
+<h2 class="Ss" id='Manipulation_des_classes'><a class='permalink' href='#Manipulation_des_classes'>Manipulation des classes</a></h2>
+<p class="Pp"><i>class_setup_stash</i></p>
+<pre>void class_setup_stash(HV *stash);</pre>
+<p class="Pp">Appelé par l'analyseur lors de la rencontre du mot-clé
+    <span class="Li">&quot;class&quot;</span>. Il met à niveau le stash pour en faire
+    une classe et le prépare à recevoir des éléments spécifiques aux classes tels que
+    les méthodes et les champs.</p>
+<p class="Pp"><i>class_seal_stash</i></p>
+<pre>vo</pre></div>
+</section>
+</article>
+        </main>
+    </body>
+</html>
+id class_seal_stash(HV *stash);</pre>
+<p class="Pp">Appelé par l'analyseur à la fin d'un bloc
+    <span class="Li">&quot;class&quot;</span>, ou pour les classes unitaires, son
+    portée parente. Cette fonction effectue diverses activités de finalisation
+    qui sont nécessaires avant que des instances de la classe puissent être construites,
+    mais qui n'auraient pas pu être effectuées tant que toutes les informations
+    sur les membres de la classe n'étaient pas connues.</p>
+<p class="Pp">Toutes les additions ou modifications de la classe en cours de compilation
+    doivent être effectuées entre ces deux appels de fonction. Les classes ne peuvent pas être modifiées une fois qu'elles ont été scellées.</p>
+<p class="Pp"><i>class_add_field</i></p>
+<pre>void class_add_field(HV *stash, PADNAME *pn);</pre>
+<p class="Pp">Appelé par <i>pad.c</i> dans le cadre de la définition d'un nouveau nom de champ dans le pad actuel. Notez que cette fonction ne crée <i>pas</i> le nom de pad ; cela doit déjà être fait par <i>pad.c</i>. Cette fonction API informe simplement la classe que le nouveau nom de champ a été créé et est maintenant disponible pour elle.</p>
+<p class="Pp"><i>class_add_ADJUST</i></p>
+<pre>void class_add_ADJUST(HV *stash, CV *cv);</pre>
+<p class="Pp">Appelé par l'analyseur une fois qu'il a analysé et construit un CV pour un nouveau bloc <span class="Li">&quot;ADJUST&quot;</span>. Ceci est ajouté à la liste stockée par la classe.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Manipulation_des_champs'><a class='permalink' href='#Manipulation_des_champs'>Manipulation des champs</a></h2>
+<p class="Pp"><i>class_prepare_initfield_parse</i></p>
+<pre>void class_prepare_initfield_parse();</pre>
+<p class="Pp">Appelé par l'analyseur juste avant d'analyser une expression d'initialisation pour une variable de champ. Ceci utilise un compcv suspendu pour combiner toutes les expressions d'initialisation de champ dans le même CV.</p>
+<p class="Pp"><i>class_set_field_defop</i></p>
+<pre>void class_set_field_defop(PADNAME *pn, OPCODE defmode, OP *defop);</pre>
+<p class="Pp">Appelé par l'analyseur après qu'il a analysé une expression d'initialisation pour le champ. Définit l'expression et le mode d'application par défaut. <span class="Li">&quot;defmode&quot;</span> doit être soit zéro, soit l'un de <span class="Li">&quot;OP_ORASSIGN&quot;</span> ou <span class="Li">&quot;OP_DORASSIGN&quot;</span> selon le mode de défaut.</p>
+<p class="Pp"><i>padadd_FIELD</i></p>
+<pre>#define padadd_FIELD</pre>
+<p class="Pp">Cette constante de drapeau indique à la famille de fonctions
+    <span class="Li">&quot;pad_add_name_*&quot;</span> que le nouveau nom doit être ajouté comme champ. Il n'est pas nécessaire d'appeler
+    <span class="Li">class_add_field()</span> ; cela sera fait
+  automatiquement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Manipulation_des_méthodes'><a class='permalink' href='#Manipulation_des_méthodes'>Manipulation des méthodes</a></h2>
+<p class="Pp"><i>class_prepare_method_parse</i></p>
+<pre>void class_prepare_method_parse(CV *cv);</pre>
+<p class="Pp">Appelé par l'analyseur après
+    <span class="Li">start_subparse()</span> mais immédiatement avant de faire quoi que ce soit d'autre. Ceci prépare le
+    <span class="Li">&quot;PL_compcv&quot;</span> pour l'analyse d'une méthode ;
+    organisant pour que le test <span class="Li">&quot;CvIsMETHOD&quot;</span> soit vrai, ajoutant le lexique
+    <span class="Li">$self</span>, et toute autre activité qui pourrait être nécessaire.</p>
+<p class="Pp"><i>class_wrap_method_body</i></p>
+<pre>OP *class_wrap_method_body(OP *o);</pre>
+<p class="Pp">Appelé par l'analyseur à la fin de l'analyse du corps d'une méthode dans un arbre d'opérations mais juste avant de l'envelopper dans le CV final. Cette fonction insère des ops supplémentaires dans l'arbre d'opérations pour que la méthode fonctionne correctement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Instances_d_objets'><a class='permalink' href='#Instances_d_objets'>Instances d'objets</a></h2>
+<p class="Pp"><i>SVt_PVOBJ</i></p>
+<pre>#define SVt_PVOBJ</pre>
+<p class="Pp">Une constante de type SV utilisée pour la comparaison avec la macro
+    <span class="Li">SvTYPE()</span>.</p>
+<p class="Pp"><i>ObjectMAXFIELD</i></p>
+<pre>SSize_t ObjectMAXFIELD(sv);</pre>
+<p class="Pp">Une macro de type fonction qui obtient l'indice de champ maximal valide
+    qui peut être accédé à partir du tableau
+    <span class="Li">&quot;ObjectFIELDS&quot;</span>.</p>
+<p class="Pp"><i>ObjectFIELDS</i></p>
+<pre>SV **ObjectFIELDS(sv);</pre>
+<p class="Pp">Une macro de type fonction qui obtient directement le tableau de champs
+    à partir d'une instance d'objet. Les champs peuvent être accédés par leur indice de champ, de 0 jusqu'à l'indice maximal valide donné par
+    <span class="Li">&quot;ObjectMAXFIELD&quot;</span>.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPCODES'><a class='permalink' href='#OPCODES'>OPCODES</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='OP_METHSTART'><a class='permalink' href='#OP_METHSTART'>OP_METHSTART</a></h2>
+<pre>newUNOP_AUX(OP_METHSTART, ...);</pre>
+<p class="Pp">Un <span class="Li">&quot;OP_METHSTART&quot;</span> est un
+    <span class="Li">&quot;UNOP_AUX&quot;</span> qui doit être présent au
+    début d'un CV de méthode pour qu'il fonctionne correctement. Ceci est inséré par
+    <span class="Li">class_wrap_method_body()</span>, et apparaît même avant
+    tout fragment d'arbre d'opérations associé à la vérification ou à l'extraction des arguments de la signature.</p>
+<p class="Pp">Cet op est responsable du décalage de la valeur de
+    <span class="Li">$self</span> hors de la liste des arguments et de la liaison de tous les champs que la méthode nécessite d'accéder dans le pad. Le vecteur AUX contiendra des détails sur les associations champ/indice de pad requises.</p>
+<p class="Pp">Cet op effectue également une vérification de cohérence sur la valeur invocante. Il vérifie qu'il s'agit bien d'une référence d'objet d'un type de classe compatible. Sinon, une exception est levée.</p>
+<p class="Pp">Si le champ <span class="Li">&quot;op_private&quot;</span>
+    inclut le drapeau <span class="Li">&quot;OPpINITFIELDS&quot;</span>, cela indique que l'op commence le CV spécial
+    <span class="Li">&quot;xhv_class_initfields_cv&quot;</span>. Dans ce cas, il doit en plus prendre la deuxième valeur de la liste des arguments, qui doit être un pointeur HV simple ( *directement*, pas via RV), et le lier au deuxième emplacement du pad, où l'arbre d'opérations généré s'attendra à le trouver.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OP_INITFIELD'><a class='permalink' href='#OP_INITFIELD'>OP_INITFIELD</a></h2>
+<p class="Pp">Un <span class="Li">&quot;OP_INITFIELD&quot;</span> n'est invoqué que dans le cadre du CV
+    <span class="Li">&quot;xhv_class_initfields_cv&quot;</span> pendant la phase de construction d'une instance. C'est à ce moment que les SV individuels qui composent les champs mutables de l'instance (y compris les AV et les HV) sont réellement assignés dans le tableau
+    <span class="Li">&quot;ObjectFIELDS&quot;</span>. Les drapeaux privés <span class="Li">&quot;OPpINITFIELD_AV&quot;</span> et
+    <span class="Li">&quot;OPpINITFIELD_HV&quot;</span> indiquent s'il crée un AV ou un HV ; si aucun n'est défini, un SV est créé.</p>
+<p class="Pp">Si l'op a le drapeau <span class="Li">&quot;OPf_STACKED&quot;</span>, il s'attend à trouver une valeur d'initialisation sur la pile. Pour les SV, c'est le SV le plus haut sur la pile de données. Pour les AV et les HV, il attend une liste marquée.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMPORTEMENT_A_LA_COMPILATION'><a class='permalink' href='#COMPORTEMENT_A_LA_COMPILATION'>COMPORTEMENT À LA COMPILATION</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Phasers_&amp;quot;ADJUST&amp;quot;'><a class='permalink' href='#Phasers_&amp;quot;ADJUST&amp;quot;'>Phasers &quot;ADJUST&quot;</a></h2>
+<p class="Pp">Lors de la compilation, l'analyse d'un phaser
+    <span class="Li">&quot;ADJUST&quot;</span> est gérée d'une manière fondamentalement différente des phasers perl existants
+    (<span class="Li">&quot;BEGIN&quot;</span>, etc...)</p>
+<p class="Pp">Au lieu de suivre la voie habituelle, le tokenizer reconnaît que le mot-clé
+    <span class="Li">&quot;ADJUST&quot;</span> introduit un bloc phaser. L'analyseur analyse ensuite le corps de ce bloc de manière similaire à la façon dont il analyserait un corps de méthode (anonyme), créant un CV sans nom GV. Celui-ci est ensuite inséré directement dans les informations de la classe en appelant
+    <span class="Li">&quot;class_add_ADJUST&quot;</span>, contournant complètement la table des symboles.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Attributs'><a class='permalink' href='#Attributs'>Attributs</a></h2>
+<p class="Pp">Pendant la compilation, les attributs des classes et des champs sont gérés d'une manière différente des attributs perl existants sur les sous-routines et les variables lexicales.</p>
+<p class="Pp">L'analyseur forme toujours un arbre d'opérations
+    <span class="Li">&quot;OP_LIST&quot;</span> de nœuds
+    <span class="Li">&quot;OP_CONST&quot;</span>, mais ceux-ci sont passés aux fonctions
+    <span class="Li">&quot;class_apply_attributes&quot;</span> ou
+    <span class="Li">&quot;class_apply_field_attributes&quot;</span>. Plutôt que d'utiliser une recherche de classe pour une méthode dans la classe en cours d'analyse, une liste interne fixe d'attributs connus est utilisée pour trouver les fonctions d'application de l'attribut à la classe ou au champ. À l'avenir, cela pourra supporter des extensions d'attributs fournies par l'utilisateur, bien qu'actuellement, il ne reconnaisse que ceux définis par le cœur lui-même.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Expressions_d_initialisation_de_champ'><a class='permalink' href='#Expressions_d_initialisation_de_champ'>Expressions d'initialisation de champ</a></h2>
+<p class="Pp">Pendant la compilation, l'analyseur utilise un compcv suspendu lors de l'analyse de l'expression de défaut pour un champ. Toutes les expressions de tous les champs de la classe partagent le même compcv suspendu, qui est ensuite compilé dans le même CV interne appelé par le constructeur pour initialiser tous les champs fournis par cette classe.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMPORTEMENT_A_L_EXECUTION'><a class='permalink' href='#COMPORTEMENT_A_L_EXECUTION'>COMPORTEMENT À L'EXÉCUTION</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Constructeur'><a class='permalink' href='#Constructeur'>Constructeur</a></h2>
+<p class="Pp">Le constructeur généré pour une classe est lui-même un XSUB qui effectue trois tâches dans l'ordre : il crée le SV d'instance lui-même, invoque les initialisateurs de champ, puis invoque les CV de bloc ADJUST. Le constructeur de toute classe a toujours la même forme de base, que la classe ait ou non une superclasse.</p>
+<p class="Pp">Les initialisateurs de champ sont collectés dans un CV généré basé sur un arbre d'opérations, appelé le CV d'initialiseur de champ. C'est le CV qui contient tous les fragments d'arbre d'opérations pour les expressions d'initialisation de champ. Lorsqu'il est invoqué, le CV d'initialiseur de champ peut effectuer un appel chaîné à l'initialiseur de la superclasse s'il en existe un, avant d'invoquer toutes les opérations d'initialisation de champ individuelles. Le CV d'initialiseur de champ est invoqué avec deux éléments sur la pile ; étant le SV d'instance et un HV direct contenant les paramètres du constructeur. Notez bien : ce HV est passé *directement*, pas via une référence RV. Ceci est permis car l'appelant et l'appelé sont du code généré directement et non des sous-routines perl pures arbitraires.</p>
+<p class="Pp">Les CV de bloc ADJUST sont tous collectés dans une seule liste plate, fusionnant également tous ceux définis par la superclasse. Ils sont tous invoqués dans l'ordre, après le CV d'initialiseur de champ.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Accès_à_$self_pendant_les_méthodes'><a class='permalink' href='#Accès_à_$self_pendant_les_méthodes'>Accès à $self pendant les méthodes</a></h2>
+<p class="Pp">Lorsque <span class="Li">class_prepare_method_parse()</span> est appelé, il s'arrange pour que le pad du corps du nouveau CV commence par un lexique appelé <span class="Li">$self</span>. Comme le pad doit être fraîchement créé à ce moment-là, il aura l'indice de pad de 1. La fonction vérifie cela et avorte si ce n'est pas le cas.</p>
+<p class="Pp">En raison de ce fait, le code</p>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>perlclassguts(1perl) — perl — Arch Linux</title>
+        
+        
+        
+        <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <section id="content">
+                    
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class="permalink" href="#NOM">NOM</a></h1>
+<p class="Pp">perlclassguts - internes de la gestion des classes Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">Ce document décrit la manière dont les classes sont implémentées en
+    Perl, en se concentrant sur les structures de données internes et les
+    opérations utilisées lors de la compilation et de l'exécution.</p>
+<section class="Ss">
+<h1 class="Ss" id="STOCKAGE_DES_DONNÉES"><a class="permalink" href="#STOCKAGE_DES_DONNÉES">STOCKAGE DES
+    DONNÉES</a></h1>
+<p class="Pp">La gestion des classes en Perl repose sur un ensemble de structures
+    de données internes, notamment les structures de données utilisées pour
+    représenter les objets, les classes et les méthodes.</p>
+</section>
+<section class="Ss">
+<h1 class="Ss" id="API"><a class="permalink" href="#API">API</a></h1>
+<p class="Pp">Il existe une API interne qui permet aux différentes parties de
+    l'interpréteur Perl d'interagir avec ces structures de données. Cette API
+    n'est pas destinée à être utilisée directement par les programmeurs Perl.</p>
+</section>
+<section class="Ss">
+<h1 class="Ss" id="OPCODES"><a class="permalink" href="#OPCODES">OPCODES</a></h1>
+<p class="Pp">Plusieurs opcodes de bas niveau sont utilisés pour manipuler les
+    objets et les classes. Parmi eux, on trouve <code class="Li">OP_INITFIELD</code>,
+    utilisé pour initialiser les champs d'un objet lors de sa création.</p>
+</section>
+<section class="Ss">
+<h1 class="Ss" id="COMPORTEMENT_À_LA_COMPILATION"><a class="permalink" href="#COMPORTEMENT_À_LA_COMPILATION">COMPORTEMENT
+    À LA COMPILATION</a></h1>
+<p class="Pp">Lors de la compilation, Perl analyse la définition des classes et
+    prépare les structures de données nécessaires. Par exemple, lors de la
+    création d'un objet, les informations sur les champs sont stockées et
+    accessibles via des indices de remplissage (pad index).</p>
+</section>
+<section class="Ss">
+<h1 class="Ss" id="COMPORTEMENT_À_L'EXÉCUTION"><a class="permalink" href="#COMPORTEMENT_À_L'EXÉCUTION">COMPORTEMENT
+    À L'EXÉCUTION</a></h1>
+<p class="Pp">À l'exécution, Perl utilise ces structures pour effectuer des
+    opérations telles que l'appel de méthodes, l'accès aux champs et la gestion
+    de l'héritage. Le remplissage de l'index 1 est utilisé pour obtenir une
+    référence à l'invocant dans le corps d'une méthode ou d'une structure
+    similaire. L'opcode <code class="Li">&quot;OP_INITFIELD&quot;</code> s'appuie
+    sur ce fait.</p>
+<p class="Pp">De manière similaire, lors de <code class="Li">&quot;xhv_class_initfields_cv&quot;</code>,
+    la zone de remplissage suivante est utilisée pour stocker les paramètres du
+    constructeur HV, à l'index de remplissage 2.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AUTEURS"><a class="permalink" href="#AUTEURS">AUTEURS</a></h1>
+<p class="Pp">Paul Evans</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+</section>
+</article>
+<aside id="sidebar">
+<section class="search">
+<form action="/search" class="search direct-search" role="search">
+<input type="search" placeholder="Rechercher une page de manuel" name="q" value="" />
+<input type="submit" name="go" value="Go" />
+</form>
+</section>
+<section class="package-info">
+<p>Informations sur le paquet :</p>
+<dl>
+<dt>Nom du paquet :</dt>
+<dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+<dt>Version :</dt>
+<dd>5.42.0-1</dd>
+<dt>Amont :</dt>
+<dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+<dt>Licences :</dt>
+<dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+<dt>Manuels :</dt>
+<dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+</dl>
+</section>
+<details>
+<summary>Table des matières</summary>
+<nav class="toc">
+<ul>
+<li><a href="#NOM">NOM</a></li>
+<li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+<li><a href="#STOCKAGE_DES_DONNÉES">STOCKAGE DES DONNÉES</a></li>
+<li><a href="#API">API</a></li>
+<li><a href="#OPCODES">OPCODES</a></li>
+<li><a href="#COMPORTEMENT_À_LA_COMPILATION">COMPORTEMENT À LA COMPILATION</a></li>
+<li><a href="#COMPORTEMENT_À_L'EXÉCUTION">COMPORTEMENT À L'EXÉCUTION</a></li>
+<li><a href="#AUTEURS">AUTEURS</a></li>
+</ul>
+</nav>
+</details>
+<nav class="other-formats">
+<p>Autres formats :</p>
+<a href="/man/perlclassguts.1perl.fr.txt">txt</a>,
+<a href="/man/perlclassguts.1perl.fr.raw">raw</a>
+</nav>
+</aside>
+</main>
+<footer>
+
+<p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>, à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+</p>
+</footer>
+</body>
+</html>

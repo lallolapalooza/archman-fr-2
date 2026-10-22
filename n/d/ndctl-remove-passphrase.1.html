@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ndctl-remove-passphrase(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ndctl-remove-passphrase(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/ndctl/">ndctl</a></p>
+<p class="lic">Licences: LGPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">NDCTL-REMOVE-PASSPHRASE(1)</td>
+    <td class="head-vol">Manuel ndctl</td>
+    <td class="head-rtitle">NDCTL-REMOVE-PASSPHRASE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">ndctl-remove-passphrase - Arrêtez qu'un DIMM se verrouille à la perte d'alimentation et ne nécessite plus de phrase de passe pour accéder au média</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<pre><i>ndctl remove-passphrase</i> &lt;nmem0&gt; [&lt;nmem1&gt;..&lt;nmemN&gt;] [&lt;options&gt;]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Recherche dans le keyring utilisateur une phrase de passe chiffrée pour le NVDIMM concerné. Si elle n'est pas trouvée, tente de charger le blob de phrase de passe. Après avoir désactivé la phrase de passe, supprime le <i>key-ID</i> du keyring ainsi que le blob de phrase de passe du système de fichiers.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">&lt;dimm&gt;</p>
+<div class="Bd-indent">Un nom de périphérique <i>nmemX</i>, ou un identifiant de dimm. Restreint l'opération aux dimm spécifiés. Le mot-clé <i>all</i> peut être spécifié pour indiquer l'absence de restriction, bien que cela revienne à ne pas fournir d'option --dimm du tout.</div>
+<p class="Pp">-b, --bus=</p>
+<div class="Bd-indent">Un identifiant de bus, ou une chaîne de fournisseur (par ex. &quot;ACPI.NFIT&quot;). Restreint l'opération aux bus spécifiés. Le mot-clé <i>all</i> peut être spécifié pour indiquer l'absence de restriction, bien que cela revienne à ne pas fournir d'option --bus du tout.</div>
+<p class="Pp">-v, --verbose</p>
+<div class="Bd-indent">Émet des messages de débogage.</div>
+<p class="Pp">-m, --master-passphrase</p>
+<div class="Bd-indent">Indique que nous gérons la phrase de passe maître au lieu de la phrase de passe utilisateur.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THEORY_OF_OPERATION'><a class='permalink' href='#THEORY_OF_OPERATION'>THÉORIE   D'OPÉRATION</a></h1>
+<p class="Pp">Les spécifications Intel Device Specific Methods (DSM) v1.7 et v1.8 [1] ont introduit les opérations de gestion de sécurité suivantes : activer phrase de passe, mettre à jour phrase de passe, déverrouiller DIMM, désactiver sécurité, geler sécurité, effacer (chiffrer) en toute sécurité, écraser, activer phrase de passe maître, mettre à jour phrase de passe maître et effacer en toute sécurité phrase de passe maître.</p>
+<p class="Pp">La gestion de sécurité des NVDIMM est composée de deux parties. Le front-end utilise le framework de gestion de clés Linux (clés de confiance et chiffrées [2]) pour stocker les phrases de passe chiffrées dans le keyring géré par le noyau. L'interface pour cela est l'utilitaire <i>keyutils</i> qui utilise les API de gestion de clés du noyau Linux. Le back-end prend la charge utile déchiffrée (qui est la phrase de passe du DIMM) et la transmet au DIMM.</p>
+<p class="Pp">Contrairement aux autres DSM qui sont composées par libndctl et envoyées au noyau via un ioctl, les DSM de sécurité sont gérées via l'attribut <i>security</i> sysfs sous le périphérique <i>dimm</i>. Un <i>key-ID</i> est écrit dans l'attribut <i>security</i> et le noyau récupère le matériel de clé associé du keyring utilisateur maintenu par le noyau.</p>
+<p class="Pp">Le processus de sécurité commence par la génération d'une <i>clé maître</i> qui est utilisée pour sceller (chiffrer) la phrase de passe du DIMM. Il peut y avoir soit une <i>clé maître</i> commune pour chiffrer la phrase de passe de chaque DIMM, soit une clé distincte générée pour chaque DIMM. La <i>clé maître</i> est également appelée <i>key-encryption-key</i> (kek). Le <i>kek</i> peut être généré par le TPM (Trusted Platform Module) du système, ou alternativement, la <i>System Master Key</i> peut également être utilisée comme <i>kek</i></p>
+<p class="Pp">À des fins de test, une clé utilisateur avec une charge utile aléatoire peut également être utilisée comme <i>kek</i>. Voir [2] pour plus de détails. Pour effectuer des opérations de sécurité, il est attendu que le <i>kek</i> ait été ajouté au keyring utilisateur du noyau, comme illustré dans l'exemple ci-dessous :</p>
+<div class="Bd-indent">
+<pre># keyctl show
+Session Keyring
+ 736023423 --alswrv      0     0  keyring: _ses
+ 675104189 --alswrv      0 65534   \_ keyring: _uid.0
+ 680187394 --alswrv      0     0       \_ trusted: nvdimm-master</pre>
+</div>
+<p class="Pp">Avant d'effectuer l'une des opérations de sécurité, toutes les régions associées au DIMM en question doivent être désactivées. Pour l'opération <i>overwrite</i>, en plus des <i>régions</i>, le <i>dimm</i> doit également être désactivé.</p>
+<p class="Pp">[1] <i></i>
+    <a href='http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf'>http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf</a>
+  <br/>
+  [2] <i></i>
+    <a href='https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst'>https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst</a></p>
+<p class="Pp">Les sous-sections suivantes décrivent les spécificités de chaque fonctionnalité de sécurité.</p>
+<section class="Ss">
+<h2 class="Ss" id='UNLOCK'><a class='permalink' href='#UNLOCK'>DÉVERROUILLAGE</a></h2>
+<p class="Pp">Le déverrouillage est effectué par le noyau, cependant une étape de préparation doit avoir lieu avant que le DSM de déverrouillage ne puisse être émis par le noyau. Il est attendu que, depuis l'initramfs, une commande de configuration (ndctl <i>load-keys</i>) soit exécutée avant que le module libnvdimm ne soit chargé par modprobe. Cette commande injectera le <i>kek</i> et les phrases de passe chiffrées dans le keyring utilisateur du noyau. Pendant la <i>mise en sonde</i> du pilote libnvdimm, il va :</p>
+<div class="Bd-indent"> 1.Vérifier l'état de sécurité du périphérique et voir si le DIMM est verrouillé</div>
+<div class="Bd-indent"> 2.Demander la phrase de passe chiffrée associée depuis le keyring utilisateur du noyau</div>
+<div class="Bd-indent"> 3.Utiliser le <i>kek</i> pour déchiffrer la phrase de passe</div>
+<div class="Bd-indent"> 4.Créer le DSM de déverrouillage, copier la charge utile déchiffrée dans le DSM</div>
+<div class="Bd-indent"> 5.Émettre le DSM pour déverrouiller le DIMM</div>
+<p class="Pp">Si le DIMM est déjà déverrouillé, le noyau tentera de revalider la phrase de passe. Si nous échouons à revalider la phrase de passe, le noyau gèlera la sécurité et interdira toute autre modification de configuration de sécurité. Un paramètre de module du noyau est disponible pour outrepasser ce comportement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SETUP_USER_PASSPHRASE'><a class='permalink' href='#SETUP_USER_PASSPHRASE'>CONFIGURATION   DE LA PHRASE DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">Pour configurer la phrase de passe d'un DIMM, il est attendu que le <i>kek</i> à utiliser soit présent dans le keyring utilisateur du noyau. Le <i>kek</i> chiffre la phrase de passe du DIMM en utilisant le format de clé <i>enc32</i>. La phrase de passe en clair n'est jamais fournie ni rendue visible par l'utilisateur. Elle est plutôt générée aléatoirement par le noyau et l'espace utilisateur n'y a pas accès. Après chiffrement, un blob binaire de la phrase de passe est écrit dans le répertoire de stockage des blobs de phrases de passe (/etc/ndctl/keys). L'utilisateur est responsable de la sauvegarde des blobs de phrases de passe dans un emplacement sécurisé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='UPDATE_USER_PASSPHRASE'><a class='permalink' href='#UPDATE_USER_PASSPHRASE'>MISE   À JOUR DE LA PHRASE DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">L'opération de mise à jour de la phrase de passe utilisateur utilise la même commande DSM que celle d'activation de la phrase de passe utilisateur. La majeure partie du travail est effectuée côté gestion de clés. L'utilisateur a la possibilité de fournir un nouveau <i>kek</i> pour la nouvelle phrase de passe, mais continuer à utiliser le <i>kek</i> existant est également acceptable. Les opérations suivantes sont effectuées pour la <i>mise à jour de la phrase de passe</i> :</p>
+<div class="Bd-indent"> 1.Supprimer la phrase de passe chiffrée du keyring utilisateur du noyau.</div>
+<div class="Bd-indent"> 2.Renommer le blob de phrase de passe en old.</div>
+<div class="Bd-indent"> 3.Charger ce blob de phrase de passe ancien dans le keyring avec un nom &quot;old&quot;.</div>
+<div class="Bd-indent"> 4.Créer la nouvelle phrase de passe et la chiffrer avec le <i>kek</i>.</div>
+<div class="Bd-indent"> 5.Envoyer le DSM avec les phrases de passe anciennes et nouvelles déchiffrées.</div>
+<div class="Bd-indent"> 6.Supprimer la phrase de passe ancienne et le blob de phrase de passe du keyring.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='REMOVE_USER_PASSPHRASE'><a class='permalink' href='#REMOVE_USER_PASSPHRASE'>SUPPRESSION   DE LA PHRASE DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">Le <i>key-ID</i> de la phrase de passe à supprimer est écrit dans sysfs. Le noyau envoie alors le DSM pour désactiver la sécurité, et la phrase de passe est ensuite supprimée du keyring, et le blob de phrase de passe associé est supprimé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='CRYPTO_(SECURE)_ERASE'><a class='permalink' href='#CRYPTO_(SECURE)_ERASE'>EFFACEMENT   PAR CRYPTAGE (SÉCURISÉ)</a></h2>
+<p class="Pp">Cette opération est similaire à remove-passphrase. Le noyau émet une instruction WBINVD avant et après l'opération pour garantir qu'il n'y ait pas de corruption de données due à un cache CPU obsolète. Utilisez la commande sanitize-dimm de ndctl avec l'option <span class="Li">--crypto-erase</span> pour effectuer cette opération.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OVERWRITE'><a class='permalink' href='#OVERWRITE'>ÉCRASEMENT</a></h2>
+<p class="Pp">Ceci est invoqué en utilisant l'option <span class="Li">--overwrite</span> pour <i>sanitize-dimm</i> de ndctl. L'opération d'écrasement efface l'intégralité du NVDIMM. L'opération peut prendre un temps considérable. NOTE : Lorsque la commande se termine avec succès, cela signifie simplement que l'écrasement a été lancé avec succès, et non qu'il est terminé. Par la suite, <i>ndctl wait-overwrite</i> peut être utilisé pour attendre les NVDIMMs qui effectuent l'écrasement. Une fois l'écrasement terminé avec succès, t</p>
+</section>
+</div>
+</section>
+
+            </article>
+        </main>
+    </body>
+</html>
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ndctl-remove-passphrase.1.fr.html</title>
+        <link rel="stylesheet" href="/style.css">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ndctl-remove-passphrase - supprimer le mot de passe d'un espace de noms</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp"><code class="Nd">ndctl remove-passphrase [-d &lt;dimm&gt;] [-p &lt;namespace>] [-a] [-f] [-k]</code></p>
+<p class="Pp"><code class="Nd">ndctl remove-passphrase -h</code></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Supprimer un mot de passe d'un espace de noms ou d'une DIMM. Si le mot de passe est supprimé d'une DIMM, tous les espaces de noms de cette DIMM qui utilisent le même mot de passe de sécurité seront affectés. La suppression du mot de passe d'un espace de noms ou d'une DIMM le rendra indétectable par les commandes de sécurité futures.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">Les options suivantes sont disponibles :</p>
+<dl class="Bl-tag">
+<dt id="d-dimm"><a class="permalink" href="#d-dimm">-d <i class="Em">&lt;dimm&gt;</i></a></dt>
+<dd>Désigner une DIMM par son numéro d'identifiant. Le motif peut être une chaîne hexadécimale utilisée pour faire correspondre la partie du champ d'identifiant de la DIMM, par exemple <code class="Cm">0x1234</code>.</dd>
+<dt id="p-namespace"><a class="permalink" href="#p-namespace">-p <i class="Em">&lt;namespace&gt;</i></a></dt>
+<dd>Désigner un espace de noms par son numéro d'identifiant. Le motif peut être une chaîne hexadécimale utilisée pour faire correspondre la partie du champ d'identifiant de l'espace de noms, par exemple <code class="Cm">0x1234</code>.</dd>
+<dt id="a"><a class="permalink" href="#a">-a</a></dt>
+<dd>Supprimer le mot de passe de tous les espaces de noms gérés par l'application.</dd>
+<dt id="f"><a class="permalink" href="#f">-f</a></dt>
+<dd>Forcer la suppression du mot de passe. Cela suppose que l'utilisateur connaît le mot de passe existant.</dd>
+<dt id="k"><a class="permalink" href="#k">-k</a></dt>
+<dd>Désactiver le mot de passe de sécurité de la DIMM. Ceci est équivalent à l'<code class="Cm">apt-get update</code> <i></i> <code class="Cm">disable-security</code> de la commande <code class="Nm">ndctl</code>.</dd>
+<dt id="h"><a class="permalink" href="#h">-h</a></dt>
+<dd>Afficher un message d'aide et quitter.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THÉORIE_DE_FONCTIONNEMENT'><a class='permalink' href='#THÉORIE_DE_FONCTIONNEMENT'>THÉORIE DE FONCTIONNEMENT</a></h1>
+<p class="Pp">L'instruction WBINVD est émise par le noyau. Si les deux options <code class="Cm">--crypto-erase</code> et <code class="Cm">--overwrite</code> sont fournies, alors le chiffrement est effectué avant l'écrasement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='GEL_DE_SÉCURITÉ'><a class='permalink' href='#GEL_DE_SÉCURITÉ'>GEL DE SÉCURITÉ</a></h2>
+<p class="Pp">Cette opération ne nécessite pas de mot de passe. Elle entraînera le blocage de toute commande de sécurité autre qu'une requête de statut jusqu'au prochain démarrage.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='CONFIGURATION,_MISE_À_JOUR_et_EFFACEMENT_CHIFFRÉ_du_MOT_DE_PASSE_MAÎTRE'><a class='permalink' href='#CONFIGURATION,_MISE_À_JOUR_et_EFFACEMENT_CHIFFRÉ_du_MOT_DE_PASSE_MAÎTRE'>CONFIGURATION, MISE À JOUR et EFFACEMENT CHIFFRÉ du MOT DE PASSE MAÎTRE</a></h2>
+<p class="Pp">Ces opérations sont similaires à l'activation et à la mise à jour du mot de passe utilisateur. La seule différence est qu'un mot de passe différent est utilisé. Le mot de passe maître n'a aucune relation avec la clé maître (<i>kek</i>) qui est utilisée pour le chiffrement de n'importe quel mot de passe.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright &#x00A9; 2016 - 2022, Intel Corporation. Licence GPLv2 : GNU GPL version 2 <i></i> <a href='http://gnu.org/licenses/gpl.html'>http://gnu.org/licenses/gpl.html</a>. Ceci est un logiciel libre : vous êtes libre de le modifier et de le redistribuer. Il n'y a AUCUNE GARANTIE, dans la mesure permise par la loi.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI:'><a class='permalink' href='#VOIR_AUSSI:'>VOIR AUSSI:</a></h1>
+<p class="Pp">ndctl-setup-passphrase(1), ndctl-update-passphrase(1)</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2024-07-18</td>
+    <td class="foot-os">ndctl</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/ndctl/">extra/ndctl</a></dd>
+        <dt>Version :</dt>
+        <dd>79-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://github.com/pmem/ndctl">https://github.com/pmem/ndctl</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/ndctl/">/listing/extra/ndctl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#THÉORIE_DE_FONCTIONNEMENT">THÉORIE DE FONCTIONNEMENT</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#VOIR_AUSSI:">VOIR AUSSI:</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ndctl-remove-passphrase.1.fr.txt">txt</a>, 
+        
+            <a href="/man/ndctl-remove-passphrase.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>, à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

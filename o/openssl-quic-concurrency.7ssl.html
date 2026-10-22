@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>openssl-quic-concurrency(7ssl) — Pages man d'Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">openssl-quic-concurrency(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OPENSSL-QUIC-CONCURRENCY(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">OPENSSL-QUIC-CONCURRENCY(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">openssl-quic-concurrency - Modèle de concurrence OpenSSL QUIC</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Un domaine QUIC est un groupe de ressources QUIC telles que les écouteurs (voir <a href='/man/SSL_new_listener.3.en'>SSL_new_listener(3)</a>) et les connexions qui partagent des ressources de traitement d'événements communes, telles que les polleurs internes, les minuteurs et les verrous. Toute utilisation d'OpenSSL QUIC se fait à l'intérieur d'un domaine QUIC.</p>
+<p class="Pp">Ces ressources peuvent être accessibles et utilisées simultanément en fonction des circonstances. Cette page de manuel discute des modèles de concurrence disponibles et de la manière dont ils peuvent être utilisés.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DOMAINES_QUIC_EXPLICITES_ET_IMPLICITES"><a class='permalink' href='#DOMAINES_QUIC_EXPLICITES_ET_IMPLICITES'>DOMAINES   QUIC EXPLICITES ET IMPLICITES</a></h1>
+<p class="Pp">Un domaine QUIC est instancié soit explicitement (<a href='/man/SSL_new_domain.3.en'>SSL_new_domain(3)</a>), soit implicitement en appelant <a href='/man/SSL_new.3.en'>SSL_new(3)</a> ou <a href='/man/SSL_new_listener.3.en'>SSL_new_listener(3)</a> :</p>
+<ul class="Bl-bullet">
+  <li>Un domaine QUIC explicite est créé par et visible par l'application en tant qu'objet SSL de domaine QUIC et possède d'autres objets SSL QUIC créés en dessous, tels que des écouteurs ou des connexions.</li>
+  <li>Un domaine QUIC implicite est celui qui est créé en interne en raison de la création directe d'une connexion QUIC ou d'un objet SSL d'écouteur ; l'application ne crée pas explicitement d'objet SSL de domaine QUIC et ne référence jamais directement le domaine.</li>
+</ul>
+<p class="Pp">La création explicite d'un domaine QUIC offre le plus haut niveau de contrôle à une application. Les applications peuvent utiliser un domaine QUIC implicite pour plus de facilité d'utilisation et pour éviter d'avoir à créer un objet SSL de domaine QUIC distinct.</p>
+<p class="Pp">Indépendamment du fait qu'un domaine QUIC soit créé explicitement, le modèle de traitement interne est le même et l'application doit choisir un modèle de concurrence approprié, comme discuté ci-dessous.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="MODÈLES_DE_CONCURRENCE"><a class='permalink' href='#MODÈLES_DE_CONCURRENCE'>MODÈLES   DE CONCURRENCE</a></h1>
+<p class="Pp">L'implémentation OpenSSL QUIC prend en charge plusieurs modèles de concurrence pour prendre en charge une large gamme de scénarios d'utilisation.</p>
+<p class="Pp">Les modèles de concurrence disponibles sont les suivants :</p>
+<ul class="Bl-bullet">
+  <li>Le <b>Modèle de Concurrence Mono-thread (SCM)</b>, qui ne prend en charge que l'utilisation mono-thread synchronisée par l'application.</li>
+  <li>Le <b>Modèle de Concurrence Contenante (CCM)</b>, qui prend en charge l'utilisation multi-thread.</li>
+  <li>Le <b>Modèle de Concurrence Assistée par Thread (TACM)</b>, qui prend également en charge l'utilisation multi-thread et fournit une assistance à une application pour la gestion des événements de minuteur QUIC.</li>
+</ul>
+<p class="Pp">Les mérites de ces modèles sont les suivants :</p>
+<ul class="Bl-bullet">
+  <li>Le <b>Modèle de Concurrence Mono-thread (SCM)</b> n'effectue aucun verrouillage ni synchronisation. Il appartient entièrement à l'application de synchroniser l'accès au domaine QUIC et à ses objets SSL subsidiaires.
+    <p class="Pp">Ce modèle de concurrence est également utile pour une application qui souhaite utiliser l'implémentation OpenSSL QUIC comme une machine d'état pure.</p>
+  </li>
+  <li>Le <b>Modèle de Concurrence Contenante (CCM)</b> effectue un verrouillage automatique lors des appels API aux objets SSL d'un domaine QUIC. Cela fournit une synchronisation automatique pour l'utilisation multi-thread des objets QUIC. Par exemple, différents objets SSL de flux QUIC dans la même connexion QUIC peuvent être accédés en toute sécurité à partir de différents threads.
+    <p class="Pp">Ce modèle de concurrence ajoute la surcharge du verrouillage par rapport au modèle de concurrence mono-thread afin de prendre en charge l'utilisation multi-thread, mais offre des performances limitées dans une utilisation multi-thread très contestée en raison de son approche simple. Cependant, il peut toujours s'avérer une bonne solution pour une large catégorie d'applications qui passent la majorité de leur temps dans la logique de l'application et non dans le traitement d'E/S QUIC.</p>
+    <p class="Pp">Un avantage de ce modèle par rapport aux modèles de concurrence plus sophistiqués ci-dessous est qu'il ne crée aucun thread système.</p>
+  </li>
+  <li>Le <b>Modèle de Concurrence Assistée par Thread (TACM)</b> est identique au modèle de concurrence contenante, sauf qu'un thread est lancé en arrière-plan pour garantir que les événements de minuteur QUIC sont gérés en temps opportun. Cela garantit que les événements de délai d'attente QUIC sont gérés même si une application n'appelle pas périodiquement le domaine QUIC pour s'assurer que les événements de minuteur ou d'E/S réseau QUIC en attente sont gérés. Le thread d'assistance est en concurrence pour les mêmes ressources que tout autre thread. Cependant, les événements de la couche de handshake (TLS) ne sont jamais traités par le thread d'assistance.</li>
+</ul>
+<p class="Pp">Le modèle de concurrence par défaut est CCM ou TACM, en fonction de la <b>SSL_METHOD</b> utilisée avec un <b>SSL_CTX</b>. L'utilisation de <a href='/man/OSSL_QUIC_client_method.3.en'>OSSL_QUIC_client_method(3)</a> aboutit à un modèle de concurrence par défaut de CCM, tandis que l'utilisation de <a href='/man/OSSL_QUIC_client_thread_method.3.en'>OSSL_QUIC_client_thread_method(3)</a> aboutit à un modèle de concurrence par défaut de TACM.</p>
+<p class="Pp">D'autres modèles de concurrence pourront être proposés dans les futures versions d'OpenSSL.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="CAPACITÉS_DES_E/S_BLOQUANTES"><a class='permalink' href='#CAPACITÉS_DES_E/S_BLOQUANTES'>CAPACITÉS   DES E/S BLOQUANTES</a></h1>
+<p class="Pp">Tous les modèles de concurrence pris en charge sont capables de prendre en charge les appels d'E/S bloquantes, où les appels d'E/S au niveau de l'application (par exemple, vers <a href='/man/SSL_read_ex.3.en'>SSL_read_ex(3)</a> ou <a href='/man/SSL_write_ex.3.en'>SSL_write_ex(3)</a> sur un objet SSL de flux QUIC) bloquent jusqu'à ce que la demande puisse être traitée. Cela inclut l'utilisation de <a href='/man/SSL_poll.3.en'>SSL_poll(3)</a> de manière bloquante.</p>
+<p class="Pp">La prise en charge fiable des appels d'API bloquantes avec une utilisation multi-thread nécessite la création de ressources système supplémentaires telles que des descripteurs de fichiers internes pour permettre le réveil des threads si nécessaire. La création de ces ressources système internes est facultative et peut devoir être explicitement demandée par une application en fonction du modèle de concurrence choisi. Si cette fonctionnalité est désactivée, en fonction du modèle de concurrence choisi, les appels d'API bloquantes peuvent ne pas être disponibles et les appels à <a href='/man/SSL_set_blocking_mode.3.en'>SSL_set_blocking_mode(3)</a> tentant d'activer le mode bloquant peuvent échouer, nonobstant la section suivante.</p>
+<section class="Ss">
+<h2 class="Ss" id="Compatibilité_de_la_prise_en_charge_des_E/S_bloquantes_héritées"><a class='permalink' href='#Compatibilité_de_la_prise_en_charge_des_E/S_bloquantes_héritées'>Compatibilité   de la prise en charge des E/S bloquantes héritées</a></h2>
+<p class="Pp">OpenSSL 3.2 et 3.3 contenaient une implémentation boguée des appels d'E/S QUIC bloquantes qui n'est fiable qu'en utilisation mono-thread. Cette fonctionnalité est toujours disponible dans le modèle de concurrence mono-thread (SCM), où elle fonctionne de manière fiable.</p>
+<p class="Pp">Pour des raisons de compatibilité, cette fonctionnalité est également disponible sous le modèle de concurrence par défaut si l'application ne spécifie pas explicitement un modèle de concurrence ou ne le désactive pas. C'est ce qu'on appelle le mode de compatibilité des E/S bloquantes héritées, et son utilisation n'est pas recommandée pour les applications multi-thread.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="UTILISATION_RECOMMANDÉE"><a class='permalink' href='#UTILISATION_RECOMMANDÉE'>UTILISATION   RECOMMANDÉE</a></h1>
+<p class="Pp">Il est conseillé aux nouvelles applications de choisir un modèle de concurrence comme suit :</p>
+<ul class="Bl-bullet">
+  <li>Une application purement mono-thread, ou une application qui souhaite utiliser OpenSSL QUIC comme machine d'état et gérer elle-même la synchronisation, devrait sélectionner explicitement le modèle de concurrence SCM.</li>
+  <li>Une application qui souhaite s'engager dans une utilisation multi-thread de différentes connexions ou flux QUIC dans le même domaine QUIC devrait a) sélectionner le modèle de concurrence CCM ou TACM et b) choisir explicitement le support des E/S bloquantes (en fonction de si l'application souhaite effectuer des appels d'E/S bloquantes), en désactivant le mode de compatibilité des E/S bloquantes héritées.
+    <p class="Pp">Une application devrait sélectionner le modèle de concurrence CCM si l'application peut garantir qu'un domaine QUIC sera traité régulièrement (par exemple, parce que l'application peut garantir que le délai d'attente renvoyé par <a href='/man/SSL_get_event_timeout.3.en'>SSL_get_event_timeout(3)</a> sera géré). Si une application ne peut pas le faire, elle devrait sélectionner le modèle de concurrence TACM.</p>
+  </li>
+  <li>Les applications doivent configurer explicitement un modèle de concurrence lors de l'initialisation.</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="CONFIGURATION_D'UN_MODÈLE_DE_CONCURRENCE"><a class='permalink' href='#CONFIGURATION_D'UN_MODÈLE_DE_CONCURRENCE'>CONFIGURATION   D'UN MODÈLE DE CONCURRENCE</a></h1>
+<p class="Pp">Si vous utilisez un domaine QUIC explicite, un modèle de concurrence est choisi lors de l'appel à <a href='/man/SSL_new_domain.3.en'>SSL_new_domain(3)</a> en spécifiant zéro ou plusieurs des indicateurs suivants :</p>
+<dl class="Bl-tag">
+  <dt id="SSL_DOMAIN_FLAG_SINGLE_THREAD"><a class="permalink" href="#SSL_DOMAIN_FLAG_SINGLE_THREAD"><b>SSL_DOMAIN_FLAG_SINGLE_THREAD</b></a></dt>
+  <dd>La spécification de cet indicateur configure le modèle de concurrence mono-thread (SCM).</dd>
+</dl>
+</div>
+</section>
+                
+            </article>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<section class="Sh">
+<h1 class="Sh" id="MODÈLE_DE_CONCURRENCE_SSL"><a class="permalink" href="#MODÈLE_DE_CONCURRENCE_SSL">MODÈLE DE CONCURRENCE SSL</a></h1>
+<p class="Pp">Ce document décrit les modèles de concurrence pour les domaines SSL
+    (voir <a href="/man/SSL_new_domain.3.en">SSL_new_domain(3)</a>).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">Les domaines SSL sont utilisés pour créer des objets SSL pour les
+    connexions QUIC. Un modèle de concurrence peut être configuré pour chaque
+    domaine.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DOMAINES_QUIC_EXPLICITES_ET_IMPLICITES"><a class="permalink" href="#DOMAINES_QUIC_EXPLICITES_ET_IMPLICITES">DOMAINES QUIC EXPLICITES ET IMPLICITES</a></h1>
+<p class="Pp">Un domaine QUIC peut être créé explicitement à l'aide de
+    <a href="/man/SSL_new_domain.3.en">SSL_new_domain(3)</a>. Alternativement, un
+    domaine QUIC implicite est créé lorsque l'on appelle
+    <a href="/man/SSL_new_listener.3.en">SSL_new_listener(3)</a> ou
+    <a href="/man/SSL_new.3.en">SSL_new(3)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="MODÈLES_DE_CONCURRENCE"><a class="permalink" href="#MODÈLES_DE_CONCURRENCE">MODÈLES DE CONCURRENCE</a></h1>
+<p class="Pp">Les modèles de concurrence suivants sont pris en charge:</p>
+<dl class="Bl-tag">
+  <dt id="SSL_DOMAIN_FLAG_SINGLE_THREAD"><a class="permalink" href="#SSL_DOMAIN_FLAG_SINGLE_THREAD"><b>SSL_DOMAIN_FLAG_SINGLE_THREAD</b></a></dt>
+  <dd>Spécifier ce drapeau configure le modèle de concurrence à fil d'exécution
+      unique (SCM - Single-Threaded Concurrency Model).</dd>
+  <dt id="SSL_DOMAIN_FLAG_MULTI_THREAD"><a class="permalink" href="#SSL_DOMAIN_FLAG_MULTI_THREAD"><b>SSL_DOMAIN_FLAG_MULTI_THREAD</b></a></dt>
+  <dd>La spécification de ce drapeau configure le modèle de concurrence
+      contenu (CCM - Contentive Concurrency Model) (sauf si
+      <b>SSL_DOMAIN_FLAG_THREAD_ASSISTED</b> est également spécifié).</dd>
+  <dt id="SSL_DOMAIN_FLAG_THREAD_ASSISTED"><a class="permalink" href="#SSL_DOMAIN_FLAG_THREAD_ASSISTED"><b>SSL_DOMAIN_FLAG_THREAD_ASSISTED</b></a></dt>
+  <dd>La spécification de ce drapeau configure le modèle de concurrence assisté
+      par fil d'exécution (TACM - Thread-Assisted Concurrency Model). Il
+      implique <b>SSL_DOMAIN_FLAG_MULTI_THREAD</b>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="CAPACITÉS_D_E_S_ENTRÉES-SORTIES_BLOQUANTES"><a class="permalink" href="#CAPACITÉS_D_E_S_ENTRÉES-SORTIES_BLOQUANTES">CAPACITÉS D'E/S BLOQUANTES</a></h1>
+<p class="Pp">Les capacités d'entrée/sortie bloquantes pour un domaine peuvent être
+    configurées à l'aide des drapeaux suivants:</p>
+<dl class="Bl-tag">
+  <dt id="SSL_DOMAIN_FLAG_BLOCKING"><a class="permalink" href="#SSL_DOMAIN_FLAG_BLOCKING"><b>SSL_DOMAIN_FLAG_BLOCKING</b></a></dt>
+  <dd>Active la prise en charge fiable des appels d'E/S bloquants, en allouant
+      toutes les ressources système nécessaires pour y parvenir. Si ce drapeau est
+      spécifié, <b>SSL_DOMAIN_FLAG_LEGACY_BLOCKING</b> est ignoré.
+    <p class="Pp">Des détails sur les ressources système allouées peuvent être
+        trouvés dans la section &quot;CONSOMMATION DES RESSOURCES SYSTÈME&quot;
+        ci-dessous.</p>
+  </dd>
+  <dt id="SSL_DOMAIN_FLAG_LEGACY_BLOCKING"><a class="permalink" href="#SSL_DOMAIN_FLAG_LEGACY_BLOCKING"><b>SSL_DOMAIN_FLAG_LEGACY_BLOCKING</b></a></dt>
+  <dd>Active le mode de compatibilité bloquante hérité. Voir &quot;Compatibilité
+      avec le support bloquant hérité&quot;.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="UTILISATION_RECOMMANDÉE"><a class="permalink" href="#UTILISATION_RECOMMANDÉE">UTILISATION RECOMMANDÉE</a></h1>
+<p class="Pp">Les combinaisons de drapeaux mutuellement exclusives entraînent une
+    erreur (par exemple, la combinaison de
+    <b>SSL_DOMAIN_FLAG_SINGLE_THREAD</b> et
+    <b>SSL_DOMAIN_FLAG_MULTI_THREADED</b>).</p>
+<p class="Pp">Le modèle de concurrence d'un domaine ne peut pas être modifié une fois
+    que le domaine est créé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Comportement_par_défaut"><a class='permalink' href='#Comportement_par_défaut'>Comportement par défaut</a></h2>
+<p class="Pp">Si aucun des drapeaux <b>SSL_DOMAIN_FLAG_SINGLE_THREAD</b>,
+    <b>SSL_DOMAIN_FLAG_MULTI_THREAD</b> ou
+    <b>SSL_DOMAIN_FLAG_THREAD_ASSISTED</b> n'est fourni à
+    <a href="/man/SSL_new_domain.3.en">SSL_new_domain(3)</a> ou à une autre fonction
+    constructeur pouvant accepter les drapeaux ci-dessus, le modèle de
+    concurrence par défaut défini sur le <b>SSL_CTX</b> est utilisé. Ce défaut
+    peut être défini et obtenu à l'aide de
+    <a href="/man/SSL_CTX_set_domain_flags.3.en">SSL_CTX_set_domain_flags(3)</a> et
+    <a href="/man/SSL_CTX_get_domain_flags.3.en">SSL_CTX_get_domain_flags(3)</a>.
+    Tous les drapeaux supplémentaires fournis (par exemple,
+    <b>SSL_DOMAIN_FLAG_BLOCCKING</b>) sont ajoutés à l'ensemble des drapeaux
+    hérités.</p>
+<p class="Pp">Le modèle de concurrence par défaut défini sur un <b>SSL_CTX</b>
+    nouvellement créé est déterminé comme suit:</p>
+<ul class="Bl-bullet">
+  <li>Si une méthode <b>SSL_METHOD</b> de
+      <a href="/man/OSSL_QUIC_client_thread_method.3.en">OSSL_QUIC_client_thread_method(3)</a> est
+      utilisée, le modèle de concurrence assisté par fil d'exécution (TACM) est
+      utilisé avec le drapeau <b>SSL_DOMAIN_FLAG_BLOCKING</b>. Cela fournit une
+      fonctionnalité de blocage fiable.</li>
+  <li>Sinon, si OpenSSL a été compilé sans prise en charge des fils d'exécution,
+      le modèle de concurrence à fil d'exécution unique (SCM) est utilisé, avec
+      le drapeau <b>SSL_DOMAIN_FLAG_LEGACY_BLOCKING</b>.</li>
+  <li>Sinon, si une méthode <b>SSL_METHOD</b> de
+      <a href="/man/OSSL_QUIC_client_method.3.en">OSSL_QUIC_client_method(3)</a> est
+      utilisée, le modèle de concurrence contenu (CCM) est utilisé avec le
+      drapeau <b>SSL_DOMAIN_FLAG_LEGACY_BLOCKING</b>.</li>
+  <li>Sinon, le modèle de concurrence contenu (CCM) est utilisé.</li>
+</ul>
+<p class="Pp">Le modèle de concurrence par défaut peut varier entre les versions
+    d'OpenSSL. Une application peut spécifier un ou plusieurs des drapeaux de
+    domaine ci-dessus pour assurer une utilisation cohérente d'un modèle de
+    concurrence spécifique entre les versions.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Configuration_des_modèles_de_concurrence_avec_les_domaines_QUIC_implicites"><a class='permalink' href='#Configuration_des_modèles_de_concurrence_avec_les_domaines_QUIC_implicites'>Configuration des modèles de concurrence avec les domaines QUIC implicites</a></h2>
+<p class="Pp">Si un domaine QUIC explicite n'est pas créé explicitement à l'aide de
+    <a href="/man/SSL_new_domain.3.en">SSL_new_domain(3)</a>, un domaine QUIC
+    implicite est créé lors de l'appel de
+    <a href="/man/SSL_new_listener.3.en">SSL_new_listener(3)</a> ou
+    <a href="/man/SSL_new.3.en">SSL_new(3)</a>. Un tel domaine utilisera les
+    drapeaux de domaine par défaut configurés sur le <b>SSL_CTX</b> comme décrit
+    ci-dessus.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="CONSOMMATION_DES_RESSOURCES_SYSTÈME"><a class="permalink" href="#CONSOMMATION_DES_RESSOURCES_SYSTÈME">CONSOMMATION DES RESSOURCES SYSTÈME</a></h1>
+<p class="Pp">Si la prise en charge complète des E/S bloquantes est sélectionnée à
+    l'aide de <b>SSL_DOMAIN_FLAG_BLOCKING</b>, au moins un descripteur de socket,
+    un handle système de type socket ou un descripteur de fichier doit être
+    alloué pour permettre à un fil d'exécution de réveiller d'autres fils
+    d'exécution qui pourraient être bloqués dans des appels aux interfaces de
+    sonde de socket système telles que <a href="/man/select.2.en">select(2)</a> ou
+    <a href="/man/poll.2.en">poll(2)</a>. Ceci est alloué automatiquement en
+    interne par OpenSSL.</p>
+<p class="Pp">Si le modèle de concurrence assisté par fil d'exécution (TACM) est
+    sélectionné, un fil d'exécution d'arrière-plan est lancé. Cela implique
+    également <b>SSL_DOMAIN_FLAG_BLOCKING</b> et ce qui précède.</p>
+<p class="Pp">La consommation interne par OpenSSL de mutex, de variables de
+    condition, de verrous d'spinlock ou d'autres primitives de synchronisation de
+    fils d'exécution similaires n'est pas spécifiée dans tous les modèles de
+    concurrence.</p>
+<p class="Pp">La consommation interne par OpenSSL de fils d'exécution n'est pas
+    spécifiée dans le modèle de concurrence assisté par fil d'exécution.</p>
+<p class="Pp">La consommation interne par OpenSSL de sockets, de handles système
+    de type socket ou de descripteurs de fichiers, ou d'autres ressources
+    nécessaires pour prendre en charge la notification inter-fils d'exécution,
+    n'est pas spécifiée dans le modèle de concurrence assisté par fil d'exécution
+    ou lors de l'utilisation de <b>SSL_DOMAIN_FLAG_BLOCKING</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="COMPORTEMENT_DES_OBJETS_SSL"><a class="permalink" href="#COMPORTEMENT_DES_OBJETS_SSL">COMPORTEMENT DES OBJETS SSL</a></h1>
+<p class="Pp">Un objet SSL QUIC a le mode bloquant activé par défaut lorsque
+    <b>tous</b> les critères suivants sont remplis:</p>
+<ul class="Bl-bullet">
+  <li><b>SSL_DOMAIN_FLAG_BLOCKING</b> ou
+      <b>SSL_DOMAIN_FLAG_LEGACY_BLOCKING</b> est activé; et</li>
+  <li>La connexion QUIC est utilisée avec des BIOs de lecture et d'écriture réseau
+      qui exposent des descripteurs de sondage pris en charge. Voir
+      <a href="/man/openssl-quic.7.en">openssl-quic(7)</a> pour plus de
+    détails.</li>
+</ul>
+<p class="Pp">Dans tous les autres cas, un objet SSL QUIC a le mode bloquant
+    désactivé par défaut. Le mode bloquant peut être modifié explicitement à
+    l'aide de <a href="/man/SSL_set_blocking_mode.3.en">SSL_set_blocking_mode(3)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="VOIR_AUSSI"><a class="permalink" href="#VOIR_AUSSI">VOIR AUSSI</a></h1>
+<p class="Pp"><a href="/man/openssl-quic.7.en">openssl-quic(7)</a>,
+    <a href="/man/SSL_handle_events.3.en">SSL_handle_events(3)</a>,
+    <a href="/man/SSL_get_event_timeout.3.en">SSL_get_event_timeout(3)</a>,
+    <a href="/man/OSSL_QUIC_client_thread_method.3.en">OSSL_QUIC_client_thread_method(3)</a>,
+    <a href="/man/SSL_CTX_set_domain_flags.3.en">SSL_CTX_set_domain_flags(3)</a>,
+    <a href="/man/SSL_new_domain.3.en">SSL_new_domain(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="COPYRIGHT"><a class="permalink" href="#COPYRIGHT">COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2024-2025 The OpenSSL Project Authors. Tous droits
+    réservés.</p>
+<p class="Pp">Sous licence Apache License 2.0 (la &quot;Licence&quot;). Vous ne
+    pouvez pas utiliser ce fichier sauf en conformité avec la Licence. Vous pouvez
+    obtenir une copie dans le fichier LICENSE de la distribution source ou à
+    l'adresse <a href="https://www.openssl.org/source/license.html">https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet:</p>
+    <dl>
+        <dt>Nom du paquet:</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version:</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences:</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels:</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#MODÈLE_DE_CONCURRENCE_SSL">MODÈLE DE CONCURRENCE SSL</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#DOMAINES_QUIC_EXPLICITES_ET_IMPLICITES">DOMAINES QUIC EXPLICITES ET IMPLICITES</a></li>
+        
+            <li><a href="#MODÈLES_DE_CONCURRENCE">MODÈLES DE CONCURRENCE</a></li>
+        
+            <li><a href="#CAPACITÉS_D_E_S_ENTRÉES-SORTIES_BLOQUANTES">CAPACITÉS D'E/S BLOQUANTES</a></li>
+        
+            <li><a href="#UTILISATION_RECOMMANDÉE">UTILISATION RECOMMANDÉE</a></li>
+        
+            <li><a href="#CONSOMMATION_DES_RESSOURCES_SYSTÈME">CONSOMMATION DES RESSOURCES SYSTÈME</a></li>
+        
+            <li><a href="#COMPORTEMENT_DES_OBJETS_SSL">COMPORTEMENT DES OBJETS SSL</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats:
+        
+            <a href="/man/openssl-quic-concurrency.7ssl.fr.txt">txt</a>, 
+        
+            <a href="/man/openssl-quic-concurrency.7ssl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

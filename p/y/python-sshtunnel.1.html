@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>python-sshtunnel(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">python-sshtunnel(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/python-sshtunnel/">python-sshtunnel</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SSHTUNNEL(1)</td>
+    <td class="head-vol">sshtunnel</td>
+    <td class="head-rtitle">SSHTUNNEL(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">sshtunnel - Documentation sshtunnel</p>
+
+
+
+
+
+
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REQUIREMENTS'><a class='permalink' href='#REQUIREMENTS'>EXIGENCES</a></h1>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd><a href="http://www.paramiko.org/" class="archmanweb-grotty-link">paramiko</a></dd>
+</dl>
+</div>
+
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>pip install sshtunnel</pre>
+</div>
+</div>
+<p class="Pp">ou</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>easy_install sshtunnel</pre>
+</div>
+</div>
+<p class="Pp">ou</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>conda install -c conda-forge sshtunnel</pre>
+</div>
+</div>
+<p class="Pp">pour qu'il soit installé dans votre environnement.</p>
+
+<div class="Bd-indent">
+<div class="Bd-indent">
+
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>python setup.py test</pre>
+</div>
+</div>
+<p class="Pp">L'un des scénarios typiques où <b>sshtunnel</b> est utile est
+    décrit dans la figure ci-dessous. L'utilisateur peut avoir besoin de connecter
+    un port d'un serveur distant (par exemple, 8080) où seul le port SSH (généralement le port 22) est accessible.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>----------------------------------------------------------------------
+                            |
+-------------+              |    +----------+
+    CLIENT   |              |    |  SERVEUR | :22 SSH
+    LOCAL    | &lt;== SSH ========&gt; |  DISTANT | :8080 service web
+-------------+              |    +----------+
+                            |
+                         PARE-FEU (seul le port 22 est ouvert)
+----------------------------------------------------------------------</pre>
+</div>
+</div>
+<p class="Pp"><b>Fig1</b>: Comment se connecter à un service bloqué par un pare-feu
+    via un tunnel SSH.</p>
+<p class="Pp">Si le serveur SSH le permet, il est également possible d'atteindre
+    un serveur privé (du point de vue du <b>SERVEUR DISTANT</b>) qui n'est pas
+    directement visible de l'extérieur (perspective du <b>CLIENT LOCAL</b>).</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>----------------------------------------------------------------------
+                            |
+-------------+              |    +----------+               +---------
+    CLIENT   |              |    |  SERVEUR |               | SERVEUR
+    LOCAL    | &lt;== SSH ========&gt; |  DISTANT | &lt;== local ==&gt; | PRIVÉ
+-------------+              |    +----------+               +---------
+                            |
+                         PARE-FEU (seul le port 443 est ouvert)
+----------------------------------------------------------------------</pre>
+</div>
+</div>
+<p class="Pp"><b>Fig2</b>: Comment se connecter au <b>SERVEUR PRIVÉ</b> via un tunnel SSH.</p>
+<p class="Pp">L'API permet soit d'initialiser le tunnel et de le démarrer, soit
+    d'utiliser un contexte <b>with</b>, qui s'occupera de démarrer <b>et d'arrêter</b>
+    le tunnel :</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_1'><a class='permalink' href='#EXAMPLE_1'>EXEMPLE 1</a></h1>
+<p class="Pp">Le code correspondant à la <b>Fig1</b> ci-dessus suit, étant donné
+    que l'adresse du serveur distant est <b>pahaz.urfuclub.ru</b>, l'authentification
+    par mot de passe et un port de liaison local assigné aléatoirement.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>from sshtunnel import SSHTunnelForwarder
+server = SSHTunnelForwarder(
+    'alfa.8iq.dev',
+    ssh_username="pahaz",
+    ssh_password="secret",
+    remote_bind_address=('127.0.0.1', 8080)
+)
+server.start()
+print(server.local_bind_port)  # afficher le port local assigné
+# travailler avec le `SERVICE SECRET` via `server.local_bind_port`.
+server.stop()</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_2'><a class='permalink' href='#EXAMPLE_2'>EXEMPLE 2</a></h1>
+<p class="Pp">Exemple de transfert de port vers un serveur privé non directement
+    accessible, supposant une authentification par clé pkey protégée par mot de
+    passe, le service SSH du serveur distant écoutant sur le port 443 et que ce
+    port est ouvert dans le pare-feu (<b>Fig2</b>) :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>import paramiko
+import sshtunnel
+with sshtunnel.open_tunnel(
+    (REMOTE_SERVER_IP, 443),
+    ssh_username="",
+    ssh_pkey="/var/ssh/rsa_key",
+    ssh_private_key_password="secret",
+    remote_bind_address=(PRIVATE_SERVER_IP, 22),
+    local_bind_address=('0.0.0.0', 10022)
+) as tunnel:
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect('127.0.0.1', 10022)
+    # effectuer des opérations avec la session client
+    client.close()
+print('TERMINÉ !')</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_3'><a class='permalink' href='#EXAMPLE_3'>EXEMPLE 3</a></h1>
+<p class="Pp">Exemple de transfert de port pour le port local MySQL de Vagrant :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>from sshtunnel import open_tunnel
+from time import sleep
+with open_tunnel(
+    ('localhost', 2222),
+    ssh_username="vagrant",
+    ssh_password="vagrant",
+    remote_bind_address=('127.0.0.1', 3306)
+) as server:
+    print(server.local_bind_port)
+    while True:
+        # appuyez sur Ctrl-C pour arrêter
+        sleep(1)
+print('TERMINÉ !')</pre>
+</div>
+</div>
+<p class="Pp">Ou simplement en utilisant la ligne de commande :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>(bash)$ python -m sshtunnel -U vagrant -P vagrant -L :3306 -R 127.0.0.1:3306 -p 2222 localhost</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE_4'><a class='permalink' href='#EXAMPLE_4'>EXEMPLE 4</a></h1>
+<p class="Pp">Ouverture d'une session SSH via deux tunnels. Le transport SSH et les
+    tunnels seront démonisés, ce qui n'attendra pas la fermeture des connexions
+    lors de l'arrêt.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>import sshtunnel
+from paramiko import SSHClient
+with sshtunnel.open_tunnel(
+    ssh_address_or_host=('GW1_ip', 20022),
+    remote_bind_address=('GW2_ip', 22),
+) as tunnel1:
+    print('Connexion au tunnel1 (GW1_ip:GW1_port) OK...')
+    with sshtunnel.open_tunnel(
+        ssh_address_or_host=('localhost', tunnel1.local_bind_port),
+        remote_bind_address=('target_ip', 22),
+        ssh_username='GW2_user',
+        ssh_password='GW2_pwd',
+    ) as tunnel2:
+        print('Connexion au tunnel2 (GW2_ip:GW2_port) OK...')
+        with SSHClient() as ssh:
+            ssh.connect('localhost',
+                port=tunnel2.local_bind_port,
+                username='target_user',
+                password='target_pwd',
+            )
+            ssh.exec_command(...)</pre>
+</div>
+</div>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ sshtunnel --help
+usage: sshtunnel [-h] [-U SSH_USERNAME] [-p SSH_PORT] [-P SSH_PASSWORD] -R
+                 IP:PORT [IP:PORT ...] [-L [IP:PORT [IP:PORT ...]]]
+                 [-k SSH_HOST_KEY] [-K KEY_FILE] [-S KEY_PASSWORD] [-t] [-v]
+                 [-V] [-x IP:PORT] [-c SSH_CONFIG_FILE] [-z] [-n]
+                 [-d [FOLDER [FOLDER ...]]]
+                 ssh_address
+Utilitaires de tunnel SSH en pur Python
+Version 0.4.0
+arguments positionnels:
+  ssh_address           Adresse IP du serveur SSH (GW pour les tunnels SSH)
+                        définir avec « -- ssh_address » si juste après -R ou -L
+arguments facultatifs:
+  -h, --help            afficher ce message d'aide et quitter
+  -U SSH_USERNAME, --username SSH_USERNAME
+                        nom d'utilisateur du compte du serveur SSH
+  -p SSH_PORT, --server_port SSH_PORT
+                        port TCP du serveur SSH (défaut : 22)
+  -P SSH_PASSWORD, --password SSH_PASSWORD
+                        mot de passe du compte du serveur SSH
+  -R IP:PORT [IP:PORT ...],</pre>
+</div>
+</div>
+</section>
+</div>
+</section>
+            </article>
+            <aside id="content-right">
+                
+            </aside>
+        </main>
+        <footer>
+            <p>
+                This page was generated from the Arch Linux Man Pages repository.
+                The repository is available on <a href="https://gitlab.archlinux.org/archlinux/man-pages">GitLab</a>.
+                Please report bugs or suggest improvements <a href="https://gitlab.archlinux.org/archlinux/man-pages/-/issues">there</a>.
+            </p>
+        </footer>
+    </body>
+</html>
+ --remote_bind_address IP:PORT [IP:PORT ...]
+                        Séquence d'adresses de liaison distante : ip_1:port_1 ip_2:port_2 ... ip_n:port_n
+                        Équivalent à ssh -Lxxxx:IP_ADDRESS:PORT
+                        Si le port est omis, il vaut par défaut 22.
+                        Exemple : -R 10.10.10.10: 10.10.10.10:5900
+  -L [IP:PORT [IP:PORT ...]], --local_bind_address [IP:PORT [IP:PORT ...]]
+                        Séquence d'adresses de liaison locale : ip_1:port_1 ip_2:port_2 ... ip_n:port_n
+                        Les éléments peuvent également être des domaines de socket UNIX valides :
+                        /tmp/foo.sock /tmp/bar.sock ... /tmp/baz.sock
+                        Équivalent à ssh -LPORT:xxxxxxxxx:xxxx, l'adresse IP locale étant facultative.
+                        Par défaut, il écoutera sur toutes les interfaces (0.0.0.0) et choisira un port aléatoire.
+                        Exemple : -L :40000
+  -k SSH_HOST_KEY, --ssh_host_key SSH_HOST_KEY
+                        Clé d'hôte de la passerelle
+  -K KEY_FILE, --private_key_file KEY_FILE
+                        Fichier de clé privée RSA/DSS/ECDSA
+  -S KEY_PASSWORD, --private_key_password KEY_PASSWORD
+                        Mot de passe de la clé privée RSA/DSS/ECDSA
+  -t, --threaded        Autoriser les connexions concurrentes à chaque tunnel
+  -v, --verbose         Augmenter la verbosité de la sortie (par défaut : ERROR)
+  -V, --version         Afficher le numéro de version et quitter
+  -x IP:PORT, --proxy IP:PORT
+                        IP et port du proxy SSH vers la destination
+  -c SSH_CONFIG_FILE, --config SSH_CONFIG_FILE
+                        Fichier de configuration SSH, par défaut ~/.ssh/config
+  -z, --compress        Demander au serveur une compression sur le transport SSH
+  -n, --noagent         Désactiver la recherche de clés auprès d'un agent SSH
+  -d [FOLDER [FOLDER ...]], --host_pkey_directories [FOLDER [FOLDER ...]]
+                        Liste des répertoires où les clés publiques SSH (au format `id_*`) peuvent être trouvées</pre>
+</div>
+</div>
+<p class="Pp"><i>sshtunnel</i> - Initialise des tunnels SSH via une passerelle distante.</p>
+<p class="Pp"><b>sshtunnel</b> fonctionne en ouvrant une connexion SSH de transfert de port en arrière-plan, en utilisant des threads.</p>
+<p class="Pp">Les connexions sont fermées lors de l'appel explicite de la méthode <i>SSHTunnelForwarder.stop()</i> ou en l'utilisant comme contexte.</p>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.SSH_TIMEOUT"><a class="permalink" href="#sshtunnel.SSH_TIMEOUT"><b>sshtunnel.SSH_TIMEOUT
+    = 0.1</b></a></dt>
+  <dd>Timeout (secondes) pour le socket de transport (<b>socket.settimeout</b>)</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.TUNNEL_TIMEOUT"><a class="permalink" href="#sshtunnel.TUNNEL_TIMEOUT"><b>sshtunnel.TUNNEL_TIMEOUT
+    = 10.0</b></a></dt>
+  <dd>Timeout (secondes) pour la connexion du tunnel (timeout open_channel)</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.DEFAULT_LOGLEVEL"><a class="permalink" href="#sshtunnel.DEFAULT_LOGLEVEL"><b>sshtunnel.DEFAULT_LOGLEVEL
+    = 40</b></a></dt>
+  <dd>Niveau par défaut si aucun logger n'est passé (ERROR)</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.DEFAULT_SSH_DIRECTORY"><a class="permalink" href="#sshtunnel.DEFAULT_SSH_DIRECTORY"><b>sshtunnel.DEFAULT_SSH_DIRECTORY
+    = '~/.ssh'</b></a></dt>
+  <dd>Chemin du fichier de configuration SSH optionnel</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.check_address(address)"><a class="permalink" href="#sshtunnel.check_address(address)"><b>sshtunnel.check_address(address)</b></a></dt>
+  <dd>Vérifie si le format de l'adresse est correct</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:"><a class="permalink" href="#Arguments:"><b>Arguments :</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="address"><a class="permalink" href="#address"><b>address
+    (tuple) :</b></a></dt>
+  <dd>(<b>str</b>, <b>int</b>) représentant respectivement une adresse IP et un port
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">alternativement, une adresse locale <b>address</b> peut être une <b>str</b> lors de l'utilisation de sockets de domaine UNIX, si pris en charge par la plateforme</div>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="Raises:"><a class="permalink" href="#Raises:"><b>Lève :</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ValueError:"><a class="permalink" href="#ValueError:"><b>ValueError :</b></a></dt>
+  <dd>lancé lorsque l'adresse a un format incorrect</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Example:"><a class="permalink" href="#Example:"><b>Exemple :</b></a></dt>
+  <dd>
+        <pre>&gt;&gt;&gt; check_address(('127.0.0.1', 22))
+</pre>
+  </dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.check_addresses(address_list,"><a class="permalink" href="#sshtunnel.check_addresses(address_list,"><b>sshtunnel.check_addresses(address_list,
+    is_remote=False)</b></a></dt>
+  <dd>Vérifie si le format des adresses est correct</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~2"><a class="permalink" href="#Arguments:~2"><b>Arguments :</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="address_list"><a class="permalink" href="#address_list"><b>address_list
+    (list[tuple]) :</b></a></dt>
+  <dd>Séquence de paires (<b>str</b>, <b>int</b>), représentant chacune une adresse IP
+      et un port respectivement
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">lorsque pris en charge par la plateforme, un ou plusieurs éléments de la liste peuvent être de type <b>str</b>, représentant un socket de domaine UNIX valide</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="is_remote"><a class="permalink" href="#is_remote"><b>is_remote
+    (boolean) :</b></a></dt>
+  <dd>Indique si la liste d'adresses</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Raises:~2"><a class="permalink" href="#Raises:~2"><b>Lève :</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="AssertionError:"><a class="permalink" href="#AssertionError:"><b>AssertionError :</b></a></dt>
+  <dd>lancé lorsque <b>address_list</b> contient un élément invalide</dd>
+  <dt id="ValueError:~2"><a class="permalink" href="#ValueError:~2"><b>ValueError :</b></a></dt>
+  <dd>lancé lorsque toute adresse de la liste a un format incorrect</dd>
+</dl>
+</div>
+</div>
+<p class="Pp">Exemple :</p>
+<pre>&gt;&gt;&gt; check_addresses([('127.0.0.1', 22), ('127.0.0.1', 2222)])</pre>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.create_logger(logger=None,"><a class="permalink" href="#sshtunnel.create_logger(logger=None,"><b>sshtunnel.create_logger(logger=None,
+    loglevel=None, capture_warnings=True,
+    add_paramiko_handler=True)</b></a></dt>
+  <dd>Attache ou crée un nouveau logger et ajoute un gestionnaire de console s'il n'y en a pas
+    <p class="Pp">Arguments :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="logger"><a class="permalink" href="#logger"><b>logger
+    (Optional[logging.Logger]) :</b></a></dt>
+  <dd>Instance de <a href="https://docs.python.org/3/library/logging.html#logging.Logger" class="archmanweb-grotty-link">logging.Logger</a> ; une nouvelle est créée si cet argument est vide</dd>
+  <dt id="loglevel"><a class="permalink" href="#loglevel"><b>loglevel
+    (Optional[str ou int]) :</b></a></dt>
+  <dd>Niveau de <a href="https://docs.python.org/3/library/logging.html#logging.Logger" class="archmanweb-grotty-link">logging.Logger</a>, soit sous forme de chaîne (par exemple, <b>ERROR</b>), soit sous forme numérique (10 == <b>DEBUG</b>)
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">une valeur de 1 == <b>TRACE</b> active le mode Tracing</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="capture_warnings"><a class="permalink" href="#capture_warnings"><b>capture_warnings
+    (boolean) :</b></a></dt>
+  <dd>Active/désactive la capture des événements enregistrés par le module warnings dans les
+      gestionnaires du <b>logger</b>
+    <p class="Pp">Par défaut : True</p>
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">ignoré en python 2.6</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="add_paramiko_handler"><a class="permalink" href="#add_paramiko_handler"><b>add_paramiko_handler
+    (boolean) :</b></a></dt>
+  <dd>Indique s'il faut ajouter un gestionnaire de console pour le logger de
+      <b>paramiko.transport</b> s'il n'y a pas de gestionnaire
+    <p class="Pp">Par défaut : True</p>
+  </dd>
+</dl>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Return:"><a class="permalink" href="#Return:"><b>Retourne :</b></a></dt>
+  <dd><a href="https://docs.python.org/3/library/logging.html#logging.Logger" class="archmanweb-grotty-link">logging.Logger</a></dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="exception"><a class="permalink" href="#exception"><b>exception
+    sshtunnel.BaseSSHTunnelForwarderError(*args, **kwargs)</b></a></dt>
+  <dd>Exception levée pour les erreurs <i>SSHTunnelForwarder</i></dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="exception~2"><a class="permalink" href="#exception~2"><b>exception
+    sshtunnel.HandlerSSHTunnelForwarderError(*args, **kwargs)</b></a></dt>
+  <dd>Exception pour les erreurs de transfert de tunnel</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="class"><a class="permalink" href="#class"><b>class
+    sshtunnel.SSHTunnelForwarder(ssh_address_or_host=None,
+    ssh_config_file='~/.ssh/config', ssh_host_key=None, ssh_password=None,
+    ssh_pkey=None, ssh_private_key_password=None, ssh_proxy=None,
+    ssh_proxy_enabled=True, ssh_username=None, local_bind_address=None,
+    local_bind_addresses=None, logger=None, mute_exceptions=False,
+    remote_bind_address=None, remote_bind_addresses=None, set_keepalive=5.0,
+    threaded=True, compression=None, allow_agent=True,
+    host_pkey_directories=None, *args, **kwargs)</b></a></dt>
+  <dd><b>Classe de tunnel SSH</b></dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Initialise un tunnel SSH vers un hôte distant selon les arguments d'entrée</li>
+  </ul>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Optionally:"><a class="permalink" href="#Optionally:"><b>Optionnellement :</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Lire un fichier de configuration SSH (typiquement <b>~/.ssh/config</b>)</li>
+  <li>Charger les clés à partir d'un agent SSH en cours d'exécution (par exemple, Pageant, GNOME Keyring)</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p class="Pp">Lève :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="BaseSSHTunnelForwarderError"><a class="permalink" href="#BaseSSHTunnelForwarderError"><b><i>BaseSSHTunnelForwarderError</i> :</b></a></dt>
+  <dd>levée par les méthodes de la classe SSHTunnelForwarder</dd>
+  <dt id="HandlerSSHTunnelForwarderError"><a class="permalink" href="#HandlerSSHTunnelForwarderError"><b><i>HandlerSSHTunnelForwarderError</i> :</b></a></dt>
+  <dd>levée par les threads de transfert de tunnel
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Les attributs <b>mute_exceptions</b> et
+  <b>raise_exception_if_any_forwarder_have_a_problem</b> (obsolète) peuvent être utilisés pour supprimer la plupart des exceptions levées par cette classe</div>
+</div>
+</div>
+</div>
+</div>
+<p class="Pp">Arguments mots-clés :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ssh_address_or_host"><a class="permalink" href="#ssh_address_or_host"><b>ssh_address_or_host
+    (tuple ou str) :</b></a></dt>
+  <dd>IP ou nom d'hôte de la <b>PASSERELLE DISTANTE</b>. Il peut s'agir d'un tuple à deux éléments
+      (<b>str</b>, <b>int</b>) représentant respectivement l'IP et le port, ou d'une
+      <b>str</b> représentant uniquement l'adresse IP
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+>
+      </dd>
+  <dt id="ssh_config_file"><a class="permalink" href="#ssh_config_file"><b>ssh_config_file
+    (str):</b></a></dt>
+  <dd>Fichier de configuration SSH à lire. S'il est explicitement défini sur
+      <b>None</b>, l'analyse de cette configuration est omise
+    <p class="Pp">Par défaut : <b>SSH_CONFIG_FILE</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+      </dd>
+  <dt id="ssh_host_key"><a class="permalink" href="#ssh_host_key"><b>ssh_host_key
+    (str):</b></a></dt>
+  <dd>Représentation d'une ligne dans un fichier « known hosts » de style OpenSSH.
+    <p class="Pp">L'empreinte de la clé de la <b>PASSERELLE À DISTANCE</b> sera comparée à
+        cette clé d'hôte afin de prévenir l'usurpation du serveur SSH. Important
+        lors de l'utilisation de mots de passe afin de ne pas tenter accidentellement de se connecter à une machine incorrecte (peut-être celle d'un attaquant).</p>
+  </dd>
+  <dt id="ssh_username"><a class="permalink" href="#ssh_username"><b>ssh_username
+    (str):</b></a></dt>
+  <dd>Nom d'utilisateur pour s'authentifier sur le <b>SERVEUR À DISTANCE</b>.
+    <p class="Pp">Par défaut : nom d'utilisateur local actuel</p>
+  </dd>
+  <dt id="ssh_password"><a class="permalink" href="#ssh_password"><b>ssh_password
+    (str):</b></a></dt>
+  <dd>Texte représentant le mot de passe utilisé pour se connecter au
+      <b>SERVEUR À DISTANCE</b> ou pour déverrouiller une clé privée.
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Évitez de coder le mot de passe secret directement dans le code, car cela pourrait être visible et rendre votre service vulnérable aux attaques.</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="ssh_port"><a class="permalink" href="#ssh_port"><b>ssh_port
+    (int):</b></a></dt>
+  <dd>Numéro de port optionnel du service SSH sur la <b>PASSERELLE À DISTANCE</b>, lorsque
+      <i>ssh_address_or_host`</i> est une <b>chaîne de caractères</b> représentant la partie IP de
+      l'adresse de la <b>PASSERELLE À DISTANCE</b>.
+    <p class="Pp">Par défaut : 22</p>
+  </dd>
+  <dt id="ssh_pkey"><a class="permalink" href="#ssh_pkey"><b>ssh_pkey (str ou
+    paramiko.PKey):</b></a></dt>
+  <dd>Nom du fichier de clé <b>privée</b> (<b>str</b>) à partir duquel obtenir la clé publique ou
+      une <b>clé publique</b> (<a href="https://docs.paramiko.org/en/latest/api/keys.html#paramiko.pkey.PKey" class="archmanweb-grotty-link">paramiko.pkey.PKey</a>).</dd>
+  <dt id="ssh_private_key_password"><a class="permalink" href="#ssh_private_key_password"><b>ssh_private_key_password
+    (str):</b></a></dt>
+  <dd>Mot de passe pour une <b>ssh_pkey</b> chiffrée.
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Évitez de coder le mot de passe secret directement dans le code, car cela pourrait être visible et rendre votre service vulnérable aux attaques.</div>
+</div>
+<dl class="Bl-tag">
+  <dt id="ssh_proxy"><a class="permalink" href="#ssh_proxy"><b>ssh_proxy
+    (objet semblable à un socket ou tuple):</b></a></dt>
+  <dd>Proxy par lequel tout le trafic SSH sera transmis. Il peut s'agir, par
+      exemple, d'une instance de <a href="https://docs.paramiko.org/en/latest/api/proxy.html#paramiko.proxy.ProxyCommand" class="archmanweb-grotty-link">paramiko.proxy.ProxyCommand</a>. Voir la
+      documentation du paramètre sock de <a href="https://docs.paramiko.org/en/latest/api/transport.html#paramiko.transport.Transport" class="archmanweb-grotty-link">paramiko.transport.Transport</a> ou
+      <b>ProxyCommand</b> dans <a href='/man/ssh_config.5.en'>ssh_config(5)</a> pour plus
+      d'informations.
+    <p class="Pp">Il est également possible de spécifier l'adresse du proxy sous forme de tuple
+        de type (<b>str</b>, <b>int</b>) représentant l'IP et le port du proxy.</p>
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Ignoré si <b>ssh_proxy_enabled</b> est False.</div>
+</div>
+<p class="Pp">Ajouté dans la version 0.0.5.</p>
+<dl class="Bl-tag">
+  <dt id="ssh_proxy_enabled"><a class="permalink" href="#ssh_proxy_enabled"><b>ssh_proxy_enabled
+    (booléen):</b></a></dt>
+  <dd>Activer/désactiver le proxy SSH. Si True et que le fichier <b>ssh_config_file</b>
+      de l'utilisateur contient une directive <b>ProxyCommand</b> correspondant à
+      <b>ssh_address_or_host</b> spécifié, un objet <a href="https://docs.paramiko.org/en/latest/api/proxy.html#paramiko.proxy.ProxyCommand" class="archmanweb-grotty-link">paramiko.proxy.ProxyCommand</a>
+      sera créé par lequel tout le trafic SSH sera transmis.
+    <p class="Pp">Par défaut : <b>True</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+      </dd>
+  <dt id="local_bind_address"><a class="permalink" href="#local_bind_address"><b>local_bind_address
+    (tuple):</b></a></dt>
+  <dd>Tuple local au format (<b>str</b>, <b>int</b>) représentant l'IP et le port du côté
+      local du tunnel. Les deux éléments du tuple sont optionnels, donc
+      <b>('', 8000)</b> et <b>('10.0.0.1', )</b> sont des valeurs valides.
+    <p class="Pp">Par défaut : <b>('0.0.0.0', RANDOM_PORT)</b></p>
+    <p class="Pp">Modifié dans la version 0.0.8 : Ajout de la possibilité d'utiliser un socket
+        de domaine UNIX comme adresse de liaison locale.</p>
+      </dd>
+  <dt id="local_bind_addresses"><a class="permalink" href="#local_bind_addresses"><b>local_bind_addresses
+    (list[tuple]):</b></a></dt>
+  <dd>Si plus d'un tunnel est établi à la fois, une liste de tuples (dans le même
+      format que <b>local_bind_address</b>) peut être spécifiée, comme
+      [(ip1, port_1), (ip_2, port2), ...]
+    <p class="Pp">Par défaut : <b>[local_bind_address]</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+      </dd>
+  <dt id="remote_bind_address"><a class="permalink" href="#remote_bind_address"><b>remote_bind_address
+    (tuple):</b></a></dt>
+  <dd>Tuple distant au format (<b>str</b>, <b>int</b>) représentant l'IP et le port du côté
+      distant du tunnel.</dd>
+  <dt id="remote_bind_addresses"><a class="permalink" href="#remote_bind_addresses"><b>remote_bind_addresses
+    (list[tuple]):</b></a></dt>
+  <dd>Si plus d'un tunnel est établi à la fois, une liste de tuples (dans le même
+      format que <b>remote_bind_address</b>) peut être spécifiée, comme
+      [(ip1, port_1), (ip_2, port2), ...]
+    <p class="Pp">Par défaut : <b>[remote_bind_address]</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+      </dd>
+  <dt id="allow_agent"><a class="permalink" href="#allow_agent"><b>allow_agent
+    (booléen):</b></a></dt>
+  <dd>Activer/désactiver le chargement des clés à partir d'un agent SSH.
+    <p class="Pp">Par défaut : <b>True</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.8.</p>
+      </dd>
+  <dt id="host_pkey_directories"><a class="permalink" href="#host_pkey_directories"><b>host_pkey_directories
+    (list):</b></a></dt>
+  <dd>Rechercher les pkeys dans les dossiers de cette liste, par exemple ['~/.ssh'].
+    <p class="Pp">Par défaut : <b>None</b> (désactivé)</p>
+    <p class="Pp">Ajouté dans la version 0.1.4.</p>
+      </dd>
+  <dt id="compression"><a class="permalink" href="#compression"><b>compression
+    (booléen):</b></a></dt>
+  <dd>Activer/désactiver la compression du transport. Par défaut, la compression est désactivée
+      car elle peut avoir un impact négatif sur les sessions interactives.
+    <p class="Pp">Par défaut : <b>False</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.8.</p>
+      </dd>
+  <dt id="logger~2"><a class="permalink" href="#logger~2"><b>logger
+    (logging.Logger):</b></a></dt>
+  <dd>Instance de journalisation pour sshtunnel et paramiko.
+    
+    <p class="Pp">Ajouté dans la version 0.0.3.</p>
+      </dd>
+  <dt id="mute_exceptions"><a class="permalink" href="#mute_exceptions"><b>mute_exceptions
+    (booléen):</b></a></dt>
+  <dd>Permet de désactiver les exceptions <i>BaseSSHTunnelForwarderError</i> ou
+      <i>HandlerSSHTunnelForwarderError</i> lorsqu'elles sont activées.
+    <p class="Pp">Par défaut : <b>False</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.8.</p>
+      </dd>
+  <dt id="set_keepalive"><a class="permalink" href="#set_keepalive"><b>set_keepalive
+    (float):</b></a></dt>
+  <dd>Intervalle en secondes définissant la période pendant laquelle, si aucune donnée n'a été envoyée sur
+      la connexion, un paquet <i>'keepalive'</i> sera envoyé (et ignoré par
+      l'hôte distant). Ceci peut être utile pour maintenir les connexions actives sur un NAT.
+      Vous pouvez définir à 0.0 pour désactiver le keepalive.
+    <p class="Pp">Par défaut : 5.0 (aucun paquet keepalive n'est envoyé)</p>
+    <p class="Pp">Ajouté dans la version 0.0.7.</p>
+      </dd>
+  <dt id="threaded"><a class="permalink" href="#threaded"><b>threaded
+    (booléen):</b></a></dt>
+  <dd>Permettre les connexions concurrentes sur un seul tunnel.
+    <p class="Pp">Par défaut : <b>True</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.3.</p>
+      </dd>
+  <dt id="ssh_address"><a class="permalink" href="#ssh_address"><b>ssh_address
+    (str):</b></a></dt>
+  <dd>Remplacé par <b>ssh_address_or_host</b>, tuple de type (str, int)
+      représentant l'IP et le port du <b>SERVEUR À DISTANCE</b>.
+    <p class="Pp">Déprécié depuis la version 0.0.4.</p>
+      </dd>
+  <dt id="ssh_host"><a class="permalink" href="#ssh_host"><b>ssh_host
+    (str):</b></a></dt>
+  <dd>Remplacé par <b>ssh_address_or_host</b>, tuple de type (str, int)
+      représentant l'IP et le port du <b>SERVEUR À DISTANCE</b>.
+    <p class="Pp">Déprécié depuis la version 0.0.4.</p>
+      </dd>
+  <dt id="ssh_private_key"><a class="permalink" href="#ssh_private_key"><b>ssh_private_key
+    (str ou paramiko.PKey):</b></a></dt>
+  <dd>Remplacé par <b>ssh_pkey</b>, qui peut représenter soit un nom de fichier de
+      clé <b>privée</b> (<b>str</b>), soit une <b>clé publique</b>
+      (<a href="https://docs.paramiko.org/en/latest/api/keys.html#paramiko.pkey.PKey" class="archmanweb-grotty-link">paramiko.pkey.PKey</a>).
+    <p class="Pp">Déprécié depuis la version 0.0.8.</p>
+      </dd>
+  <dt id="raise_exception_if_any_forwarder_have_a_problem"><a class="permalink" href="#raise_exception_if_any_forwarder_have_a_problem"><b>raise_exception_if_any_forwarder_have_a_problem
+    (booléen):</b></a></dt>
+  <dd>Permet de désactiver les exceptions <i>BaseSSHTunnelForwarderError</i> ou
+      <i>HandlerSSHTunnelForwarderError</i> lorsqu'elles sont définies sur False.
+    <p class="Pp">Par défaut : <b>True</b></p>
+    <p class="Pp">Ajouté dans la version 0.0.4.</p>
+        <p class="Pp">Déprécié depuis la version 0.0.8 : (utilisez <b>mute_exceptions</b>
+        à la place)</p>
+      </dd>
+</dl>
+</div>
+</div>
+</div>
+<p class="Pp">Attributs :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tunnel_is_up"><a class="permalink" href="#tunnel_is_up"><b>tunnel_is_up
+    (dict):</b></a></dt>
+  <dd>Décrit si l'autre extrémité du tunnel a été signalée comme étant active
+      (et que nous devons la fermer) ou non (ignorer la fermeture de ce tunnel).
+    <p class="Pp"><b>NOTE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Cet attribut ne doit pas être modifié.</div>
+</div>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Lorsque <b>skip_tunnel_checkup</b> est désactivé ou que la liaison
+  locale est un socket UNIX, la valeur sera toujours <b>True</b>.</div>
+</div>
+<p class="Pp"><b>Exemple</b> :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>{('127.0.0.1', 55550): True,   # ce tunnel est actif
+ ('127.0.0.1', 55551): False}  # celui-ci ne l'est pas</pre>
+</div>
+</div>
+<p class="Pp">où 55550 et 55551 sont les ports de liaison locaux.</p>
+<dl class="Bl-tag">
+  <dt id="skip_tunnel_checkup"><a class="permalink" href="#skip_tunnel_checkup"><b>skip_tunnel_checkup
+    (booléen):</b></a></dt>
+  <dd>Désactive la vérification du tunnel (par défaut pour des raisons de compatibilité ascendante).
+    <p class="Pp">Ajouté dans la version 0.1.0.</p>
+      </dd>
+</dl>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="daemon_forward_servers"><a class="permalink" href="#daemon_forward_servers"><b>daemon_forward_servers
+    = True</b></a></dt>
+  <dd>marque les threads de tunnel en mode démon.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="daemon_transport"><<dl class="Bl-tag">
+  <dt id="daemon_transport"><a class="permalink" href="#daemon_transport"><b>daemon_transport
+    = True</b></a></dt>
+  <dd>drapeau du thread de transport SSH en mode démon</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="local_is_up(target)"><a class="permalink" href="#local_is_up(target)"><b>local_is_up(target)</b></a></dt>
+  <dd>Vérifie si un tunnel est actif (l'hôte cible distant est joignable sur le
+      port cible TCP)</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~3"><a class="permalink" href="#Arguments:~3"><b>Arguments&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="target"><a class="permalink" href="#target"><b>target
+    (tuple)&nbsp;:</b></a></dt>
+  <dd>tuple de type (<b>str</b>, <b>int</b>) indiquant l'adresse IP et le port
+      d'écoute</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Return:~2"><a class="permalink" href="#Return:~2"><b>Retour&nbsp;:</b></a></dt>
+  <dd>booléen</dd>
+</dl>
+</div>
+<p class="Pp">Déprécié depuis la version 0.1.0&nbsp;: Remplacé par <i>check_tunnels()</i>
+    et <b>tunnel_is_up</b></p>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="check_tunnels()"><a class="permalink" href="#check_tunnels()"><b>check_tunnels()</b></a></dt>
+  <dd>Vérifie si tous les tunnels sont établis et peuple
+      <b>tunnel_is_up</b></dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="static"><a class="permalink" href="#static"><b>static
+    get_agent_keys(logger=None)</b></a></dt>
+  <dd>Charge les clés publiques de tout agent SSH disponible</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~4"><a class="permalink" href="#Arguments:~4"><b>Arguments&nbsp;:</b></a></dt>
+  <dd>logger (Optional[logging.Logger])</dd>
+  <dt id="Return:~3"><a class="permalink" href="#Return:~3"><b>Retour&nbsp;:</b></a></dt>
+  <dd>liste</dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="static~2"><a class="permalink" href="#static~2"><b>static
+    get_keys(logger=None, host_pkey_directories=None,
+    allow_agent=False)</b></a></dt>
+  <dd>Charge les clés publiques de tout agent SSH disponible ou du répertoire
+    local .ssh.</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~5"><a class="permalink" href="#Arguments:~5"><b>Arguments&nbsp;:</b></a></dt>
+  <dd>logger (Optional[logging.Logger])</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="host_pkey_directories~2"><a class="permalink" href="#host_pkey_directories~2"><b>host_pkey_directories
+    (Optional[list[str]])&nbsp;:</b></a></dt>
+  <dd>Liste des répertoires locaux où rechercher les clés SSH hôtes au format
+      &quot;id_*&quot;. Par exemple, ['~/.ssh']
+    <p class="Pp">Ajouté en version 0.1.0.</p>
+      </dd>
+  <dt id="allow_agent~2"><a class="permalink" href="#allow_agent~2"><b>allow_agent
+    (Optional[booléen])&nbsp;:</b></a></dt>
+  <dd>Indique s'il faut charger les clés depuis l'agent
+    <p class="Pp">Par défaut&nbsp;: False</p>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Return:~4"><a class="permalink" href="#Return:~4"><b>Retour&nbsp;:</b></a></dt>
+  <dd>liste</dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="static~3"><a class="permalink" href="#static~3"><b>static
+    read_private_key_file(pkey_file, pkey_password=None, key_type=None,
+    logger=None)</b></a></dt>
+  <dd>Obtient la clé publique SSH à partir d'un fichier de clé privée, étant donné
+    un mot de passe facultatif</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~6"><a class="permalink" href="#Arguments:~6"><b>Arguments&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="pkey_file"><a class="permalink" href="#pkey_file"><b>pkey_file
+    (str)&nbsp;:</b></a></dt>
+  <dd>Fichier contenant une clé privée (RSA, DSS ou ECDSA)</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Keyword"><a class="permalink" href="#Keyword"><b>Arguments mots-clés&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="pkey_password"><a class="permalink" href="#pkey_password"><b>pkey_password
+    (Optional[str])&nbsp;:</b></a></dt>
+  <dd>Mot de passe pour déchiffrer la clé privée</dd>
+</dl>
+</div>
+<p class="Pp">logger (Optional[logging.Logger])</p>
+<dl class="Bl-tag">
+  <dt id="Return:~5"><a class="permalink" href="#Return:~5"><b>Retour&nbsp;:</b></a></dt>
+  <dd>paramiko.Pkey</dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="start()"><a class="permalink" href="#start()"><b>start()</b></a></dt>
+  <dd>Démarre les tunnels SSH</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="stop(force=False)"><a class="permalink" href="#stop(force=False)"><b>stop(force=False)</b></a></dt>
+  <dd>Arrête le tunnel. Par défaut, nous attendons toujours la fermeture de toutes
+      les connexions. Vous pouvez utiliser <i>force=True</i> pour forcer la fermeture
+      des connexions</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Keyword~2"><a class="permalink" href="#Keyword~2"><b>Arguments mots-clés&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="force"><a class="permalink" href="#force"><b>force
+    (bool)&nbsp;:</b></a></dt>
+  <dd>Force la fermeture des connexions actuelles
+    <p class="Pp">Par défaut&nbsp;: False</p>
+    <p class="Pp">Ajouté en version 0.2.2.</p>
+      </dd>
+</dl>
+</div>
+</div>
+<p class="Pp"><b>NOTE&nbsp;:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Cela <b>devait</b> être géré avec soin avant la
+  version <b>0.1.0</b>&nbsp;:
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>si une redirection de port est ouverte</li>
+  <li>la destination n'est pas joignable</li>
+  <li>nous tentons une connexion à ce tunnel (<b>SYN</b> est envoyé et
+      acquitté, puis un paquet <b>FIN</b> est envoyé et jamais acquitté...
+      étrange)</li>
+  <li>nous essayons de fermer&nbsp;: cela ne réussira pas avant que les délais
+      <b>FIN_WAIT_2</b> et <b>CLOSE_WAIT</b> ne soient expirés.</li>
+</ul>
+</div>
+</div>
+</div>
+<p class="Pp"><b>NOTE&nbsp;:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Gérez ces scénarios avec <b>tunnel_is_up</b>&nbsp;: si
+  False, l'appel <b>shutdown()</b> du serveur sera ignoré pour ce tunnel</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="close()"><a class="permalink" href="#close()"><b>close()</b></a></dt>
+  <dd>Arrête un tunnel actif, alias de <i>stop()</i></dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="restart()"><a class="permalink" href="#restart()"><b>restart()</b></a></dt>
+  <dd>Redémarre la connexion à la passerelle et aux tunnels</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="property"><a class="permalink" href="#property"><b>propriété
+    local_bind_ports</b></a></dt>
+  <dd>Retourne une liste contenant les ports du côté local des tunnels TCP</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="property~2"><a class="permalink" href="#property~2"><b>propriété
+    local_bind_hosts</b></a></dt>
+  <dd>Retourne une liste contenant les adresses IP d'écoute pour les tunnels</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="property~3"><a class="permalink" href="#property~3"><b>propriété
+    local_bind_addresses</b></a></dt>
+  <dd>Retourne une liste de paires (IP, port) pour le côté local des tunnels</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="property~4"><a class="permalink" href="#property~4"><b>propriété
+    tunnel_bindings</b></a></dt>
+  <dd>Retourne un dictionnaire contenant les liaisons de tunnels locales&lt;&gt;distantes actives</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="property~5"><a class="permalink" href="#property~5"><b>propriété
+    is_active</b></a></dt>
+  <dd>Retourne True si le transport SSH sous-jacent est actif</dd>
+</dl>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="sshtunnel.open_tunnel(*args,"><a class="permalink" href="#sshtunnel.open_tunnel(*args,"><b>sshtunnel.open_tunnel(*args,
+    **kwargs)</b></a></dt>
+  <dd>Ouvre un tunnel SSH, wrapper pour <i>SSHTunnelForwarder</i></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Arguments:~7"><a class="permalink" href="#Arguments:~7"><b>Arguments&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="destination"><a class="permalink" href="#destination"><b>destination
+    (Optional[tuple])&nbsp;:</b></a></dt>
+  <dd>Adresse IP et port du serveur SSH au format (<b>ssh_address</b>,
+      <b>ssh_port</b>)</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="Keyword~3"><a class="permalink" href="#Keyword~3"><b>Arguments mots-clés&nbsp;:</b></a></dt>
+  <dd></dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="debug_level"><a class="permalink" href="#debug_level"><b>debug_level
+    (Optional[int or str])&nbsp;:</b></a></dt>
+  <dd>niveau de journalisation pour l'instance de <a href="https://docs.python.org/3/library/logging.html#logging.Logger" class="archmanweb-grotty-link">logging.Logger</a>,
+      c'est-à-dire <b>DEBUG</b></dd>
+  <dt id="skip_tunnel_checkup~2"><a class="permalink" href="#skip_tunnel_checkup~2"><b>skip_tunnel_checkup
+    (booléen)&nbsp;:</b></a></dt>
+  <dd>Active/désactive la vérification côté local et peuple
+      <b>tunnel_is_up</b>
+    <p class="Pp">Par défaut&nbsp;: True</p>
+    <p class="Pp">Ajouté en version 0.1.0.</p>
+      </dd>
+</dl>
+</div>
+</div>
+<p class="Pp"><b>NOTE&nbsp;:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Une valeur de <b>debug_level</b> définie sur 1 ==
+  <b>TRACE</b> active le mode de traçage</div>
+</div>
+<p class="Pp"><b>NOTE&nbsp;:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Voir <i>SSHTunnelForwarder</i> pour les arguments mots-clés</div>
+</div>
+<p class="Pp"><b>Exemple</b>&nbsp;:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+
+<p class="Pp">La présente autorisation est accordée, à titre gratuit, à toute personne
+    obtenant une copie de ce logiciel et des fichiers de documentation associés (le
+    « Logiciel »), de traiter le Logiciel sans restriction, y compris sans
+    limitation les droits d'utiliser, copier, modifier, fusionner,
+    publier, distribuer, sous-licencier et/ou vendre des copies du Logiciel, et de
+    permettre aux personnes auxquelles le Logiciel est fourni de le faire, sous réserve
+    des conditions suivantes :</p>
+<p class="Pp">La notice de copyright ci-dessus et la présente notice de permission doivent être
+    incluses dans toutes les copies ou parties substantielles du Logiciel.</p>
+<p class="Pp">LE LOGICIEL EST FOURNI « TEL QUEL », SANS GARANTIE D'AUCUNE SORTE,
+    EXPRESSE OU IMPLICITE, Y COMPRIS MAIS SANS S'Y LIMITER LES GARANTIES DE
+    COMMERCIABILITÉ, D'ADÉQUATION À UN USAGE PARTICULIER ET D'ABSENCE DE CONTREFAÇON. EN AUCUN CAS
+    LES AUTEURS OU LES DÉTENTEURS DU COPYRIGHT NE SAURAIENT ÊTRE TENUS RESPONSABLES DE TOUTE RÉCLAMATION,
+    DOMMAGE OU AUTRE RESPONSABILITÉ, QUE CE SOIT DANS LE CADRE D'UN CONTRAT, D'UN DÉLIT OU AUTREMENT, DÉCOULANT DE, DE
+    CONNEXION AVEC LE LOGICIEL OU DE SON UTILISATION OU DE TRAITEMENTS DIFFÉRENTS DANS LE
+    LOGICIEL.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AUTEUR">AUTEUR</h1>
+<p class="Pp">Pahaz White</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="COPYRIGHT">COPYRIGHT</h1>
+<p class="Pp">2014-2020, Pahaz White et contributeurs</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">29 novembre 2024</td>
+    <td class="foot-os">0.4.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet:</p>
+    <dl>
+        <dt>Nom du paquet:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/python-sshtunnel/">extra/python-sshtunnel</a></dd>
+        <dt>Version:</dt>
+        <dd>0.4.0-8</dd>
+        <dt>Amont:</dt>
+        <dd><a href="https://github.com/pahaz/sshtunnel">https://github.com/pahaz/sshtunnel</a></dd>
+        <dt>Licences:</dt>
+        <dd>MIT</dd>
+        <dt>Manuels:</dt>
+        <dd><a href="/listing/extra/python-sshtunnel/">/listing/extra/python-sshtunnel/</a></dd>
+    </dl>
+</section>
+/dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#REQUIREMENTS">EXIGENCES</a></li>
+        
+            <li><a href="#TESTING_THE_PACKAGE">TEST DU PAQUET</a></li>
+        
+            <li><a href="#EXAMPLE_1">EXEMPLE 1</a></li>
+        
+            <li><a href="#EXAMPLE_2">EXEMPLE 2</a></li>
+        
+            <li><a href="#EXAMPLE_3">EXEMPLE 3</a></li>
+        
+            <li><a href="#EXAMPLE_4">EXEMPLE 4</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#COPYRIGHT">DROIT D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/python-sshtunnel.1.en.txt">txt</a>, 
+        
+            <a href="/man/python-sshtunnel.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>parallel_design(7) — Pages man Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">parallel_design(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/parallel/">parallel</a></p>
+<p class="lic">Licences: GPL-3.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PARALLEL_DESIGN(7)</td>
+    <td class="head-vol">parallel</td>
+    <td class="head-rtitle">PARALLEL_DESIGN(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='Conception_de_GNU_Parallel'><a class='permalink' href='#Conception_de_GNU_Parallel'>Conception   de GNU Parallel</a></h1>
+<p class="Pp">Ce document décrit les décisions de conception prises lors du développement de GNU <b>parallel</b> et les raisons qui les sous-tendent. Il donnera un aperçu de la raison pour laquelle une partie du code est telle qu'elle est, et aidera les nouveaux mainteneurs à mieux comprendre le code.</p>
+<section class="Ss">
+<h2 class="Ss" id='Programme_en_un_seul_fichier'><a class='permalink' href='#Programme_en_un_seul_fichier'>Programme   en un seul fichier</a></h2>
+<p class="Pp">GNU <b>parallel</b> est un script Perl en un seul fichier. Il est orienté objet, mais contrairement aux scripts Perl normaux, chaque classe n'est pas dans son propre fichier. Ceci est dû à l'expérience utilisateur : l'objectif est qu'en cas de besoin, l'utilisateur puisse faire fonctionner GNU <b>parallel</b> simplement en copiant un seul fichier : pas besoin de se compliquer la vie avec des variables d'environnement comme PERL5LIB.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Choix_du_langage_de_programmation'><a class='permalink' href='#Choix_du_langage_de_programmation'>Choix   du langage de programmation</a></h2>
+<p class="Pp">GNU <b>parallel</b> est conçu pour pouvoir fonctionner sur de vieux systèmes. Cela signifie qu'il ne peut pas dépendre de l'installation d'un compilateur - et surtout pas d'un compilateur pour un langage plus jeune que 20 ans.</p>
+<p class="Pp">L'objectif est que vous puissiez utiliser GNU <b>parallel</b> sur n'importe quel système, même si vous n'êtes pas autorisé à installer de logiciels supplémentaires.</p>
+<p class="Pp">Parmi tous les systèmes que j'ai connus, je n'ai jamais vu un système qui avait GCC installé et qui n'avait pas Perl. Il en va de même pour Rust, Go, Haskell et d'autres langages plus jeunes. J'ai cependant vu des systèmes avec Perl sans aucun des compilateurs mentionnés.</p>
+<p class="Pp">La plupart des systèmes modernes ont également Python2 ou Python3 installé, mais vous ne pouvez toujours pas être sûr de la version, et comme Python2 ne peut pas s'exécuter sous Python3, Python n'est pas une option.</p>
+<p class="Pp">Perl a l'avantage supplémentaire de faciliter l'implémentation de la chaîne de remplacement {= perlexpr =}.</p>
+<p class="Pp">Le principal inconvénient est que Perl est lent. Il y a donc une surcharge de 3 à 10 ms par tâche et de 1 ms par Mo de sortie (et encore plus si vous utilisez <b>--tag</b>).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Ancien_style_Perl'><a class='permalink' href='#Ancien_style_Perl'>Ancien   style Perl</a></h2>
+<p class="Pp">GNU <b>parallel</b> utilise certaines constructions anciennes et obsolètes. Ceci est dû à l'objectif d'être capable de fonctionner sur de vieilles installations. Actuellement, la cible est CentOS 3.9 et Perl 5.8.0.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Évolutivité_ascendante_et_descendante'><a class='permalink' href='#Évolutivité_ascendante_et_descendante'>Évolutivité   ascendante et descendante</a></h2>
+<p class="Pp">Le plus petit système sur lequel GNU <b>parallel</b> est testé est un ASUS WL500gP de 32 Mo. Le plus grand est une machine de 2 To à 128 cœurs. Il s'adapte jusqu'à environ 100 machines - en fonction de la durée de chaque tâche.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Rétroaction_exponentielle'><a class='permalink' href='#Rétroaction_exponentielle'>Rétroaction   exponentielle</a></h2>
+<p class="Pp">GNU <b>parallel</b> attend activement (busy waits). C'est parce que la raison pour laquelle une tâche n'est pas lancée peut être due à la charge moyenne (lors de l'utilisation de <b>--load</b>), et il n'est donc pas judicieux de simplement attendre qu'une tâche se termine. Au lieu de cela, la charge moyenne doit être vérifiée régulièrement. La charge moyenne n'est pas la seule raison : <b>--timeout</b> pose un problème similaire.</p>
+<p class="Pp">Pour ne pas consommer trop de CPU, GNU <b>parallel</b> dort de plus en plus longtemps de manière exponentielle si rien ne se passe, plafonnant à 1 seconde.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Compatibilité_Shell'><a class='permalink' href='#Compatibilité_Shell'>Compatibilité   Shell</a></h2>
+<p class="Pp">L'objectif est que GNU <b>parallel</b> fonctionne de manière égale dans n'importe quel shell. Cependant, en pratique, GNU <b>parallel</b> est développé en <b>bash</b> et les tests dans d'autres shells sont donc limités aux bugs signalés.</p>
+<p class="Pp">Lorsqu'une incompatibilité est trouvée, il n'y a souvent pas de solution facile : corriger le problème dans <b>csh</b> le casse souvent dans <b>bash</b>. Dans ces cas, la solution consiste souvent à utiliser un petit script Perl et à l'appeler.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='env_parallel'><a class='permalink' href='#env_parallel'>env_parallel</a></h2>
+<p class="Pp"><b>env_parallel</b> est un script shell factice qui s'exécutera si <b>env_parallel</b> n'est pas un alias ou une fonction et informera l'utilisateur sur la manière d'activer l'alias/la fonction pour les shells pris en charge.</p>
+<p class="Pp">L'alias ou la fonction copiera l'environnement actuel et exécutera la commande avec GNU <b>parallel</b> dans la copie de l'environnement.</p>
+<p class="Pp">Le problème est que vous ne pouvez pas accéder à tout l'environnement actuel dans Perl. Par exemple, les alias, les fonctions et les variables shell non exportées.</p>
+<p class="Pp">L'idée est donc de prendre l'environnement et de le placer dans <span class="Li"><b>$PARALLEL_ENV</b></span>, que GNU <b>parallel</b> préfixe à chaque commande.</p>
+<p class="Pp">La seule façon d'accéder à l'environnement est directement depuis le shell, donc le programme doit être écrit dans un script shell qui sera sourcé et qui devra gérer le dialecte du shell concerné.</p>
+<p class="Pp"><i>env_parallel.*</i></p>
+<p class="Pp">Ce sont les fichiers qui implémentent l'alias ou la fonction <b>env_parallel</b> pour un shell donné. On pourrait soutenir que ces fichiers devraient être placés dans un endroit obscur sous /usr/lib, mais en les plaçant dans votre PATH, il devient trivial de trouver leur chemin et de les <b>sourcer</b> :</p>
+<pre>source `which env_parallel.foo`</pre>
+<p class="Pp">La beauté est qu'ils peuvent être placés n'importe où dans le PATH sans que l'utilisateur ait besoin de connaître leur emplacement. Ainsi, si le PATH de l'utilisateur inclut /afs/bin/i386_fc5 ou /usr/pkg/parallel/bin ou /usr/local/parallel/20161222/sunos5.6/bin, les fichiers peuvent être placés dans le répertoire qui a le plus de sens pour l'administrateur système.</p>
+<p class="Pp"><i>env_parallel.bash / env_parallel.sh / env_parallel.ash / env_parallel.dash / env_parallel.zsh / env_parallel.ksh / env_parallel.mksh</i></p>
+<p class="Pp"><b>env_parallel.(bash|sh|ash|dash|ksh|mksh|zsh)</b> définit la fonction <b>env_parallel</b>. Elle utilise <b>alias</b> et <b>typeset</b> pour exporter la configuration (avec quelques exceptions) dans <span class="Li"><b>$PARALLEL_ENV</b></span> avant d'exécuter GNU <b>parallel</b>.</p>
+<p class="Pp">Une fois GNU <b>parallel</b> terminé, <span class="Li"><b>$PARALLEL_ENV</b></span> est supprimé.</p>
+<p class="Pp"><i>env_parallel.csh</i></p>
+<p class="Pp"><b>env_parallel.csh</b> a deux objectifs : Si <b>env_parallel</b> n'est pas un alias : en faire un alias qui définit <span class="Li"><b>$PARALLEL</b></span> avec des arguments et appelle <b>env_parallel.csh</b>.</p>
+<p class="Pp">Si <b>env_parallel</b> est un alias, alors <b>env_parallel.csh</b> utilise <span class="Li"><b>$PARALLEL</b></span> comme arguments pour GNU <b>parallel</b>.</p>
+<p class="Pp">Il exporte l'environnement en écrivant une définition de variable dans un fichier pour chaque variable. Les définitions des alias sont ajoutées à ce fichier. Enfin, le fichier est placé dans <span class="Li"><b>$PARALLEL_ENV</b></span>.</p>
+<p class="Pp">GNU <b>parallel</b> est alors exécuté et <span class="Li"><b>$PARALLEL_ENV</b></span> est supprimé.</p>
+<p class="Pp"><i>env_parallel.fish</i></p>
+<p class="Pp">D'abord, toutes les définitions de fonctions sont générées à l'aide d'une boucle et de <b>functions</b>.</p>
+<p class="Pp">Exporter les définitions de variables scalaires est plus difficile.</p>
+<p class="Pp"><b>fish</b> peut représenter des caractères non imprimables de (au moins) 2 manières. Pour éviter les problèmes, tous les scalaires sont convertis en quoting \XX.</p>
+<p class="Pp">Ensuite, des commandes pour générer les définitions sont créées et séparées par NUL.</p>
+<p class="Pp">Ceci est ensuite pipé dans un script Perl qui quote toutes les valeurs. Les éléments de liste seront ajoutés en utilisant deux espaces.</p>
+<p class="Pp">Enfin, \n est converti en \1 car les variables <b>fish</b> ne peuvent pas contenir de \n. GNU <b>parallel</b> convertira plus tard tous les \1 de <span class="Li"><b>$PARALLEL_ENV</b></span> en \n.</p>
+<p class="Pp">Ceci est ensuite sauvegardé dans <span class="Li"><b>$PARALLEL_ENV</b></span>.</p>
+<p class="Pp">GNU <b>parallel</b> est appelé, et <span class="Li"><b>$PARALLEL_ENV</b></span> est supprimé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='parset_(supporté_en_sh,_ash,_dash,_bash,_zsh,_ksh,_mksh)'><a class='permalink' href='#parset_(supporté_en_sh,_ash,_dash,_bash,_zsh,_ksh,_mksh)'>parset   (supporté en sh, ash, dash, bash, zsh, ksh, mksh)</a></h2>
+<p class="Pp"><b>parset</b> est une fonction shell. C'est la raison pour laquelle <b>parset</b> peut définir des variables : il s'exécute dans le shell qui l'appelle.</p>
+<p class="Pp">C'est aussi la raison pour laquelle <b>parset</b> ne fonctionne pas lorsque des données lui sont envoyées par pipe : <b>... | parset ...</b> fait démarrer <b>parset</b> dans un sous-shell, et les changements d'environnement ne peuvent donc pas revenir au shell appelant.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Emplacements_de_tâche'><a class='permalink' href='#Emplacements_de_tâche'>Emplacements   de tâche</a></h2>
+<p class="Pp">La façon la plus simple d'expliquer ce que fait GNU <b>parallel</b> est de supposer qu'il existe un certain nombre d'emplacements de tâche, et lorsqu'un emplacement devient disponible, une tâche de la file d'attente sera exécutée dans cet emplacement. Mais à l'origine, GNU <b>parallel</b> ne modélisait pas les emplacements de tâche dans le code. Les emplacements de tâche ont été ajoutés pour permettre l'utilisation de <b>{%}</b> comme chaîne de remplacement.</p>
+<p class="Pp">Bien que le numéro de séquence de la tâche puisse être calculé d'une manière</p>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        
+    </body>
+</html>
+avançons, le poste de travail
+    ne peut être calculé qu'au moment où un poste de travail devient disponible. Il a donc
+    été implémenté sous forme de pile avec évaluation paresseuse : tirer d'une pile vide
+    et la pile est étendue d'une unité. Lorsqu'un travail est terminé, repousser le
+    poste de travail disponible sur la pile.</p>
+<p class="Pp">Cette implémentation signifie également que si vous réexécutez les mêmes travaux,
+    vous ne pouvez pas supposer que les travaux recevront les mêmes postes. Et si vous utilisez des exécutions distantes,
+    vous ne pouvez pas supposer qu'un poste de travail donné restera sur le même serveur distant.
+    Cela est d'autant plus vrai que le nombre de postes de travail peut être ajusté à la volée (en donnant à <b>--jobs</b> le nom d'un fichier).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Version_du_protocole_Rsync'><a class='permalink' href='#Version_du_protocole_Rsync'>Version du protocole Rsync</a></h2>
+<p class="Pp"><b>rsync</b> 3.1.x utilise le protocole 31 qui n'est pas pris en charge par
+    la version 2.5.7. Cela signifie que vous ne pouvez pas pousser un fichier vers un système distant
+    en utilisant le protocole <b>rsync</b> 31, si le système distant utilise la version 2.5.7.
+    <b>rsync</b> ne rétrograde pas automatiquement vers le protocole 30.</p>
+<p class="Pp">GNU <b>parallel</b> ne nécessite pas le protocole 31, donc si la
+    version de <b>rsync</b> est >= 3.1.0, alors <b>--protocol 30</b> est ajouté pour forcer les versions plus récentes de <b>rsync</b> à communiquer avec la version 2.5.7.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Compression'><a class='permalink' href='#Compression'>Compression</a></h2>
+<p class="Pp">GNU <b>parallel</b> met en mémoire tampon la sortie dans des fichiers temporaires.
+    <b>--compress</b> compresse les données mises en mémoire tampon. C'est un peu délicat car il ne devrait y avoir aucun fichier à nettoyer si GNU <b>parallel</b> est arrêté par une panne de courant.</p>
+<p class="Pp">GNU <b>parallel</b> sélectionne d'abord un programme de compression. Si l'utilisateur n'en a pas sélectionné un, le premier de ceux-ci qui se trouve dans <span class="Li">$PATH</span> est utilisé : <b>pzstd</b> <b>lbzip2 pbzip2 zstd
+    pixz lz4 pigz lzop plzip lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lzop lPour le rendre compatible avec <b>csh</b> et <b>bash</b>, la valeur de sortie
+        est imprimée comme suit : $?h/$status et cela est analysé par <b>perl</b>.</p>
+    <p class="Pp">Il existe un bug qui rend nécessaire l'impression de la valeur de sortie
+        3 fois.</p>
+    <p class="Pp">Un autre bug dans <b>tmux</b> exige que la longueur du titre et de la commande tmux
+        n'ait pas certaines limites. Lorsque ces limites sont dépassées, 75 '\ '
+        sont ajoutés au titre pour le forcer à sortir des limites.</p>
+    <p class="Pp">Vous pouvez mapper les mauvaises limites en utilisant :</p>
+        <pre>perl -e 'sub r { int(rand(shift)).($_[0] &amp;&amp; &quot;\t&quot;.r(@_)) } print map { r(@ARGV).&quot;\n&quot; } 1..10000' 1600 1500 90 |
+  perl -ane '$F[0]+$F[1]+$F[2] &lt; 2037 and print ' |
+  parallel --colsep '\t' --tagstring '{1}\t{2}\t{3}' tmux -S /tmp/p{%}-'{=3 $_=&quot;O&quot;x$_ =}' \
+    new-session -d -n '{=1 $_=&quot;O&quot;x$_ =}' true'\ {=2 $_=&quot;O&quot;x$_ =};echo $?;rm -f /tmp/p{%}-O*'
+perl -e 'sub r { int(rand(shift)).($_[0] &amp;&amp; &quot;\t&quot;.r(@_)) } print map { r(@ARGV).&quot;\n&quot; } 1..10000' 17000 17000 90 |
+  parallel --colsep '\t' --tagstring '{1}\t{2}\t{3}' \
+tmux -S /tmp/p{%}-'{=3 $_=&quot;O&quot;x$_ =}' new-session -d -n '{=1 $_=&quot;O&quot;x$_ =}' true'\ {=2 $_=&quot;O&quot;x$_ =};echo $?;rm /tmp/p{%}-O*'
+&gt; value.csv 2&gt;/dev/null
+R -e 'a&lt;-read.table(&quot;value.csv&quot;);X11();plot(a[,1],a[,2],col=a[,4]+5,cex=0.1);Sys.sleep(1000)'
+</pre>
+    <p class="Pp">Pour <b>tmux 1.8</b>, 17000 peut être réduit à 2100.</p>
+    <p class="Pp">Les zones intéressantes sont le titre 0..1000 avec (titre + commande entière) dans 996..1127 et 9331..9636.</p>
+  </dd>
+</dl>
+<p class="Pp">L'ordre de l'enroulement est important :</p>
+<ul class="Bl-bullet">
+  <li><span class="Li">$PARALLEL_ENV</span>, qui est défini dans env_parallel.*, doit
+      être ajouté en préfixe à la commande en premier, car la commande peut contenir des variables ou des fonctions exportées.</li>
+  <li><b>--nice</b>/<b>--cat</b>/<b>--fifo</b> doivent être effectués sur la machine distante</li>
+  <li><b>--pipepart</b>/<b>--pipe</b> doivent être effectués sur la machine locale à l'intérieur de <b>--tmux</b></li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Options_de_commodité_--nice_--basefile_--transfer_--return_--cleanup_--tmux_--group_--compress_--cat_--fifo_--workdir_--tag_--tagstring'><a class='permalink' href='#Options_de_commodité_--nice_--basefile_--transfer_--return_--cleanup_--tmux_--group_--compress_--cat_--fifo_--workdir_--tag_--tagstring'>Options de commodité --nice --basefile --transfer --return --cleanup --tmux --group --compress --cat --fifo --workdir --tag --tagstring</a></h2>
+<p class="Pp">Ce sont toutes des options de commodité qui facilitent l'exécution d'une
+    tâche. Mais plus important encore : elles sont testées pour fonctionner même dans des cas limites.
+    Prenez <b>--nice</b> comme exemple :</p>
+<pre>nice parallel command ...</pre>
+<p class="Pp">fonctionnera très bien. Mais lorsqu'il est exécuté à distance, vous devez déplacer la commande nice de manière à ce qu'elle soit exécutée sur le serveur :</p>
+<pre>parallel -S serveur nice command ...</pre>
+<p class="Pp">Et cela fonctionnera à nouveau très bien, tant que vous exécutez une seule commande. Lorsque vous exécutez une commande composée, vous avez besoin que nice s'applique à l'ensemble de la commande, et cela devient encore plus difficile :</p>
+<pre>parallel -S serveur -q nice bash -c 'command1 ...; cmd2 | cmd3'</pre>
+<p class="Pp">Ce n'est pas impossible, mais en utilisant <b>--nice</b>, GNU
+    <b>parallel</b> fera la bonne chose pour vous. De même en transférant des fichiers : cela devient difficile lorsque les noms de fichiers contiennent des espaces, :, `, *, ou d'autres caractères spéciaux.</p>
+<p class="Pp">Pour exécuter les commandes dans une session <b>tmux</b>, il suffit essentiellement de mettre la commande entre guillemets. Pour les commandes simples, c'est facile, mais lorsque les commandes contiennent des caractères spéciaux, il devient beaucoup plus difficile d'y parvenir.</p>
+<p class="Pp"><b>--compress</b> compresse non seulement la sortie standard (stdout) mais
+    aussi l'erreur standard (stderr) ; et ce, dans des fichiers, qui sont ouverts mais supprimés, de sorte qu'un crash ne laissera pas ces fichiers traîner.</p>
+<p class="Pp"><b>--cat</b> et <b>--fifo</b> sont faciles à faire à la main, jusqu'à ce que vous vouliez nettoyer le fichier temporaire et conserver le code de sortie de la commande.</p>
+<p class="Pp">Le vrai tueur survient lorsque vous essayez de combiner plusieurs de ces options : le faire correctement pour tous les cas limites est presque impossible à faire à la main.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">--shard</h2>
+<p class="Pp">La manière simple d'implémenter le sharding serait de :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>démarrer n tâches,</dd>
+  <dt>2.</dt>
+  <dd>diviser chaque ligne en colonnes,</dd>
+  <dt>3.</dt>
+  <dd>sélectionner les données de la colonne pertinente</dd>
+  <dt>4.</dt>
+  <dd>calculer une valeur de hachage à partir des données</dd>
+  <dt>5.</dt>
+  <dd>prendre le modulo n de la valeur de hachage</dd>
+  <dt>6.</dt>
+  <dd>transmettre la ligne complète à la slot de tâche ayant la valeur calculée</dd>
+</dl>
+<p class="Pp">Malheureusement, Perl est assez lent pour calculer la valeur de hachage (et un peu lent pour diviser en colonnes).</p>
+<p class="Pp">Une solution consiste à utiliser un langage compilé pour la division et le hachage, mais cela irait à l'encontre des critères de conception de ne pas dépendre d'un compilateur.</p>
+<p class="Pp">Heureusement, ces tâches peuvent être parallélisées. Ainsi, GNU
+    <b>parallel</b> démarre n sharders qui effectuent les étapes 2 à 6, et leur transmet des blocs de 100k de manière cyclique. Pour s'assurer que ces sharders calculent le hachage de la même manière, <span class="Li">$PERL_HASH_SEED</span> est défini à la même valeur pour tous les sharders.</p>
+<p class="Pp">L'exécution de n sharders pose un nouveau problème : au lieu d'avoir n sorties (une pour chaque valeur calculée), vous avez maintenant n sorties pour chacune des n valeurs, soit un total de n*n sorties ; et vous devez fusionner ces n*n sorties en n sorties.</p>
+<p class="Pp">Cela peut être fait en exécutant simplement 'parallel -j0 --lb cat ::: outputs_for_one_value', mais c'est assez inefficace, car il lance un processus pour chaque fichier. Au lieu de cela, le code principal de 'parcat' est exécuté, ce qui est également un peu plus rapide.</p>
+<p class="Pp">Tous les sharders et parcats communiquent via des pipes nommés qui sont désolidarisés dès qu'ils sont ouverts.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Shell_shock'><a class='permalink' href='#Shell_shock'>Shell shock</a></h2>
+<p class="Pp">Le bug shell shock dans <b>bash</b> n'a pas affecté GNU
+    <b>parallel</b>, mais les solutions si. <b>bash</b> a d'abord introduit
+    les fonctions dans des variables nommées : <b><i>BASH_FUNC_myfunc()</i></b><i></i> et plus tard a changé cela en <i>BASH_FUNC_myfunc%%</i>. Lors du transfert de fonctions, GNU
+    <b>parallel</b> lit la fonction et la transforme en une définition de fonction, qui est copiée sur le système distant et exécutée avant l'exécution de la commande réelle. Par conséquent, GNU
+    <b>parallel</b> doit savoir comment lire la fonction.</p>
+<p class="Pp">À partir de la version 20150122, GNU
+    <b>parallel</b> essaie les deux versions : celle avec () et celle avec %%, et la définition de fonction fonctionne sur les versions de <b>bash</b> avant et après shell shock.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Le_wrapper_du_systeme_distant'><a class='permalink' href='#Le_wrapper_du_systeme_distant'>Le wrapper du système distant</a></h2>
+<p class="Pp">Le wrapper du système distant effectue une initialisation avant de démarrer
+    la commande sur le système distant.</p>
+<p class="Pp"><i>Rendre les guillemets inutiles en encodant tout en hexadécimal</i></p>
+<p class="Pp">Lorsque vous exécutez <b>ssh serveur foo</b>, <b>foo</b> doit être cité une fois :</p>
+<pre>ssh serveur &quot;echo foo; echo bar&quot;</pre>
+<p class="Pp">Si vous exécutez <b>ssh server1 ssh server2 foo</b>, <b>foo</b> doit être cité deux fois :</p>
+<pre>ssh server1 ssh server2 \'&quot;echo foo; echo bar&quot;\'</pre>
+<p class="Pp">GNU
+    <b>parallel</b> évite cela en regroupant tout en valeurs hexadécimales et en exécutant une commande qui ne nécessite pas de guillemets :</p>
+<pre>perl -X -e GNU_Parallel_worker,eval+pack+q/H10000000/,join+q//,@ARGV</pre>
+<p class="Pp">Cette commande lit des valeurs hexadécimales à partir de la ligne de commande et les convertit en octets qui sont ensuite évalués comme une expression Perl.</p>
+<p class="Pp">La chaîne <b>GNU_Parallel_worker</b> n'est pas nécessaire. Elle est simplement là pour faire savoir à l'utilisateur que ce processus est un travailleur GNU
+    <b>parallel</b>.</p>
+<p class="Pp"><i>Ctrl-C et erreur standard (stderr)</i></p>
+<p class="Pp">Si l'utilisateur appuie sur Ctrl-C, les tâches s'arrêtent comme prévu. Cela fonctionne immédiatement si les tâches sont exécutées localement. Malheureusement, ce n'est pas si simple si les tâches sont exécutées à distance.</p>
+<p class="Pp">Si les tâches distantes sont exécutées dans un tty à l'aide de <b>ssh -tt</b>, Ctrl-C fonctionne, mais toutes les sorties vers l'erreur standard (stderr) sont envoyées à la sortie standard (stdout). Ce n'est pas ce que l'utilisateur attend.</p>
+<p class="Pp">Si les tâches distantes sont exécutées sans tty à l'aide de <b>ssh</b> (sans
+    <b>-tt</b>), la sortie vers l'erreur standard (stderr) reste sur stderr, mais Ctrl-C ne tue pas les tâches distantes. Ce n'est pas ce que l'utilisateur attend.</p>
+<p class="Pp">Il faut donc un moyen d'avoir les deux. Il semble que la raison pour laquelle Ctrl-C ne tue pas les tâches distantes est que le shell ne propage pas le signal de déconnexion de <b>sshd</b>. Mais lorsque <b>sshd</b> meurt, le parent du shell de connexion devient <b>init</b> (processus id 1). Ainsi, en exécutant un wrapper Perl pour surveiller le pid parent et tuer l'enfant si le pid parent devient 1, alors Ctrl-C fonctionne et stderr reste sur stderr.</p>
+<p class="Pp">Ctrl-C tue cependant la connexion ssh, de sorte que toute sortie d'un processus distant mourant est perdue.</p>
+<p class="Pp">Pour pouvoir tuer tous les (petits)*enfants, un nouveau groupe de processus est démarré.</p>
+<p class="Pp"><i>--nice</i></p>
+<p class="Pp">L'application de <b>nice</b> au processus distant est effectuée par
+    <b>setpriority(0,0,$nice)</b>. Quelques vieux systèmes n'implémentent pas cela et
+    <b>--nice</b> n'est pas pris en charge sur ceux-ci.</p>
+<p class="Pp"><i>Définition de </i><span class="Li"><i>$PARALLEL_TMP</i></span></p>
+<p class="Pp"><span class="Li"><b>$PARALLEL_TMP</b></span><b></b> est utilisé par
+    <b>--fifo</b> et <b>--cat</b> et doit pointer vers un fichier inexistant dans
+    <b></b><span class="Li"><b>$TMPDIR</b></span><b></b>. Ce nom de fichier est
+    calculé sur le système distant.</p>
+<p class="Pp"><i>Le wrapper</i></p>
+<p class="Pp">Le wrapper ressemble à ceci :</p>
+<pre>$shell = $PARALLEL_SHELL || $SHELL;
+$tmpdir = $TMPDIR || $PARALLEL_REMOTE_TMPDIR;
+$nice = $opt::nice;
+$termseq = $opt::termseq;
+# Vérifier que $tmpdir est inscriptible
+-w $tmpdir ||
+    die(&quot;$tmpdir n'est pas inscriptible.&quot;.
+      &quot; Définir PARALLEL_REMOTE_TMPDIR&quot;);
+# Définir $PARALLEL_TMP sur un nom de fichier inexistant dans $TMPDIR
+do {
+    $ENV{PARALLEL_TMP} = $tmpdir.&quot;/par&quot;.
+      join&quot;&quot;, map { (0..9,&quot;a&quot;..&quot;z&quot;,&quot;A&quot;..&quot;Z&quot;)[rand(62)] } (1..5);
+} while(-e $ENV{PARALLEL_TMP});
+# Définir $script sur un nom de fichier inexistant dans $TMPDIR
+do {
+    $script = $tmpdir.&quot;/par&quot;.
+      join&quot;&quot;, map { (0..9,&quot;a&quot;..&quot;z&quot;,&quot;A&quot;..&quot;Z&quot;)[rand(62)] } (1..5);
+} while(-e $script);
+# Créer un script à partir du code hexadécimal
+# qui se supprime et exécute les commandes
+open($fh,&quot;&gt;&quot;,$script) || die;
+# ' nécessaire en raison du shell rc
+print($fh(&quot;rm \'$script\'\n&quot;,$bashfunc.$cmd));
+close $fh;
+my $parent = getppid;
+my $done = 0;
+$SIG{CHLD} = sub { $done = 1; };
+$pid = fork;
+unless($pid) {
+    # Créer son propre groupe de processus pour pouvoir le tuer avec HUP plus tard
+    eval { setpgrp };
+    # Définir la valeur nice
+    eval { setpriority(0,0,$nice) };
+    # Exécuter le script
+    exec($shell,$script);
+    die(&quot;échec de l'exécution : $!&quot;);
+}
+while((not $done) and (getppid == $parent)) {
+    # Le pid parent n'est pas modifié, donc sshd est vivant
+    # Somme exponentielle jusqu'à 1 seconde
+    $s = $s &lt; 1 ? 0.001 + $s * 1.03 : $s;
+    select(undef, undef, undef, $s);
+}
+if(not $done) {
+    # sshd est mort : l'utilisateur a appuyé sur Ctrl-C
+    # Tuer selon --termseq
+    my @term_seq = split/,/,$termseq;
+    if(not @term_seq) {
+      @term_seq
+</pre>
+= (&quot;TERM&quot;,200,&quot;TERM&quot;,100,&quot;TERM&quot;,50,&quot;KILL&quot;,25);
+    }
+    while(@term_seq &amp;&amp; kill(0,-$pid)) {
+      kill(shift @term_seq, -$pid);
+      select(undef, undef, undef, (shift @term_seq)/1000);
+    }
+}
+wait;
+exit ($?&amp;127 ? 128+($?&amp;127) : 1+$?&gt;&gt;8)</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Transferring_of_variables_and_functions'><a class='permalink' href='#Transferring_of_variables_and_functions'>Transfert   des variables et des fonctions</a></h2>
+<p class="Pp">Le transfert des variables et des fonctions spécifiées par
+    <b>--env</b> est effectué en exécutant à distance un script Perl qui appelle
+    la commande réelle. Le script Perl définit
+    <span class="Li"><b>$ENV</b></span><b>{</b><i>variable</i><b>}</b> à la
+    valeur correcte avant d'exécuter un shell qui exécute la définition de la
+    fonction suivie de la commande réelle.</p>
+<p class="Pp">La fonction <b>env_parallel</b> copie l'environnement complet
+    actuel dans la variable d'environnement <b>PARALLEL_ENV</b>. Cette variable
+    est récupérée par GNU <b>parallel</b> et utilisée pour créer le script Perl
+    mentionné ci-dessus.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Base64_encoded_bzip2'><a class='permalink' href='#Base64_encoded_bzip2'>Bzip2   codé en Base64</a></h2>
+<p class="Pp"><b>csh</b> limite les mots des commandes à 1024 caractères. C'est
+    souvent insuffisant lorsque GNU <b>parallel</b> code les variables
+    d'environnement et encapsule la commande avec différents modèles. Tous ces
+    éléments sont combinés et mis entre guillemets en un seul mot, qui est
+    souvent plus long que 1024 caractères.</p>
+<p class="Pp">Lorsque la ligne à exécuter est &gt; 1000 caractères, GNU
+    <b>parallel</b> code donc la ligne à exécuter. Le codage applique <b>bzip2</b>
+    à la ligne à exécuter, la convertit en base64, divise la base64 en blocs de
+    1000 caractères (afin que <b>csh</b> ne génère pas d'erreur) et la préfixe
+    avec ce script Perl qui décode, décompresse et <b>eval</b>ue la ligne.</p>
+<pre>@GNU_Parallel=(&quot;use&quot;,&quot;IPC::Open3;&quot;,&quot;use&quot;,&quot;MIME::Base64&quot;);
+eval &quot;@GNU_Parallel&quot;;
+$SIG{CHLD}=&quot;IGNORE&quot;;
+# Recherche de bzip2. Non trouvé => utilise le chemin par défaut
+my $zip = (grep { -x $_ } &quot;/usr/local/bin/bzip2&quot;)[0] || &quot;bzip2&quot;;
+# $in = stdin sur $zip, $out = stdout de $zip
+my($in, $out,$eval);
+open3($in,$out,&quot;&gt;&amp;STDERR&quot;,$zip,&quot;-dc&quot;);
+if(my $perlpid = fork) {
+    close $in;
+    $eval = join &quot;&quot;, &lt;$out&gt;;
+    close $out;
+} else {
+    close $out;
+    # Envoie le base64 décodé dans 'bzip2 -dc'
+    print $in (decode_base64(join&quot;&quot;,@ARGV));
+    close $in;
+    exit;
+}
+wait;
+eval $eval;</pre>
+<p class="Pp">Perl et <b>bzip2</b> doivent être installés sur le système distant,
+    mais un petit test a montré que <b>bzip2</b> est installé par défaut sur
+    toutes les plateformes qui exécutent GNU <b>parallel</b>, ce n'est donc pas
+    un gros problème.</p>
+<p class="Pp">Le bonus supplémentaire est que des environnements beaucoup plus
+    grands peuvent maintenant être transférés car ils seront inférieurs à la
+    limite de 131072 caractères de <b>bash</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Which_shell_to_use'><a class='permalink' href='#Which_shell_to_use'>Quel shell utiliser</a></h2>
+<p class="Pp">Les différents shells se comportent différemment. Une commande qui
+    fonctionne dans <b>tcsh</b> peut ne pas fonctionner dans <b>bash</b>. Il est
+    donc important que le bon shell soit utilisé lorsque GNU <b>parallel</b>
+    exécute des commandes.</p>
+<p class="Pp">GNU <b>parallel</b> fait de gros efforts pour utiliser le bon
+    shell. Si GNU <b>parallel</b> est appelé depuis <b>tcsh</b>, il utilisera
+    <b>tcsh</b>. S'il est appelé depuis <b>bash</b>, il utilisera <b>bash</b>. Il
+    fait cela en examinant le processus (grand)*parent : si le processus
+    (grand)*parent est un shell, utiliser ce shell ; sinon, examiner le parent
+    de ce (grand)*parent. Si aucun des (grand)*parents n'est un shell, alors
+    <span class="Li">$SHELL</span> est utilisé.</p>
+<p class="Pp">Cela fonctionnera correctement si appelé depuis :</p>
+<ul class="Bl-bullet">
+  <li>un shell interactif</li>
+  <li>un script shell</li>
+  <li>un script Perl en `` ou utilisant <b>system</b> si appelé comme une chaîne
+    unique.</li>
+</ul>
+<p class="Pp">Bien que cela couvre la plupart des cas, il existe des situations
+    où cela échouera :</p>
+<ul class="Bl-bullet">
+  <li>Lorsqu'exécuté en utilisant <b>exec</b>.</li>
+  <li>Lorsqu'exécuté comme dernière commande en utilisant <b>-c</b> depuis un autre
+    shell (car certains shells utilisent <b>exec</b>) :
+        <pre>zsh% bash -c &quot;parallel 'echo {} is not run in bash; \
+     set | grep BASH_VERSION' ::: This&quot;
+</pre>
+    <p class="Pp">Vous pouvez contourner cela en ajoutant '&amp;&amp; true' :</p>
+        <pre>zsh% bash -c &quot;parallel 'echo {} is run in bash; \
+     set | grep BASH_VERSION' ::: This &amp;&amp; true&quot;
+</pre>
+  </li>
+  <li>Lorsqu'exécuté dans un script Perl en utilisant <b>system</b> avec
+    parallel comme première chaîne :
+        <pre>#!/usr/bin/perl
+system(&quot;parallel&quot;,&quot;setenv a {}; echo $a&quot;,&quot;:::&quot;,2);
+</pre>
+    <p class="Pp">Ici, cela dépend du shell utilisé pour appeler le script Perl.
+        Si le script Perl est appelé depuis <b>tcsh</b>, cela fonctionnera
+        parfaitement, mais s'il est appelé depuis <b>bash</b>, cela échouera,
+        car la commande <b>setenv</b> n'est pas connue de <b>bash</b>.</p>
+  </li>
+</ul>
+<p class="Pp">Si GNU <b>parallel</b> se trompe dans ces situations, définissez le
+    shell en utilisant <span class="Li"><b>$PARALLEL_SHELL</b></span><b></b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Always_running_commands_in_a_shell'><a class='permalink' href='#Always_running_commands_in_a_shell'>Toujours   exécuter les commandes dans un shell</a></h2>
+<p class="Pp">Si la commande est une commande simple sans redirection ni
+    définition de variables, la commande *pourrait* être exécutée sans lancer
+    de shell. Par exemple, ce simple <b>grep</b> correspondant soit à 'ls ' soit
+    à ' wc &gt;&gt; c' :</p>
+<pre>parallel &quot;grep -E 'ls | wc &gt;&gt; c' {}&quot; ::: foo</pre>
+<p class="Pp">pourrait être exécuté comme suit :</p>
+<pre>system(&quot;grep&quot;,&quot;-E&quot;,&quot;ls | wc &gt;&gt; c&quot;,&quot;foo&quot;);</pre>
+<p class="Pp">Cependant, dès que la commande devient un peu plus complexe, un
+    shell *doit* être lancé :</p>
+<pre>parallel &quot;grep -E 'ls | wc &gt;&gt; c' {} | wc &gt;&gt; c&quot; ::: foo
+parallel &quot;LANG=C grep -E 'ls | wc &gt;&gt; c' {}&quot; ::: foo</pre>
+<p class="Pp">Il est impossible de savoir comment <b>| wc &gt;&gt; c</b> doit être
+    interprété sans analyser la chaîne (le <b>|</b> est-il un pipe dans le shell
+    ou une alternance dans une expression régulière <b>grep</b> ? <b>LANG=C</b>
+    est-il une commande dans <b>csh</b> ou la définition d'une variable dans
+    <b>bash</b> ? <b>&gt;&gt;</b> est-il une redirection ou fait-il partie d'une
+    expression régulière ?).</p>
+<p class="Pp">En plus de cela, les scripts wrappers nécessiteront souvent qu'un
+    shell soit lancé.</p>
+<p class="Pp">Le désavantage est que vous devez mettre des caractères spéciaux du
+    shell entre guillemets deux fois :</p>
+<pre>parallel echo '*' ::: Ceci va étendre l'astérisque
+parallel echo &quot;'*'&quot; ::: Ceci ne le fera pas
+parallel &quot;echo '*'&quot; ::: Ceci ne le fera pas
+parallel echo '\*' ::: Ceci ne le fera pas
+parallel echo \''*'\' ::: Ceci ne le fera pas
+parallel -q echo '*' ::: Ceci ne le fera pas</pre>
+<p class="Pp"><b>-q</b> mettra entre guillemets tous les caractères spéciaux,
+    par conséquent la redirection ne fonctionnera pas : ceci affiche '* &gt;
+    out.1' et n'enregistre *pas* '*' dans le fichier out.1 :</p>
+<pre>parallel -q echo &quot;*&quot; &quot;&gt;&quot; out.{} ::: 1</pre>
+<p class="Pp">GNU <b>parallel</b> essaie de respecter le Principe de Moindre
+    Surprise (POLA), et l'exigence d'utiliser <b>-q</b> est difficile à
+    comprendre lorsque l'on ne voit pas l'image complète.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Quoting'><a class='permalink' href='#Quoting'>Mise entre guillemets</a></h2>
+<p class="Pp">La mise entre guillemets dépend du shell. Pour la plupart des shells,
+    la mise entre guillemets avec '-' est utilisée pour les chaînes contenant des
+    caractères spéciaux.</p>
+<p class="Pp">Pour <b>tcsh</b>/<b>csh</b>, le saut de ligne est mis entre
+    guillemets sous la forme \ suivi d'un saut de ligne. D'autres caractères
+    spéciaux sont également mis entre guillemets avec \.</p>
+<p class="Pp">Pour <b>rc</b>, tout est mis entre guillemets en utilisant
+    '.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">--pipepart vs. --pipe</h2>
+<p class="Pp">Bien que <b>--pipe</b> et <b>--pipepart</b> semblent très similaires
+    pour l'utilisateur, ils sont implémentés très différemment.</p>
+<p class="Pp">Avec <b>--pipe</b>, GNU <b>parallel</b> lit les blocs depuis l'entrée
+    standard (stdin), qui est ensuite transmise à la commande sur l'entrée
+    standard (stdin) ; ainsi, chaque bloc est traité par GNU <b>parallel</b>
+    lui-même. C'est la raison pour laquelle <b>--pipe</b> atteint un maximum
+    d'environ 500 Mo/sec.</p>
+<p class="Pp"><b>--pipepart</b>, en revanche, identifie d'abord à quelles positions
+    d'octets commencent les blocs et quelle est leur longueur. Il le fait en
+    cherchant dans le fichier par la taille d'un bloc, puis en lisant jusqu'à ce
+    qu'il rencontre la fin d'un bloc. La recherche explique pourquoi GNU
+    <b>parallel</b> ne connaît pas le numéro de ligne et pourquoi <b>-L/-l</b> et
+    <b>-N</b> ne fonctionnent pas.</p>
+<p class="Pp">Avec une taille de bloc et de fichier raisonnable, cette recherche
+    est plus de 1000 fois plus rapide que la lecture du fichier complet. Les
+    positions d'octets sont ensuite transmises à un petit script qui lit de la
+    position X à Y et envoie la sortie vers la sortie standard (stdout). Ce petit
+    script est préfixé à la commande et la commande complète est exécutée comme si
+    GNU <b>parallel</b> était en mode normal. Le script ressemble à ceci :</p>
+<pre>&lt; file perl -e 'while(@ARGV) {
+   sysseek(STDIN,shift,0) || die;
+   $left = shift;
+   while($read = sysread(STDIN,$buf,
+                         ($left &gt; 131072 ? 131072 : $left))){
+     $left -= $read; syswrite(STDOUT,$buf);
+   }
+}' startbyte length_in_bytes</pre>
+<p class="Pp">Il délivre 1 Go/sec par cœur.</p>
+<p class="Pp">Au lieu du script, <b>dd</b> a été essayé, mais de nombreuses
+    versions de <b>dd</b> ne supportent pas la lecture d'un octet à un autre et
+    peuvent causer des données partielles. Voir ceci pour un exemple surprenant
+    : </p>
+<pre>yes | dd bs=1024k count=10 | wc</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss">--block-size adjustment</h2>
+<p class="Pp">Chaque fois que GNU <b>parallel</b> détecte un enregistrement plus
+    grand que <b>--block-size</b>, il augmente la taille du bloc de 30%. Une
+    petite valeur de <b>--block-size</b> donne de très mauvaises performances ;
+    en augmentant exponentiellement la taille du bloc, les performances ne sont
+    pas affectées.</p>
+<p class="Pp">GNU <b>parallel</b> gaspillera de la puissance CPU si
+    <b>--block-size</b> ne contient pas un enregistrement complet, car il essaie
+    de trouver un enregistrement complet et échouera. La recommandation est donc
+    d'utiliser un <b>--block-size</b> &gt; 2 enregistrements, de sorte que vous
+    obteniez toujours au moins un enregistrement complet lorsque vous lisez un
+    bloc.</p>
+<p class="Pp">Si vous utilisez <b>-N</b>, alors <b>--block-size</b> devrait être
+    assez grand pour contenir N+1 enregistrements.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Automatic_--block-size_computation'><a class='permalink' href='#Automatic_--block-size_computation'>Calcul   automatique de --block-size</a></h2>
+<p class="Pp">Avec <b>--pipepart</b>, GNU <b>parallel</b> peut calculer
+    automatiquement le <b>--block-size</b>. Un <b>--block-size</b> de <b>-1</b>
+    utilisera une taille de bloc telle que chaque slot de travail recevra
+    approximativement 1 bloc. <b>--block -2</b> passera 2 blocs à chaque
+    slot de travail et <b>-</b><i>n</i> passera <i>n</i> blocs à chaque slot de
+    travail.</p>
+<p class="Pp">Cela peut être fait car <b>--pipepart</b> lit à partir de fichiers,
+    et nous pouvons calculer la taille totale de l'entrée.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">--jobs et --onall</h2>
+<p class="Pp">Lors de l'exécution des mêmes commandes sur de nombreux serveurs, que
+    doit signifier <b>--jobs</b> ? Est-ce le nombre de serveurs sur lesquels
+    exécuter en parallèle ? Est-ce le nombre de travaux exécutés en parallèle sur
+    chaque serveur ?</p>
+<p class="Pp">GNU <b>parallel</b> laisse <b>--jobs</b> représenter le nombre de
+    serveurs sur lesquels exécuter en parallèle. Ceci afin de permettre l'exécution
+    d'une séquence de commandes (qui ne peut pas être parallélisée) sur chaque
+    serveur, mais d'exécuter la même séquence sur plusieurs serveurs.</p>
+</section>
+<section class="Ss">
+<h2 c<section class="Ss">
+<h2 class="Ss">--shuf</h2>
+<p class="Pp">Lorsque vous utilisez <b>--shuf</b> pour mélanger les tâches, toutes les tâches sont lues, puis elles sont mélangées et enfin exécutées. Lors de l'utilisation de SQL, c'est le <b>--sqlmaster</b> qui mélange les tâches. Les <b>--sqlworker</b> exécutent simplement selon le numéro de séquence.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">--csv</h2>
+<p class="Pp"><b>--pipepart</b> est incompatible avec <b>--csv</b> car vous pouvez avoir des enregistrements comme :</p>
+<pre>a,b,c
+a,"
+a,b,c
+a,b,c
+a,b,c
+",c
+a,b,c</pre>
+<p class="Pp">Ici, le deuxième enregistrement contient un champ multiligne qui ressemble à des enregistrements. Comme <b>--pipepart</b> ne lit pas tout le fichier lors de la recherche des terminaisons d'enregistrement, il peut commencer à lire dans ce champ multiligne, ce qui serait incorrect.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Buffering_on_disk'><a class='permalink' href='#Buffering_on_disk'>Mise en mémoire tampon sur disque</a></h2>
+<p class="Pp">GNU <b>parallel</b> met en mémoire tampon la sortie, car si la sortie n'est pas mise en mémoire tampon, vous devez être ridiculement prudent quant aux tailles pour éviter le mélange des sorties (voir l'excellent exemple sur <a href='https://catern.com/posts/pipes.html'>https://catern.com/posts/pipes.html</a>).</p>
+<p class="Pp">GNU <b>parallel</b> met en mémoire tampon sur disque dans
+    <span class="Li">$TMPDIR</span> à l'aide de fichiers, qui sont supprimés dès leur création, mais qui restent ouverts. Ainsi, même si GNU <b>parallel</b> est arrêté par une panne de courant, il n'y aura aucun fichier à nettoyer par la suite. Un autre avantage est que le système de fichiers sait que ces fichiers seront perdus en cas de crash, il n'a donc pas besoin de les synchroniser sur disque.</p>
+<p class="Pp">Cela crée la situation étrange qu'un disque peut être complètement utilisé, mais qu'il n'y a aucun fichier visible dessus.</p>
+<p class="Pp"><i>Mise en mémoire tampon partielle en mémoire</i></p>
+<p class="Pp">Lors de l'utilisation des formats de sortie SQL et CSV, GNU Parallel doit lire toute la sortie en mémoire. Lorsqu'il est exécuté normalement, il ne lit que la sortie d'un seul travail. Mais lors de l'utilisation de <b>--linebuffer</b>, chaque ligne imprimée sera également mise en mémoire tampon en mémoire - pour tous les travaux en cours d'exécution.</p>
+<p class="Pp">Si la mémoire est limitée, n'utilisez pas le format de sortie SQL/CSV avec <b>--linebuffer</b>.</p>
+<p class="Pp"><i>Comparaison avec la mise en mémoire tampon en mémoire</i></p>
+<p class="Pp"><b>gargs</b> est un outil de parallélisation qui met en mémoire tampon en mémoire. C'est donc un moyen utile de comparer les avantages et les inconvénients de la mise en mémoire tampon en mémoire par rapport à la mise en mémoire tampon sur disque.</p>
+<p class="Pp">Sur un système avec 6 Go de RAM libre et 6 Go de swap libre, ces tests ont été effectués avec différentes tailles :</p>
+<pre>echo /dev/zero | gargs "head -c $size {}" &gt;/dev/null
+echo /dev/zero | parallel "head -c $size {}" &gt;/dev/null</pre>
+<p class="Pp">Les résultats sont ici :</p>
+<pre>JobRuntime      Command
+     0.344      parallel_test 1M
+     0.362      parallel_test 10M
+     0.640      parallel_test 100M
+     9.818      parallel_test 1000M
+    23.888      parallel_test 2000M
+    30.217      parallel_test 2500M
+    30.963      parallel_test 2750M
+    34.648      parallel_test 3000M
+    43.302      parallel_test 4000M
+    55.167      parallel_test 5000M
+    67.493      parallel_test 6000M
+   178.654      parallel_test 7000M
+   204.138      parallel_test 8000M
+   230.052      parallel_test 9000M
+   255.639      parallel_test 10000M
+   757.981      parallel_test 30000M
+     0.537      gargs_test 1M
+     0.292      gargs_test 10M
+     0.398      gargs_test 100M
+     3.456      gargs_test 1000M
+     8.577      gargs_test 2000M
+    22.705      gargs_test 2500M
+   123.076      gargs_test 2750M
+    89.866      gargs_test 3000M
+   291.798      gargs_test 4000M</pre>
+<p class="Pp">GNU <b>parallel</b> est largement limité par la vitesse du disque : jusqu'à 6 Go de données sont écrits sur disque mais mis en cache, donc la lecture est rapide. Au-delà de 6 Go, les données sont écrites et lues depuis le disque. Lorsque le travail de 30000 Mo est en cours, le système de disque est lent, mais utilisable : si vous n'utilisez pas le disque, vous ne le sentez presque pas.</p>
+<p class="Pp"><b>gargs</b> a un avantage de vitesse jusqu'à 2500 Mo où il atteint un mur. Ensuite, le système commence à swapper à toute allure et est complètement inutilisable. À 5000 Mo, il manque de mémoire.</p>
+<p class="Pp">Vous pouvez faire en sorte que GNU <b>parallel</b> se comporte de manière similaire à <b>gargs</b> si vous pointez <span class="Li">$TMPDIR</span> vers un système de fichiers tmpfs : il sera plus rapide pour les petites sorties, mais pourrait planter votre système pour les sorties plus importantes et vous faire perdre des données.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Disk_full'><a class='permalink' href='#Disk_full'>Disque plein</a></h2>
+<p class="Pp">GNU <b>parallel</b> met en mémoire tampon sur disque. Si le disque est plein, des données peuvent être perdues. Pour vérifier si le disque est plein, GNU <b>parallel</b> écrit un fichier de 8193 octets chaque seconde. Si ce fichier est écrit avec succès, il est immédiatement supprimé. S'il n'est pas écrit avec succès, le disque est plein. La taille 8193 a été choisie car 8192 donnait un résultat incorrect sur certains systèmes de fichiers, tandis que 8193 fonctionnait correctement sur tous les systèmes de fichiers testés.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Memory_usage'><a class='permalink' href='#Memory_usage'>Utilisation de la mémoire</a></h2>
+<p class="Pp">Normalement, GNU <b>parallel</b> utilise environ 17 Mo de RAM en permanence - peu importe le nombre de tâches ou la quantité de sortie. Plusieurs éléments peuvent augmenter l'utilisation de la mémoire :</p>
+<ul class="Bl-bullet">
+  <li>Sources d'entrée multiples. GNU <b>parallel</b> ne lit une source d'entrée qu'une seule fois. Ceci est intentionnel, car une source d'entrée peut être un flux (par exemple, FIFO, pipe, entrée standard (stdin)) qui ne peut pas être rembobiné et relu. Lors de la lecture d'une seule source d'entrée, la mémoire est libérée dès que le travail est terminé - maintenant ainsi l'utilisation de la mémoire constante.
+    <p class="Pp">Mais lors de la lecture de plusieurs sources d'entrée, GNU <b>parallel</b> conserve les valeurs déjà lues pour générer toutes les combinaisons avec d'autres sources d'entrée.</p>
+  </li>
+  <li>Calcul du nombre de tâches. <b>--bar</b>, <b>--eta</b> et <b>--halt xx%</b> utilisent <b>total_jobs()</b> pour calculer le nombre total de tâches. Cela se fait en générant les structures de données pour toutes les tâches. Toutes ces structures de données de tâches seront stockées en mémoire et occuperont environ 400 octets par tâche.</li>
+  <li>Mise en mémoire tampon d'une ligne complète. <b>--linebuffer</b> lira une ligne complète par tâche en cours d'exécution. Une ligne de sortie très longue (disons 1 Go sans \n) augmentera temporairement l'utilisation de la RAM : depuis le début de la lecture de la ligne jusqu'à son impression.</li>
+  <li>Mise en mémoire tampon de la sortie complète d'une seule tâche. Cela se produit lors de l'utilisation de <b>--results *.csv/*.tsv</b> ou <b>--sql*</b>. Ici, GNU <b>parallel</b> lira toute la sortie d'une seule tâche et l'enregistrera au format csv/tsv ou
+    SQL.</li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Argument_separators_:::_::::_:::+_::::+'><a class='permalink' href='#Argument_separators_:::_::::_:::+_::::+'>Séparateurs d'arguments ::: :::: :::+ ::::+</a></h2>
+<p class="Pp">Le séparateur d'arguments <b>:::</b> a été choisi car je n'ai jamais vu <b>:::</b> utilisé dans aucune commande. Le choix naturel <b>--</b> serait une mauvaise idée car il n'est pas improbable que la commande modèle contienne <b>--</b>. J'ai vu <b>::</b> utilisé dans les langages de programmation pour séparer les classes, et je ne voulais pas que l'utilisateur soit confus quant au fait que le séparateur avait quelque chose à voir avec les classes.</p>
+<p class="Pp"><b>:::</b> crée également une séparation visuelle, ce qui est bien s'il y a plusieurs <b>:::</b>.</p>
+<p class="Pp">Lorsque <b>:::</b> a été choisi, <b>::::</b> est venu comme une extension assez naturelle.</p>
+<p class="Pp">Lier les sources d'entrée impliquait de choisir une manière d'indiquer la liaison de <b>:::</b> et <b>::::</b>. <b>:::+</b> et <b>::::+</b> ont été choisis, de sorte qu'ils soient similaires à <b>:::</b> et <b>::::</b>.</p>
+<p class="Pp">En 2022, j'ai réalisé que <b>///</b> aurait été un choix encore meilleur, car vous ne pouvez pas avoir un fichier nommé <b>///</b> alors que vous *pouvez* avoir un fichier nommé <b>:::</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Perl_replacement_strings,_{=_=},_and_--rpl'><a class='permalink' href='#Perl_replacement_strings,_{=_=},_and_--rpl'>Chaînes de remplacement Perl, {= =}, et --rpl</a></h2>
+<p class="Pp">Les raccourcis pour les chaînes de remplacement rendent une commande plus cryptique. Différents utilisateurs auront besoin de chaînes de remplacement différentes. Au lieu d'inventer plus de raccourcis, vous obtenez des chaînes de remplacement plus flexibles si elles peuvent être programmées par l'utilisateur.</p>
+<p class="Pp">Le langage Perl a été choisi car GNU <b>parallel</b> est écrit en Perl et il était facile et raisonnablement rapide d'exécuter le code fourni par l'utilisateur.</p>
+<p class="Pp">Si un utilisateur a besoin de la même chaîne de remplacement programmée encore et encore, il peut vouloir créer son propre raccourci pour cela. C'est à cela que sert <b>--rpl</b>. Cela fonctionne si bien que même les propres raccourcis de GNU <b>parallel</b> sont implémentés à l'aide de <b>--rpl</b>.</p>
+<p class="Pp">En code Perl, les bigrammes <b>{=</b> et <b>=}</b> existent rarement. Ils ressemblent à une paire correspondante et peuvent être saisis sur tous les claviers. Cela en a fait de bons candidats pour encadrer l'expression Perl dans les chaînes de remplacement. Un autre candidat ,, et ,, a été rejeté car ils ne ressemblent pas à une paire correspondante. <b>--parens</b> a été créé, de sorte que les utilisateurs peuvent toujours utiliser ,, et ,, s'ils le souhaitent : <b>--parens ,,,,</b></p>
+<p class="Pp">Cependant, en interne, <b>{=</b> et <b>=}</b> sont remplacés par \257&lt; et \257&gt;. Ceci afin de simplifier la création d'expressions régulières. Vous n'avez besoin de regarder qu'un caractère en avance, et jamais de regarder en arrière.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Test_suite'><a class='permalink' href='#Test_suite'>Suite de tests</a></h2>
+<p class="Pp">GNU <b>parallel</b> utilise son propre cadre de test. C'est principalement pour des raisons historiques. Il gère raisonnablement bien les tests qui dépendent de la durée d'exécution d'un test donné (par exemple, plus de 10 secondes est une réussite, mais moins est un échec). Il parallélise la plupart des tests, mais il est facile de forcer un test à s'exécuter comme seul test (ce qui peut être important pour les problèmes de synchronisation). Il gère raisonnablement bien les tests qui échouent de manière intermittente. Il détecte les tests qui ont échoué et les met en premier, de sorte que lors de l'exécution répétée de la suite de tests, les tests qui ont échoué le plus récemment sont exécutés en premier.</p>
+<p class="Pp">Si GNU <b>parallel</b> devait adopter un véritable cadre de test, ces éléments seraient importants.</p>
+<p class="Pp">Étant donné que de nombreux tests dépendent du matériel sur lequel ils sont exécutés, ces tests échouent lorsqu'ils sont exécutés sur un matériel différent de celui pour lequel le test a été écrit.</p>
+<p class="Pp">Lorsque la plupart des bogues sont corrigés, un test est ajouté, afin que ce bogue ne réapparaisse pas. Il est cependant parfois difficile de créer l'environnement dans lequel le bogue se manifeste - surtout si le bogue ne se manifeste que parfois. L'un des problèmes les plus difficiles a été de faire en sorte qu'une machine commence à swapper sans la mettre à genoux.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Median_run_time'><a class='permalink' href='#Median_run_time'>Temps d'exécution médian</a></h2>
+<p class="Pp">L'utilisation d'un pourcentage pour <b>--timeout</b> amène GNU <b>parallel</b> à calculer le temps d'exécution médian d'une tâche. La médiane est un meilleur indicateur du temps d'exécution attendu que la moyenne, car il y aura souvent des valeurs aberrantes prenant beaucoup plus de temps que le temps d'exécution normal.</p>
+<p class="Pp">Pour éviter de conserver tous les temps d'exécution en mémoire, une implémentation de remedian a été créée (Rousseeuw et al).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Error_messages_and_warnings'><a class='permalink' href='#Error_messages_and_warnings'>Messages d'erreur et avertissements</a></h2>
+<p class="Pp">Les messages d'erreur tels que : ERREUR, Introuvable, et 42 ne sont pas très utiles. GNU <b>parallel</b> s'efforce d'informer</p>
+</section>
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>parallel_design(7) - Arch Linux man pages</title>
+        <link rel="stylesheet" href="/css/style.css"/>
+        <link rel="stylesheet" href="/css/man.css"/>
+        <link rel="search" href="/opensearch.xml" type="application/opensearchdescription+xml" title="Arch Linux man pages"/>
+    </head>
+    <body>
+        
+        <main class="container">
+            <article>
+                <nav id="breadcrumb">
+                    <ul>
+                        <li><a href="/">Home</a></li>
+                        <li><a href="/packages">Packages</a></li>
+                        <li><a href="/listing/extra/parallel/">extra/parallel</a></li>
+                        <li>parallel_design.7</li>
+                    </ul>
+                </nav>
+                <section class="man-page">
+<h1 id="Design_of_GNU_Parallel"><a class="permalink" href="#Design_of_GNU_Parallel">Design of GNU Parallel</a></h1>
+<p class="Pp">The design of GNU <b>parallel</b> is based on the experiences of
+    others.</p>
+<section class="Ss">
+<h2 class="Ss" id="The_user_form"><a class="permalink" href="#The_user_form">The user form</a></h2>
+<ul class="Bl-bullet">
+  <li>Qu'est-ce qui a mal tourné?</li>
+  <li>Pourquoi cela a-t-il mal tourné?</li>
+  <li>Que peut-on faire à ce sujet?</li>
+</ul>
+<p class="Pp">Malheureusement, il n'est pas toujours possible de prédire la cause
+    principale de l'erreur.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Determine_number_of_CPUs"><a class="permalink" href="#Determine_number_of_CPUs">Déterminer le nombre de CPU</a></h2>
+<p class="Pp">CPU est un terme ambigu. Il peut signifier le nombre de sockets
+    remplis (c'est-à-dire le nombre de puces physiques). Il peut signifier le
+    nombre de cœurs (c'est-à-dire le nombre de cœurs de calcul physiques). Il peut
+    signifier le nombre de cœurs hyperthreadés (c'est-à-dire le nombre de cœurs
+    virtuels - certains pouvant être hyperthreadés).</p>
+<p class="Pp">Sur ark.intel.com, Intel utilise les termes <i>cores</i> et
+    <i>threads</i> pour le nombre de cœurs physiques et le nombre de cœurs
+    hyperthreadés respectivement.</p>
+<p class="Pp">GNU <b>parallel</b> utilise <i>CPUs</i> comme nombre d'unités de
+    calcul et les termes <i>sockets</i>, <i>cores</i>, et <i>threads</i> pour
+    spécifier comment le nombre d'unités de calcul est calculé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Computation_of_load"><a class="permalink" href="#Computation_of_load">Calcul de la charge</a></h2>
+<p class="Pp">Contrairement à ce que l'on pourrait penser, <b>--load</b> n'utilise
+    pas la charge moyenne. En effet, la charge moyenne augmente trop lentement.
+    Il utilise plutôt <b>ps</b> pour lister le nombre de threads en cours d'exécution
+    ou bloqués (état D, O ou R). Cela donne une charge instantanée.</p>
+<p class="Pp">Comme le calcul de la charge à distance peut être lent, un processus
+    est lancé pour exécuter <b>ps</b> et placer le résultat dans un fichier, qui
+    est ensuite utilisé la fois suivante.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Killing_jobs"><a class="permalink" href="#Killing_jobs">Tuer les jobs</a></h2>
+<p class="Pp">GNU <b>parallel</b> tue les jobs. Cela peut être dû à <b>--memfree</b>,
+    <b>--halt</b>, ou lorsque GNU <b>parallel</b> rencontre une condition dont il
+    ne peut pas se remettre. Chaque job est lancé en tant que son propre groupe
+    de processus. De cette façon, tous les enfants (ou petits-enfants) seront
+    également tués. Le groupe de processus est tué avec la spécification mentionnée
+    dans <b>--termseq</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="SQL_interface"><a class="permalink" href="#SQL_interface">Interface SQL</a></h2>
+<p class="Pp">GNU <b>parallel</b> utilise l'URL de la base de données (DBURL) de
+    GNU <b>sql</b> pour fournir le logiciel de base de données, le nom d'utilisateur,
+    le mot de passe, l'hôte, le port, la base de données et la table en une seule
+    chaîne.</p>
+<p class="Pp">La DBURL doit pointer vers un nom de table. La table sera supprimée
+    et créée. La raison de ne pas réutiliser une table existante est que l'utilisateur
+    peut avoir ajouté plus de sources d'entrée, ce qui nécessiterait plus de colonnes
+    dans la table. En ajoutant '+' devant la DBURL, la table ne sera pas supprimée.</p>
+<p class="Pp">Les colonnes de la table sont similaires à celles de joblog, avec
+    l'ajout de <b>V1</b> à <b>Vn</b> qui sont des valeurs provenant des sources
+    d'entrée, et Stdout et Stderr qui sont les sorties de la sortie standard et de
+    l'erreur standard, respectivement.</p>
+<p class="Pp">La colonne Signal a été renommée en _Signal, car Signal est un mot
+    réservé en MySQL.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Logo"><a class="permalink" href="#Logo">Logo</a></h2>
+<p class="Pp">Le logo est inspiré de l'illusion du mur de café. La police est DejaVu
+    Sans.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Citation_notice"><a class="permalink" href="#Citation_notice">Avis de citation</a></h2>
+<p class="Pp">Pour plus de détails: Voir
+    <a href="https://git.savannah.gnu.org/cgit/parallel.git/tree/doc/citation-notice-faq.txt">https://git.savannah.gnu.org/cgit/parallel.git/tree/doc/citation-notice-faq.txt</a></p>
+<p class="Pp">Financer un projet de logiciel libre est difficile. GNU <b>parallel</b>
+    ne fait pas exception. De plus, il semble que moins un projet est visible, plus
+    il est difficile d'obtenir un financement. Et la nature de GNU <b>parallel</b>
+    fait qu'il ne sera jamais vu par "le type avec le chéquier", mais seulement
+    par les personnes qui font le travail réel.</p>
+<p class="Pp">Ce problème a été abordé par d'autres - bien qu'aucune solution
+    n'ait été trouvée: <a href="https://www.slideshare.net/NadiaEghbal/consider-the-maintainer">https://www.slideshare.net/NadiaEghbal/consider-the-maintainer</a>
+    <a href="https://www.numfocus.org/blog/why-is-numpy-only-now-getting-funded/">https://www.numfocus.org/blog/why-is-numpy-only-now-getting-funded/</a></p>
+<p class="Pp">Avant de mettre en œuvre l'avis de citation, il a été discuté avec
+    les utilisateurs: <a href="https://lists.gnu.org/archive/html/parallel/2013-11/msg00006.html">https://lists.gnu.org/archive/html/parallel/2013-11/msg00006.html</a></p>
+<p class="Pp">Passer 10 secondes à exécuter <b>parallel --citation</b> une fois
+    n'est sans doute pas une solution idéale, mais personne n'a encore trouvé de
+    solution idéale - ni pour financer GNU <b>parallel</b>, ni pour d'autres logiciels
+    libres.</p>
+<p class="Pp">Si vous pensez avoir la solution parfaite, vous devriez l'essayer
+    et, si elle fonctionne, la publier sur la liste de diffusion par e-mail. Les
+    idées qui coûteront du travail et qui n'ont pas été testées ne seront
+    probablement pas priorisées.</p>
+<p class="Pp">L'exécution de <b>parallel --citation</b> une seule fois prend moins
+    de 10 secondes et fera taire l'avis de citation pour les exécutions futures.
+    Ceci est comparable aux outils graphiques où vous devez cliquer sur une case à
+    cocher disant "Ne plus afficher". Mais si cela représente trop de tracas pour
+    vous, pourquoi ne pas utiliser l'une des alternatives? Voir une liste dans:
+    <b>man parallel_alternatives</b>.</p>
+<p class="Pp">Comme la demande de citation n'est pas une exigence légale, cela est
+    acceptable en vertu de la GPLv3 et a été approuvé par Richard M. Stallman lui-même.
+    Elle ne relève donc pas de:
+    <a href="https://www.gnu.org/licenses/gpl-faq.en.html#RequireCitation">https://www.gnu.org/licenses/gpl-faq.en.html#RequireCitation</a></p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Ideas_for_new_design"><a class="permalink" href="#Ideas_for_new_design">Idées pour une nouvelle conception</a></h1>
+<section class="Ss">
+<h2 class="Ss" id="Multiple_processes_working_together"><a class="permalink" href="#Multiple_processes_working_together">Plusieurs processus travaillant ensemble</a></h2>
+<p class="Pp">Open3 est lent. L'impression est lente. Il serait bon qu'ils ne lient
+    pas les ressources, mais qu'ils soient exécutés dans des threads séparés.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">--rrs sur distance en utilisant un wrapper Perl</h2>
+<p class="Pp">... | perl -pe '$/=$recend$recstart;BEGIN{ if(substr($_) eq
+    <span class="Li">$recstart</span>) substr($_)=&quot;&quot; } eof and
+    substr($_) eq <span class="Li">$recend</span>) substr($_)=&quot;&quot;</p>
+<p class="Pp">Il devrait être possible d'écrire un filtre qui supprime les séparateurs
+    d'enregistrement à la volée au lieu d'être à l'intérieur de GNU
+    <b>parallel</b>. Cela pourrait alors utiliser plus de CPU.</p>
+<p class="Pp">Cela nécessitera-t-il 2x la mémoire de taille d'enregistrement?</p>
+<p class="Pp">Cela nécessitera-t-il 2x la mémoire de taille de bloc?</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Historical_decisions"><a class="permalink" href="#Historical_decisions">Décisions historiques</a></h1>
+<p class="Pp">Ces décisions étaient pertinentes pour les versions antérieures de GNU
+    <b>parallel</b>, mais pas pour la version actuelle. Elles sont conservées ici
+    comme enregistrement historique.</p>
+<section class="Ss">
+<h2 class="Ss">--tollef</h2>
+<p class="Pp">Vous pouvez lire l'histoire de GNU <b>parallel</b> sur
+    <a href="https://www.gnu.org/software/parallel/history.html">https://www.gnu.org/software/parallel/history.html</a></p>
+<p class="Pp"><b>--tollef</b> a été inclus pour rendre GNU <b>parallel</b> compatible
+    avec le parallel de moreutils (qui est fait par Tollef Fog Heen). Cela a été fait
+    afin que les utilisateurs de ce parallel puissent facilement porter leur utilisation
+    vers GNU <b>parallel</b>: il suffisait de définir
+    <b>PARALLEL=&quot;--tollef&quot;</b> et ce serait tout.</p>
+<p class="Pp">Mais plusieurs distributions ont choisi de rendre <b>--tollef</b>
+    global (en le plaçant dans /etc/parallel/config) sans en informer les utilisateurs,
+    et cela a causé beaucoup de confusion lorsque les gens essayaient les exemples
+    de la page de manuel de GNU <b>parallel</b> et que ceux-ci ne fonctionnaient pas.
+    Les utilisateurs étaient frustrés car la distribution ne leur indiquait pas clairement
+    qu'elle avait rendu <b>--tollef</b> global.</p>
+<p class="Pp">Donc, pour réduire la frustration et le support qui en résultait,
+    <b>--tollef</b> a été rendu obsolète le 20130222 et supprimé un an plus
+    tard.</p>
+</section>
+</section>
+</section>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-11-23</td>
+    <td class="foot-os">20251122</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet:</p>
+    <dl>
+        <dt>Nom du paquet:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/parallel/">extra/parallel</a></dd>
+        <dt>Version:</dt>
+        <dd>20251122-1</dd>
+        <dt>Amont:</dt>
+        <dd><a href="https://www.gnu.org/software/parallel/">https://www.gnu.org/software/parallel/</a></dd>
+        <dt>Licences:</dt>
+        <dd>GPL-3.0-or-later</dd>
+        <dt>Manuels:</dt>
+        <dd><a href="/listing/extra/parallel/">/listing/extra/parallel/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#Design_of_GNU_Parallel">Design de GNU Parallel</a></li>
+        
+            <li><a href="#Ideas_for_new_design">Idées pour une nouvelle conception</a></li>
+        
+            <li><a href="#Historical_decisions">Décisions historiques</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats:
+        
+            <a href="/man/parallel_design.7.en.txt">txt</a>, 
+        
+            <a href="/man/parallel_design.7.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

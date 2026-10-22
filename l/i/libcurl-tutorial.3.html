@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libcurl-tutorial(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">libcurl-tutorial(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/curl/">curl</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">libcurl-tutorial(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">libcurl-tutorial(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">libcurl-tutorial - Tutoriel de programmation libcurl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Objectif'><a class='permalink' href='#Objectif'>Objectif</a></h1>
+<p class="Pp">Ce document tente de décrire les principes généraux et quelques
+    approches de base à considérer lors de la programmation avec libcurl. Le texte
+    se concentre sur l'interface C mais devrait s'appliquer assez bien aux
+    bindings dans d'autres langages, car ils suivent généralement l'API C de près.</p>
+<p class="Pp">Ce document désigne par « l'utilisateur » la personne qui écrit
+    le code source utilisant libcurl. Ce pourrait être vous ou quelqu'un dans
+    votre position. Ce qui est généralement appelé « le programme » est l'ensemble
+    du code source que vous écrivez et qui utilise libcurl pour les transferts. Le
+    programme est à l'extérieur de libcurl et libcurl est à l'extérieur du
+    programme.</p>
+<p class="Pp">Pour plus de détails sur toutes les options et fonctions décrites
+    ici, veuillez vous référer à leurs pages man respectives.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Compilation'><a class='permalink' href='#Compilation'>Compilation</a></h1>
+<p class="Pp">Il existe de nombreuses façons de compiler des programmes C. Ce
+    chapitre suppose un processus de compilation de style Unix. Si vous utilisez un
+    système de construction différent, vous pouvez toujours lire ceci pour obtenir
+    des informations générales qui peuvent également s'appliquer à votre
+    environnement.</p>
+<dl class="Bl-tag">
+  <dt id="Compilation"><a class="permalink" href="#Compilation">Compilation du
+    Programme</a></dt>
+  <dd>Votre compilateur doit savoir où se trouvent les en-têtes de libcurl. Par
+      conséquent, vous devez définir le chemin d'inclusion de votre compilateur
+      pour pointer vers le répertoire où vous les avez installés. L'outil
+      'curl-config'[3] peut être utilisé pour obtenir ces informations :
+    <pre>  $ curl-config --cflags</pre>
+  </dd>
+  <dt id="Liaison"><a class="permalink" href="#Liaison">Liaison du Programme avec
+    libcurl</a></dt>
+  <dd>Une fois le programme compilé, vous devez lier vos fichiers objet pour
+      créer un seul exécutable. Pour que cela réussisse, vous devez lier avec
+      libcurl et éventuellement aussi avec d'autres bibliothèques dont libcurl
+      dépend elle-même. Comme les bibliothèques OpenSSL, mais même certaines
+      bibliothèques système standard peuvent être nécessaires sur la ligne de
+      commande. Pour déterminer les drapeaux à utiliser, une fois de plus, l'outil
+      'curl-config' vient à la rescousse :
+    <pre>  $ curl-config --libs</pre>
+  </dd>
+  <dt id="SSL"><a class="permalink" href="#SSL">SSL ou Pas</a></dt>
+  <dd>libcurl peut être compilé et personnalisé de nombreuses manières. L'une des
+      choses qui varient entre différentes bibliothèques et compilations est la
+      prise en charge des transferts basés sur SSL, tels que HTTPS et FTPS. Si une
+      bibliothèque SSL prise en charge a été correctement détectée lors de la
+      compilation, libcurl est compilé avec la prise en charge SSL. Pour savoir si
+      une libcurl installée a été compilée avec la prise en charge SSL activée,
+      utilisez <i>curl-config</i> comme suit :
+        <pre>  $ curl-config --feature</pre>
+    <p class="Pp">Si SSL est pris en charge, le mot-clé <i>SSL</i> est écrit
+        sur la sortie standard, éventuellement avec d'autres fonctionnalités qui
+        peuvent être activées ou désactivées pour différentes libcurls.</p>
+    <p class="Pp">Voir aussi « Fonctionnalités fournies par libcurl » plus
+        loin.</p>
+  </dd>
+  <dt id="autoconf"><a class="permalink" href="#autoconf">Macro autoconf</a></dt>
+  <dd>Lorsque vous écrivez votre script de configuration pour détecter libcurl et
+      configurer les variables en conséquence, nous proposons une macro qui fait
+      probablement tout ce dont vous avez besoin dans ce domaine. Voir le fichier
+      docs/libcurl/libcurl.m4 - il contient des informations sur son
+      utilisation.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Code_Portable_dans_un_Monde_Portable'><a class='permalink' href='#Code_Portable_dans_un_Monde_Portable'>Code   Portable dans un Monde Portable</a></h1>
+<p class="Pp">Les personnes derrière libcurl ont déployé des efforts considérables
+    pour faire fonctionner libcurl sur un grand nombre de systèmes d'exploitation
+    et d'environnements différents.</p>
+<p class="Pp">Vous programmez libcurl de la même manière sur toutes les plateformes
+    où libcurl fonctionne. Il n'y a que quelques détails mineurs qui diffèrent. Si
+    vous vous assurez simplement d'écrire votre code de manière suffisamment
+    portable, vous pouvez créer un programme portable. libcurl ne devrait pas vous
+    en empêcher.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Préparation_Globale'><a class='permalink' href='#Préparation_Globale'>Préparation   Globale</a></h1>
+<p class="Pp">Le programme doit initialiser une partie de la fonctionnalité de
+    libcurl globalement. Cela signifie que cela doit être fait exactement une
+    fois, peu importe combien de fois vous avez l'intention d'utiliser la
+    bibliothèque. Une fois pour toute la durée de vie de votre programme. Ceci est
+    fait en utilisant</p>
+<pre> curl_global_init()</pre>
+<p class="Pp">et cela prend un paramètre qui est un masque de bits indiquant à
+    libcurl quoi initialiser. L'utilisation de <i>CURL_GLOBAL_ALL</i> lui fait
+    initialiser tous les sous-modules internes connus, et peut être une bonne option
+    par défaut. Les deux bits actuellement spécifiés sont :</p>
+<dl class="Bl-tag">
+  <dt id="CURL_GLOBAL_WIN32"><a class="permalink" href="#CURL_GLOBAL_WIN32">CURL_GLOBAL_WIN32</a></dt>
+  <dd>qui ne fait quelque chose que sur les machines Windows. Lorsqu'il est utilisé
+      sur une machine Windows, il fait initialiser par libcurl les éléments des
+      sockets Win32. Sans avoir correctement initialisé cela, votre programme ne
+      peut pas utiliser correctement les sockets. Vous ne devriez le faire qu'une
+      fois par application, donc si votre programme le fait déjà ou si une autre
+      bibliothèque utilisée le fait, vous ne devriez pas non plus demander à libcurl
+      de le faire.</dd>
+  <dt id="CURL_GLOBAL_SSL"><a class="permalink" href="#CURL_GLOBAL_SSL">CURL_GLOBAL_SSL</a></dt>
+  <dd>qui ne fait quelque chose que sur les libcurls compilées et construites avec
+      SSL activé. Sur ces systèmes, cela fait initialiser correctement par libcurl
+      la bibliothèque SSL pour cette application. Cela ne doit être fait qu'une
+      fois par application, donc si votre programme ou une autre bibliothèque le fait
+      déjà, ce bit ne devrait pas être nécessaire.
+    <p class="Pp">libcurl possède un mécanisme de protection par défaut qui
+        détecte si <a href='/man/curl_global_init.3.en'>curl_global_init(3)</a> n'a pas été appelée au moment
+        où <a href='/man/curl_easy_perform.3.en'>curl_easy_perform(3)</a> est appelée et si tel est le cas, libcurl
+        exécute la fonction elle-même avec un masque de bits deviné. Veuillez noter
+        que ne pas dépendre uniquement de cela n'est ni agréable ni bon.</p>
+    <p class="Pp">Lorsque le programme n'utilise plus libcurl, il doit appeler
+        <a href='/man/curl_global_cleanup.3.en'>curl_global_cleanup(3)</a>, qui est l'inverse de l'appel
+        d'initialisation. Il effectue les opérations inversées pour nettoyer les
+        ressources que l'appel
+        <a href='/man/curl_global_init.3.en'>curl_global_init(3)</a> a initialisées.</p>
+    <p class="Pp">Les appels répétés à <a href='/man/curl_global_init.3.en'>curl_global_init(3)</a> et
+        <a href='/man/curl_global_cleanup.3.en'>curl_global_cleanup(3)</a> doivent être évités. Ils ne doivent
+        être appelés qu'une seule fois chacun.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Fonctionnalités_fournies_par_libcurl'><a class='permalink' href='#Fonctionnalités_fournies_par_libcurl'>Fonctionnalités   fournies par libcurl</a></h1>
+<p class="Pp">Il est considéré comme une bonne pratique de déterminer les
+    fonctionnalités de libcurl au moment de l'exécution plutôt qu'au moment de la
+    compilation (si possible, bien sûr). En appelant
+    <a href='/man/curl_version_info.3.en'>curl_version_info(3)</a> et en examinant les détails de la structure
+    renvoyée, votre programme peut déterminer exactement ce que prend en charge la
+    libcurl actuellement en cours d'exécution.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Deux_Interfaces'><a class='permalink' href='#Deux_Interfaces'>Deux   Interfaces</a></h1>
+<p class="Pp">libcurl a d'abord introduit l'interface dite facile (easy). Toutes
+    les opérations de l'interface facile sont préfixées par 'curl_easy'. L'interface
+    facile vous permet d'effectuer des transferts simples avec un appel de fonction
+    synchrone et bloquant.</p>
+<p class="Pp">libcurl propose également une autre interface qui permet des
+    transferts simultanés multiples dans un seul thread, l'interface dite multi.
+    Plus d'informations sur cette interface sont détaillées dans un chapitre
+    séparé plus loin. Vous devez toujours d'abord comprendre l'interface facile,
+    alors continuez à lire pour mieux comprendre.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Gérer_l interface_facile_libcurl'><a class='permalink' href='#Gérer_l interface_facile_libcurl'>Gérer   l Interface Facile libcurl</a></h1>
+<p class="Pp">Pour utiliser l'interface facile, vous devez d'abord créer votre propre
+    handle facile. Vous avez besoin d'un handle pour chaque session facile que vous
+    souhaitez effectuer. Fondamentalement, vous devriez utiliser un handle pour
+    chaque thread que vous prévoyez d'utiliser pour le transfert. Vous ne devez jamais
+    partager le même handle dans plusieurs threads.</p>
+<p class="Pp">Obtenez un handle facile avec</p>
+<pre> handle = curl_easy_init();</pre>
+Cela renvoie un handle facile. Avec cela, vous passez à l'étape suivante :
+  la configuration de vos actions préférées. Un handle est juste une entité logique
+  pour le transfert à venir ou la série de transferts.
+<p class="Pp">Vous définissez les propriétés et les options pour ce handle en
+    utilisant <a href='/man/curl_easy_setopt.3.en'>curl_easy_setopt(3)</a>. Elles contrôlent comment le transfert
+    ou les transferts ultérieurs utilisant ce handle sont effectués. Les options
+    restent définies dans le handle jusqu'à ce qu'elles soient à nouveau définies
+    sur quelque chose de différent. Elles sont persistantes. Plusieurs requêtes
+    utilisant le même handle utilisent les mêmes options.</p>
+<p class="Pp">Si à tout moment vous souhaitez effacer toutes les options précédemment
+    définies pour un seul handle facile, vous pouvez appeler
+    <a href='/man/curl_easy_reset.3.en'>curl_easy_reset(3)</a> et vous pouvez également cloner un handle facile
+    (avec toutes ses options définies) en utilisant
+    <a href='/man/curl_easy_duphandle.3.en'>curl_easy_duphandle(3)</a>.</p>
+<p class="Pp">Beaucoup des options que vous définissez dans libcur</p>
+</section>
+</div>
+</section>
+            </article>
+            <aside id="content-right">
+                
+            </aside>
+        </main>
+        <footer>
+            
+            
+        </footer>
+    </body>
+</html>
+l sont des « chaînes »,
+    des pointeurs vers des données terminées par un octet nul. Lorsque vous définissez des chaînes avec
+    <a href='/man/curl_easy_setopt.3.en'>curl_easy_setopt(3)</a>, libcurl en fait sa propre copie afin qu'elles n'aient pas besoin d'être conservées dans votre application une fois définies[4].</p>
+<p class="Pp">L'une des propriétés les plus élémentaires à définir dans le handle est l'URL.
+    Vous définissez votre URL préférée à transférer avec <a href='/man/CURLOPT_URL.3.en'>CURLOPT_URL(3)</a> d'une manière similaire à :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_URL, "http://example.com/");</pre>
+<p class="Pp">Supposons un instant que vous souhaitiez recevoir des données puisque l'URL
+    identifie une ressource distante que vous souhaitez obtenir ici. Puisque vous écrivez une sorte d'application
+    qui a besoin de ce transfert, je suppose que vous aimeriez que les données vous soient transmises directement au lieu de simplement les envoyer à
+    stdout. Vous écrivez donc votre propre fonction qui correspond à ce prototype :</p>
+<pre> size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp);</pre>
+Vous indiquez à libcurl de passer toutes les données à cette fonction en émettant une fonction similaire à celle-ci :
+<pre> curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, write_data);</pre>
+Vous pouvez contrôler quelles données votre fonction de rappel reçoit dans le quatrième argument en définissant une autre propriété :
+<pre> curl_easy_setopt(handle, CURLOPT_WRITEDATA, &amp;internal_struct);</pre>
+En utilisant cette propriété, vous pouvez facilement passer des données locales entre votre application et
+    la fonction qui est appelée par libcurl. libcurl lui-même ne touche pas aux données que vous passez avec
+    <a href='/man/CURLOPT_WRITEDATA.3.en'>CURLOPT_WRITEDATA(3)</a>.
+<p class="Pp">libcurl offre son propre rappel interne par défaut qui s'occupe
+    des données si vous ne définissez pas le rappel avec
+    <a href='/man/CURLOPT_WRITEFUNCTION.3.en'>CURLOPT_WRITEFUNCTION(3)</a>. Il affiche simplement les données reçues sur
+    stdout. Vous pouvez faire en sorte que le rappel par défaut écrive les données dans un fichier différent
+    en passant un 'FILE *' vers un fichier ouvert en écriture avec l'option
+    <a href='/man/CURLOPT_WRITEDATA.3.en'>CURLOPT_WRITEDATA(3)</a>.</p>
+<p class="Pp">Maintenant, nous devons prendre du recul et prendre une profonde respiration. Voici
+    une de ces rares spécificités dépendantes de la plateforme. L'avez-vous repérée ? Sur certaines plateformes[2], libcurl n'est pas capable d'opérer sur des descripteurs de fichiers ouverts par le programme. Par conséquent, si vous utilisez le rappel par défaut et passez un descripteur de fichier ouvert avec
+    <a href='/man/CURLOPT_WRITEDATA.3.en'>CURLOPT_WRITEDATA(3)</a>, libcurl plante. Vous devriez éviter cela pour que votre programme fonctionne correctement pratiquement partout.</p>
+<p class="Pp">(<a href='/man/CURLOPT_WRITEDATA.3.en'>CURLOPT_WRITEDATA(3)</a> était anciennement connu sous le nom de
+    <i>CURLOPT_FILE</i>. Les deux noms fonctionnent toujours et font la même chose).</p>
+<p class="Pp">Si vous utilisez libcurl en tant que DLL Windows, vous DEVEZ utiliser
+    <a href='/man/CURLOPT_WRITEFUNCTION.3.en'>CURLOPT_WRITEFUNCTION(3)</a> si vous définissez <a href='/man/CURLOPT_WRITEDATA.3.en'>CURLOPT_WRITEDATA(3)</a> - sinon vous rencontrerez des plantages.</p>
+<p class="Pp">Il existe bien sûr de nombreuses autres options que vous pouvez définir, et nous y reviendrons
+    plus tard. Continuons plutôt vers le transfert réel :</p>
+<pre> success = curl_easy_perform(handle);</pre>
+<p class="Pp"><a href='/man/curl_easy_perform.3.en'>curl_easy_perform(3)</a> se connecte au site distant, effectue les
+    commandes nécessaires et effectue le transfert. Chaque fois qu'il reçoit des données, il
+    appelle la fonction de rappel que nous avons définie précédemment. La fonction peut recevoir un octet
+    à la fois, ou elle peut recevoir plusieurs kilo-octets à la fois. libcurl délivre autant que possible aussi souvent que possible. Votre fonction de rappel doit retourner le nombre d'octets dont elle s'est « occupée ». Si ce n'est pas le même nombre d'octets qui lui a été passé, libcurl abandonne l'opération et retourne un code d'erreur.</p>
+<p class="Pp">Lorsque le transfert est terminé, la fonction retourne un code de retour
+    qui vous informe si elle a réussi sa mission ou non. Si un code de retour ne vous suffit pas, vous pouvez utiliser
+    <a href='/man/CURLOPT_ERRORBUFFER.3.en'>CURLOPT_ERRORBUFFER(3)</a> pour pointer libcurl vers un tampon de votre part où il stocke également un message d'erreur lisible par l'homme.</p>
+<p class="Pp">Si vous souhaitez ensuite transférer un autre fichier, le handle est prêt à
+    être réutilisé. Il est même préférable et encouragé de réutiliser un handle existant si vous avez l'intention de faire un autre transfert. libcurl tente alors de réutiliser une connexion précédente.</p>
+<p class="Pp">Pour certains protocoles, le téléchargement d'un fichier peut impliquer un processus compliqué
+    de connexion, de définition du mode de transfert, de changement de répertoire courant et enfin de transfert des données du fichier. libcurl prend en charge toute cette complexité pour vous. Étant simplement donnée l'URL d'un fichier, libcurl s'occupe de tous les détails nécessaires pour déplacer le fichier d'une machine à une autre.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Multi-threading_Issues'><a class='permalink' href='#Multi-threading_Issues'>Problèmes de Multi-threading</a></h1>
+<p class="Pp">libcurl est thread-safe mais il y a quelques exceptions. Référez-vous à
+    <a href='/man/libcurl-thread.3.en'>libcurl-thread(3)</a> pour plus d'informations.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='When_It_does_not_Work'><a class='permalink' href='#When_It_does_not_Work'>Lorsque ça ne fonctionne pas</a></h1>
+<p class="Pp">Il arrive que le transfert échoue pour une raison quelconque. Vous pourriez avoir défini la mauvaise option libcurl ou mal compris ce que fait réellement l'option libcurl, ou le serveur distant pourrait renvoyer des réponses non standard qui confondent la bibliothèque, qui confond alors votre programme.</p>
+<p class="Pp">Il y a une règle d'or lorsque ces choses se produisent : définissez l'option
+    <a href='/man/CURLOPT_VERBOSE.3.en'>CURLOPT_VERBOSE(3)</a> à 1. cela amène la bibliothèque à afficher tous les détails du protocole qu'elle envoie, des informations internes et des données de protocole reçues également (surtout lors de l'utilisation de FTP). Si vous utilisez HTTP, ajouter les en-têtes dans la sortie reçue à étudier est également un moyen intelligent de mieux comprendre pourquoi le serveur se comporte comme il le fait. Incluez les en-têtes dans la sortie du corps normale avec <a href='/man/CURLOPT_HEADER.3.en'>CURLOPT_HEADER(3)</a> défini à 1.</p>
+<p class="Pp">Bien sûr, il reste des bugs. Nous avons besoin de les connaître pour pouvoir les corriger, nous dépendons donc fortement de vos rapports de bugs. Lorsque vous signalez des bugs suspects dans libcurl, veuillez inclure autant de détails que possible : un vidage de protocole que produit
+    <a href='/man/CURLOPT_VERBOSE.3.en'>CURLOPT_VERBOSE(3)</a>, la version de la bibliothèque, autant de votre code que possible qui utilise libcurl, le nom et la version du système d'exploitation, le nom et la version du compilateur, etc.</p>
+<p class="Pp">Si <a href='/man/CURLOPT_VERBOSE.3.en'>CURLOPT_VERBOSE(3)</a> ne suffit pas, vous augmentez le niveau
+    des données de débogage que votre application reçoit en utilisant
+    <a href='/man/CURLOPT_DEBUGFUNCTION.3.en'>CURLOPT_DEBUGFUNCTION(3)</a>.</p>
+<p class="Pp">Acquérir des connaissances approfondies sur les protocoles impliqués n'est jamais une mauvaise chose, et si vous essayez de faire des choses amusantes, vous pourriez mieux comprendre libcurl et comment l'utiliser si vous étudiez les documents RFC appropriés au moins brièvement.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Upload_Data_to_a_Remote_Site'><a class='permalink' href='#Upload_Data_to_a_Remote_Site'>Charger des données sur un site distant</a></h1>
+<p class="Pp">libcurl essaie de garder une approche indépendante du protocole pour la plupart des transferts, ainsi le chargement vers un site FTP distant est similaire au chargement de données vers un serveur HTTP avec une requête PUT.</p>
+<p class="Pp">Bien sûr, vous créez d'abord un handle easy ou vous réutilisez un handle existant. Ensuite, vous définissez l'URL sur laquelle opérer, comme auparavant. C'est l'URL distante, sur laquelle nous chargeons maintenant.</p>
+<p class="Pp">Puisque nous écrivons une application, nous voulons très probablement que libcurl obtienne les données de chargement en nous les demandant. Pour y parvenir, nous définissons le rappel de lecture et le pointeur personnalisé que libcurl passe à notre rappel de lecture. Le rappel de lecture doit avoir un prototype similaire à :</p>
+<pre> size_t function(char *bufptr, size_t size, size_t nitems, void *userp);</pre>
+Où <i>bufptr</i> est le pointeur vers un tampon que nous remplissons avec les données à charger et <i>nitems</i> est la taille du tampon et donc la quantité maximale de données que nous pouvons retourner à libcurl dans cet appel. Le pointeur <i>userp</i> est le pointeur personnalisé que nous définissons pour pointer vers une structure de notre part afin de passer des données privées entre l'application et le rappel.
+<pre> curl_easy_setopt(handle, CURLOPT_READFUNCTION, read_function);
+ curl_easy_setopt(handle, CURLOPT_READDATA, &amp;filedata);</pre>
+Indiquez à libcurl que nous voulons charger :
+<pre> curl_easy_setopt(handle, CURLOPT_UPLOAD, 1L);</pre>
+<p class="Pp">Certains protocoles ne se comportent pas correctement lorsque les chargements sont effectués sans connaissance préalable de la taille de fichier attendue. Définissez donc la taille du fichier de chargement en utilisant
+    <a href='/man/CURLOPT_INFILESIZE_LARGE.3.en'>CURLOPT_INFILESIZE_LARGE(3)</a> pour toutes les tailles de fichiers connues comme suit[1] :</p>
+<pre> /* dans cet exemple, file_size doit être une variable de type curl_off_t */
+ curl_easy_setopt(handle, CURLOPT_INFILESIZE_LARGE, file_size);</pre>
+<p class="Pp">Lorsque vous appelez <a href='/man/curl_easy_perform.3.en'>curl_easy_perform(3)</a> cette fois-ci, il effectue toutes les opérations nécessaires et, lorsqu'il a déclenché le chargement, il appelle votre rappel fourni pour obtenir les données à charger. Le programme doit retourner autant de données que possible à chaque appel, car cela rendra probablement le chargement aussi rapide que possible. Le rappel doit retourner le nombre d'octets écrits dans le tampon. Retourner 0 signale la fin du chargement.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Passwords'><a class='permalink' href='#Passwords'>Mots de passe</a></h1>
+<p class="Pp">De nombreux protocoles utilisent ou exigent même que le nom d'utilisateur et le mot de passe soient fournis pour pouvoir télécharger ou charger les données de votre choix. libcurl offre plusieurs façons de les spécifier.</p>
+<p class="Pp">La plupart des protocoles permettent de spécifier le nom et le mot de passe dans l'URL elle-même. libcurl le détecte et les utilise en conséquence. Cela s'écrit comme suit :</p>
+<pre> protocol://user:password@example.com/path/</pre>
+Si vous avez besoin de caractères inhabituels dans votre nom d'utilisateur ou mot de passe, vous devez les encoder en URL, sous la forme %XX où XX est un nombre hexadécimal à deux chiffres.
+<p class="Pp">libcurl fournit également des options pour définir divers mots de passe. Le nom d'utilisateur et le mot de passe tels qu'ils apparaissent intégrés dans l'URL peuvent être définis à la place avec l'option
+    <a href='/man/CURLOPT_USERPWD.3.en'>CURLOPT_USERPWD(3)</a>. L'argument passé à libcurl doit être un char * vers une chaîne au format "user:password". D'une manière comme celle-ci :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_USERPWD, "myname:thesecret");</pre>
+<p class="Pp">Un autre cas où un nom et un mot de passe peuvent être nécessaires à certains moments est pour les utilisateurs qui doivent s'authentifier auprès d'un proxy qu'ils utilisent. libcurl offre une autre option pour cela,
+    <a href='/man/CURLOPT_PROXYUSERPWD.3.en'>CURLOPT_PROXYUSERPWD(3)</a>. Elle est utilisée de manière assez similaire à l'option
+    <a href='/man/CURLOPT_USERPWD.3.en'>CURLOPT_USERPWD(3)</a> comme ceci :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_PROXYUSERPWD, "myname:thesecret");</pre>
+<p class="Pp">Il existe une ancienne méthode Unix « standard » pour stocker les noms d'utilisateur et mots de passe FTP, à savoir dans le fichier $HOME/.netrc (sous Windows, libcurl vérifie également la variable d'environnement <i>%USERPROFILE%</i> si <i>%HOME%</i> n'est pas définie, et essaie "_netrc" comme nom). Le fichier doit être rendu privé afin que seul l'utilisateur puisse le lire (voir également le chapitre « Considérations de sécurité »), car il pourrait contenir le mot de passe en texte brut. libcurl a la capacité d'utiliser ce fichier pour déterminer quel ensemble de nom d'utilisateur et de mot de passe utiliser pour un hôte particulier. En tant qu'extension à la fonction normale</p>nalité, libcurl supporte également ce fichier pour
+    les protocoles non-FTP comme HTTP. Pour faire en sorte que curl utilise ce
+    fichier, utilisez l'option <a href='/man/CURLOPT_NETRC.3.en'>CURLOPT_NETRC(3)</a> :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_NETRC, 1L);</pre>
+<p class="Pp">Un exemple basique de ce à quoi un fichier .netrc peut ressembler :</p>
+<pre> machine monhost.mondomaine.com
+ login monlogin
+ password monmotdepasse</pre>
+<p class="Pp">Tous ces exemples concernent des cas où le mot de passe est
+    facultatif, ou du moins où vous pouvez le laisser de côté et laisser libcurl
+    tenter de faire son travail sans lui. Il y a des moments où le mot de passe
+    n'est pas facultatif, comme lorsque vous utilisez une clé privée SSL pour des
+    transferts sécurisés.</p>
+<p class="Pp">Pour passer le mot de passe de clé privée connu à libcurl :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_KEYPASSWD, &quot;motdepassecle&quot;);</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HTTP_Authentification'><a class='permalink' href='#HTTP_Authentication'>Authentification   HTTP</a></h1>
+<p class="Pp">Le chapitre précédent a montré comment définir le nom d'utilisateur et
+    le mot de passe pour obtenir des URLs nécessitant une authentification. Lors de
+    l'utilisation du protocole HTTP, il existe de nombreuses manières différentes
+    pour un client de fournir ces informations d'identification au serveur, et vous
+    pouvez contrôler la manière dont libcurl les utilise. La méthode d'authentification
+    HTTP par défaut est appelée 'Basic', qui consiste à envoyer le nom et le mot de
+    passe en texte clair dans la requête HTTP, encodés en base64. C'est
+    non sécurisé.</p>
+<p class="Pp">Au moment de la rédaction, libcurl peut être compilé pour utiliser :
+    Basic, Digest, NTLM, Negotiate (SPNEGO). Vous pouvez indiquer à libcurl lequel
+    utiliser avec <a href='/man/CURLOPT_HTTPAUTH.3.en'>CURLOPT_HTTPAUTH(3)</a> comme suit :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);</pre>
+<p class="Pp">Lorsque vous envoyez une authentification à un proxy, vous pouvez
+    également définir le type d'authentification de la même manière mais avec
+    <a href='/man/CURLOPT_PROXYAUTH.3.en'>CURLOPT_PROXYAUTH(3)</a> :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_PROXYAUTH, CURLAUTH_NTLM);</pre>
+<p class="Pp">Ces deux options vous permettent de définir plusieurs types (en les
+    combinant avec un OU logique), pour que libcurl choisisse le plus sécurisé
+    parmi les types que le serveur/proxy prétend supporter. Cette méthode implique
+    cependant un aller-retour supplémentaire car libcurl doit d'abord demander au
+    serveur ce qu'il supporte :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST|CURLAUTH_BASIC);</pre>
+<p class="Pp">Pour plus de commodité, vous pouvez utiliser la définition
+    <i>CURLAUTH_ANY</i> (au lieu d'une liste de types spécifiques) qui permet à
+    libcurl d'utiliser la méthode qu'il souhaite.</p>
+<p class="Pp">Lorsqu'il demande plusieurs types, libcurl choisit celui qui est
+    disponible et qu'il considère comme le "meilleur" selon son propre ordre
+    de préférence interne.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HTTP_POSTing'><a class='permalink' href='#HTTP_POSTing'>Envoi   de requêtes POST HTTP</a></h1>
+<p class="Pp">Nous recevons de nombreuses questions sur la manière d'effectuer des
+    requêtes POST HTTP avec libcurl de la bonne manière. Ce chapitre comprend
+    donc des exemples utilisant les différentes versions de requêtes POST HTTP
+    que libcurl supporte.</p>
+<p class="Pp">La première version est le POST simple, la version la plus courante,
+    utilisée par la plupart des pages HTML utilisant la balise &lt;form&gt;. Nous
+    fournissons un pointeur vers les données et indiquons à libcurl de tout poster
+    sur le site distant :</p>
+<pre>    char *data=&quot;nom=daniel&amp;projet=curl&quot;;
+    curl_easy_setopt(handle, CURLOPT_POSTFIELDS, data);
+    curl_easy_setopt(handle, CURLOPT_URL, &quot;http://postici.com/&quot;);
+    curl_easy_perform(handle); /* envoi ! */</pre>
+<p class="Pp">Assez simple, n'est-ce pas ? Étant donné que vous définissez les
+    options POST avec <a href='/man/CURLOPT_POSTFIELDS.3.en'>CURLOPT_POSTFIELDS(3)</a>, cela bascule automatiquement le handle pour
+    utiliser POST dans la requête à venir.</p>
+<p class="Pp">Et si vous voulez poster des données binaires qui nécessitent également
+    de définir l'en-tête Content-Type: du POST ? Eh bien, les POST binaires
+    empêchent libcurl de pouvoir faire strlen() sur les données pour déterminer
+    la taille. Par conséquent, nous devons indiquer à libcurl la taille des
+    données postées. La définition des en-têtes dans les requêtes libcurl se fait
+    de manière générique, en construisant une liste de nos propres en-têtes puis en
+    passant cette liste à libcurl.</p>
+<pre> struct curl_slist *headers=NULL;
+ headers = curl_slist_append(headers, &quot;Content-Type: text/xml&quot;);
+ /* poster des données binaires */
+ curl_easy_setopt(handle, CURLOPT_POSTFIELDS, pointeur_binaire);
+ /* définir la taille des données postées */
+ curl_easy_setopt(handle, CURLOPT_POSTFIELDSIZE, 23L);
+ /* passer notre liste d'en-têtes personnalisés */
+ curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+ curl_easy_perform(handle); /* envoi ! */
+ curl_slist_free_all(headers); /* libérer la liste d'en-têtes */</pre>
+<p class="Pp">Bien que les exemples simples ci-dessus couvrent la majorité des cas
+    où des opérations POST HTTP sont nécessaires, ils ne gèrent pas les
+    formposts multipart. Les formposts multipart ont été introduits comme une meilleure
+    façon de poster des données (potentiellement volumineuses) binaires et ont été
+    documentés pour la première fois dans la RFC 1867 (mise à jour dans la RFC
+    2388). Ils sont appelés multipart car ils sont construits par une chaîne de
+    parties, chaque partie étant une unité de données unique. Chaque partie a son
+    propre nom et contenu. Vous pouvez en fait créer et poster un formpost
+    multipart avec le support POST régulier de libcurl décrit ci-dessus, mais cela
+    exigerait que vous construisiez vous-même un formpost et que vous le fournissiez
+    à libcurl.</p>
+<p class="Pp">Pour faciliter cela, libcurl fournit une API MIME composée de
+    plusieurs fonctions : en les utilisant, vous pouvez créer et remplir un corps
+    multipart. La fonction <a href='/man/curl_mime_init.3.en'>curl_mime_init(3)</a> crée un corps multipart ; vous pouvez
+    ensuite ajouter de nouvelles parties à un corps multipart en utilisant
+    <a href='/man/curl_mime_addpart.3.en'>curl_mime_addpart(3)</a>.</p>
+<p class="Pp">Il existe trois sources de données possibles pour une partie : la
+    mémoire à l'aide de <a href='/man/curl_mime_data.3.en'>curl_mime_data(3)</a>, un fichier à l'aide de
+    <a href='/man/curl_mime_filedata.3.en'>curl_mime_filedata(3)</a> et des données définies par l'utilisateur lues par une
+    fonction de rappel à l'aide de <a href='/man/curl_mime_data_cb.3.en'>curl_mime_data_cb(3)</a>.
+    <a href='/man/curl_mime_name.3.en'>curl_mime_name(3)</a> définit le nom d'une partie (c'est-à-dire le champ de formulaire),
+    tandis que <a href='/man/curl_mime_filename.3.en'>curl_mime_filename(3)</a> remplit le nom de fichier distant. Avec
+    <a href='/man/curl_mime_type.3.en'>curl_mime_type(3)</a>, vous pouvez indiquer le type MIME d'une partie,
+    <a href='/man/curl_mime_headers.3.en'>curl_mime_headers(3)</a> permet de définir les en-têtes de la partie. Lorsqu'un
+    corps multipart n'est plus nécessaire, vous pouvez le détruire en utilisant
+    <a href='/man/curl_mime_free.3.en'>curl_mime_free(3)</a>.</p>
+<p class="Pp">L'exemple suivant définit deux parties textuelles simples avec un
+    contenu textuel brut, puis un fichier avec un contenu binaire et télécharge le
+    tout.</p>
+<pre> curl_mime *multipart = curl_mime_init(handle);
+ curl_mimepart *part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;nom&quot;);
+ curl_mime_data(part, &quot;daniel&quot;, CURL_ZERO_TERMINATED);
+ part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;projet&quot;);
+ curl_mime_data(part, &quot;curl&quot;, CURL_ZERO_TERMINATED);
+ part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;logotype-image&quot;);
+ curl_mime_filedata(part, &quot;curl.png&quot;);
+ /* Définir les informations du formulaire */
+ curl_easy_setopt(handle, CURLOPT_MIMEPOST, multipart);
+ curl_easy_perform(handle); /* envoi ! */
+ /* libérer à nouveau les données postées */
+ curl_mime_free(multipart);</pre>
+<p class="Pp">Pour poster plusieurs fichiers pour un seul champ de formulaire, vous
+    devez fournir chaque fichier dans une partie séparée, toutes avec le même nom
+    de champ. Bien que la fonction <a href='/man/curl_mime_subparts.3.en'>curl_mime_subparts(3)</a> implémente des
+    multipart imbriqués, cette manière de poster plusieurs fichiers est dépréciée
+    par la RFC 7578, section 4.3.</p>
+<p class="Pp">Pour définir la source de données à partir d'un pointeur FILE déjà
+  ouvert, utilisez :</p>
+<pre> curl_mime_data_cb(part, taille_fichier, (curl_read_callback) fread,
+                   (curl_seek_callback) fseek, NULL, pointeur_fichier);</pre>
+<p class="Pp">Une fonction dépréciée <a href='/man/curl_formadd.3.en'>curl_formadd(3)</a> est toujours prise en charge dans
+    libcurl. Elle ne devrait cependant plus être utilisée pour de nouvelles
+    conceptions et les programmes qui l'utilisent devraient être convertis à l'API
+    MIME. Elle est cependant décrite ici comme une aide à la conversion.</p>
+<p class="Pp">En utilisant <i>curl_formadd</i>, vous ajoutez des parties au
+    formulaire. Lorsque vous avez terminé d'ajouter des parties, vous postez
+    l'ensemble du formulaire.</p>
+<p class="Pp">L'exemple de l'API MIME ci-dessus est exprimé comme suit en utilisant
+    cette fonction :</p>
+<pre> struct curl_httppost *post=NULL;
+ struct curl_httppost *last=NULL;
+ curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;nom&quot;,
+              CURLFORM_COPYCONTENTS, &quot;daniel&quot;, CURLFORM_END);
+ curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;projet&quot;,
+              CURLFORM_COPYCONTENTS, &quot;curl&quot;, CURLFORM_END);
+ curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;logotype-image&quot;,
+              CURLFORM_FILECONTENT, &quot;curl.png&quot;, CURLFORM_END);
+ /* Définir les informations du formulaire */
+ curl_easy_setopt(handle, CURLOPT_HTTPPOST, post);
+ curl_easy_perform(handle); /* envoi ! */
+ /* libérer à nouveau les données postées */
+ curl_formfree(post);</pre>
+<p class="Pp">Les formposts multipart sont des chaînes de parties utilisant des
+    séparateurs et des en-têtes de style MIME. Cela signifie que chacune de ces
+    parties séparées reçoit quelques en-têtes qui décrivent le type de contenu,
+    la taille, etc. individuels. Pour permettre à votre application de gérer ce
+    formpost encore plus finement, libcurl vous permet de fournir votre propre
+    ensemble d'en-têtes personnalisés à une partie de formulaire individuelle. Vous
+    pouvez bien sûr fournir des en-têtes à autant de parties que vous le souhaitez,
+    mais ce petit exemple montre comment définir des en-têtes à une partie
+    spécifique lorsque vous l'ajoutez au handle de post :</p>
+<pre> struct curl_slist *headers=NULL;
+ headers = curl_slist_append(headers, &quot;Content-Type: text/xml&quot;);
+ curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;logotype-image&quot;,
+              CURLFORM_FILECONTENT, &quot;curl.xml&quot;,
+              CURLFORM_CONTENTHEADER, headers,
+              CURLFORM_END);
+ curl_easy_perform(handle); /* envoi ! */
+ curl_formfree(post); /* libérer le post */
+ curl_slist_free_all(headers); /* libérer la liste d'en-têtes personnalisés */</pre>
+<p class="Pp">Étant donné que toutes les options d'un handle easy sont "collantes",
+    elles restent les mêmes jusqu'à ce qu'elles soient modifiées, même si vous
+    appelez <a href='/man/curl_easy_perform.3.en'>curl_easy_perform(3)</a>. Vous pourriez avoir besoin d'indiquer à
+    curl de revenir à une requête GET simple si vous avez l'intention d'en faire une
+    comme prochaine requête. Vous forcez un handle easy à revenir à GET en
+    utilisant l'option <a href='/man/CURLOPT_HTTPGET.3.en'>CURLOPT_HTTPGET(3)</a> :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_HTTPGET, 1L);</pre>
+Le simple fait de définir <a href='/man/CURLOPT_POSTFIELDS.3.en'>CURLOPT_POSTFIELDS(3)</a> sur &quot;&quot; ou NULL
+  n'empêche <i>pas</i> libcurl d'effectuer un POST. Cela fait simplement un POST sans
+  aucune donnée à envoyer !
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Conversion_de_l_API_de_formulaire_dépréciée_vers_l_API_MIME'><a class='permalink' href='#Converting_from_deprecated_form_API_to_MIME_API'>Conversion   de l'API de formulaire dépréciée vers l'API MIME</a></h1>
+<p class="Pp">Quatre règles doivent être respectées lors de la construction du
+    multipart :</p>
+<p class="Pp">- Le handle easy doit être créé avant la construction du
+    multipart.</p>
+<p class="Pp">- Le multipart est toujours créé par un appel à
+    curl_mime_init(handle).</p>
+<p class="Pp">- Chaque partie est créée par un appel à
+    curl_mime_addpart(multipart).</p>
+<p class="Pp">- Une fois terminé, le multipart doit être lié au handle easy
+    en utilisant <a href='/man/CURLOPT_MIMEPOST.3.en'>CURLOPT_MIMEPOST(3)</a> au lieu de <a href='/man/CURLOPT_HTTPPOST.3.en'>CURLOPT_HTTPPOST(3)</a>.</p>
+<p class="Pp">Voici quelques exemples d'appels à <i>curl_formadd</i> pour l'API
+    MIME</p>
+<section class="Sh">
+<h1 class="Sh" id="Comportements_des_formulaires_dépréciés"><a class='permalink' href='#Comportements_des_formulaires_dépréciés'>Comportements des formulaires dépréciés</a></h1>
+<p class="Pp">Les exemples suivants montrent comment les appels à
+    <a href='/man/curl_formadd.3.en'>curl_formadd(3)</a> ont été traduits en
+    opérations de mime.</p>
+<pre> curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;id&quot;,
+              CURLFORM_COPYCONTENTS, &quot;daniel&quot;, CURLFORM_END);
+              CURLFORM_CONTENTHEADER, headers,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;id&quot;);
+ curl_mime_data(part, &quot;daniel&quot;, CURL_ZERO_TERMINATED);
+ curl_mime_headers(part, headers, FALSE);</pre>
+<p class="Pp">Le réglage du dernier argument de
+    <a href='/man/curl_mime_headers.3.en'>curl_mime_headers(3)</a> à TRUE aurait
+    entraîné la libération automatique des en-têtes lors de la destruction du
+    multipart, économisant ainsi un appel de nettoyage à
+    <a href='/man/curl_slist_free_all.3.en'>curl_slist_free_all(3)</a>.</p>
+<pre> curl_formadd(&amp;post, &amp;last,
+              CURLFORM_PTRNAME, &quot;logotype-image&quot;,
+              CURLFORM_FILECONTENT, &quot;-&quot;,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;logotype-image&quot;);
+ curl_mime_data_cb(part, (curl_off_t) -1, fread, fseek, NULL, stdin);</pre>
+<p class="Pp"><a href='/man/curl_mime_name.3.en'>curl_mime_name(3)</a> copie toujours
+    le nom du champ. Le nom de fichier spécial &quot;-&quot; n'est pas pris en
+    charge par <a href='/man/curl_mime_filename.3.en'>curl_mime_filename(3)</a>:
+    pour lire un fichier ouvert, utilisez une source de rappel avec fread(). Le
+    transfert sera encodé par morceaux car la taille des données est inconnue.</p>
+<pre> curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;datafile[]&quot;,
+              CURLFORM_FILE, &quot;file1&quot;,
+              CURLFORM_FILE, &quot;file2&quot;,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;datafile[]&quot;);
+ curl_mime_filedata(part, &quot;file1&quot;);
+ part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;datafile[]&quot;);
+ curl_mime_filedata(part, &quot;file2&quot;);</pre>
+<p class="Pp">L'implémentation dépréciée de multipart/mixed pour le champ de
+    fichiers multiples est traduite en deux parties distinctes portant le même
+    nom.</p>
+<pre> curl_easy_setopt(handle, CURLOPT_READFUNCTION, myreadfunc);
+ curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;stream&quot;,
+              CURLFORM_STREAM, arg,
+              CURLFORM_CONTENTLEN, (curl_off_t) datasize,
+              CURLFORM_FILENAME, &quot;archive.zip&quot;,
+              CURLFORM_CONTENTTYPE, &quot;application/zip&quot;,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;stream&quot;);
+ curl_mime_data_cb(part, (curl_off_t) datasize,
+                   myreadfunc, NULL, NULL, arg);
+ curl_mime_filename(part, &quot;archive.zip&quot;);
+ curl_mime_type(part, &quot;application/zip&quot;);</pre>
+<p class="Pp">Le rappel <a href='/man/CURLOPT_READFUNCTION.3.en'>CURLOPT_READFUNCTION(3)</a>
+    n'est pas utilisé: il est remplacé en définissant directement la source des
+    données de la partie à partir de la fonction de lecture du rappel.</p>
+<pre> curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;memfile&quot;,
+              CURLFORM_BUFFER, &quot;memfile.bin&quot;,
+              CURLFORM_BUFFERPTR, databuffer,
+              CURLFORM_BUFFERLENGTH, (long) sizeof databuffer,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;memfile&quot;);
+ curl_mime_data(part, databuffer, (curl_off_t) sizeof databuffer);
+ curl_mime_filename(part, &quot;memfile.bin&quot;);</pre>
+<p class="Pp"><a href='/man/curl_mime_data.3.en'>curl_mime_data(3)</a> copie toujours
+    les données initiales: le tampon de données est donc libre pour une
+    réutilisation immédiate.</p>
+<pre> curl_formadd(&amp;post, &amp;last,
+              CURLFORM_COPYNAME, &quot;message&quot;,
+              CURLFORM_FILECONTENT, &quot;msg.txt&quot;,
+              CURLFORM_END);</pre>
+<p class="Pp">devient:</p>
+<pre> part = curl_mime_addpart(multipart);
+ curl_mime_name(part, &quot;message&quot;);
+ curl_mime_filedata(part, &quot;msg.txt&quot;);
+ curl_mime_filename(part, NULL);</pre>
+<p class="Pp">L'utilisation de
+    <a href='/man/curl_mime_filedata.3.en'>curl_mime_filedata(3)</a> définit le nom
+    de fichier distant comme effet secondaire: il est donc nécessaire de le
+    vider pour l'émulation de *CURLFORM_FILECONTENT*.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Affichage_de_la_progression"><a class='permalink' href='#Affichage_de_la_progression'>Affichage de la progression</a></h1>
+<p class="Pp">Pour des raisons historiques et traditionnelles, libcurl possède un
+    compteur de progression intégré qui peut être activé et qui présente alors
+    un compteur de progression dans votre terminal.</p>
+<p class="Pp">Activez le compteur de progression en réglant, de manière assez
+    étonnante,
+    <a href='/man/CURLOPT_NOPROGRESS.3.en'>CURLOPT_NOPROGRESS(3)</a> à zéro. Cette
+    option est réglée à 1 par défaut.</p>
+<p class="Pp">Pour la plupart des applications cependant, le compteur de
+    progression intégré est inutile et ce qui est intéressant à la place est la
+    possibilité de spécifier une fonction de rappel de progression. Le pointeur
+    de fonction que vous passez à libcurl est alors appelé à des intervalles
+    irréguliers avec des informations sur le transfert en cours.</p>
+<p class="Pp">Définissez la fonction de rappel de progression en utilisant
+    <a href='/man/CURLOPT_PROGRESSFUNCTION.3.en'>CURLOPT_PROGRESSFUNCTION(3)</a>.
+    Passez un pointeur vers une fonction qui correspond à ce prototype :</p>
+<pre> int progress_callback(void *clientp,
+                       double dltotal,
+                       double dlnow,
+                       double ultotal,
+                       double ulnow);</pre>
+<p class="Pp">Si l'un des arguments d'entrée est inconnu, une valeur 0 est fournie.
+    Le premier argument, 'clientp', est le pointeur que vous passez à libcurl
+    avec <a href='/man/CURLOPT_PROGRESSDATA.3.en'>CURLOPT_PROGRESSDATA(3)</a>.
+    libcurl ne le touche pas.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="libcurl_avec_C++"><a class='permalink' href='#libcurl_avec_C++'>libcurl avec C++</a></h1>
+<p class="Pp">Il n'y a fondamentalement qu'une seule chose à retenir lors de
+    l'utilisation de C++ au lieu de C lors de l'interface avec libcurl :</p>
+<p class="Pp">Les rappels NE PEUVENT PAS être des fonctions membres de classe
+    non statiques</p>
+<p class="Pp">Exemple de code C++ :</p>
+<pre>class AClass {
+    static size_t write_data(void *ptr, size_t size, size_t nmemb,
+                             void *ourpointer)
+    {
+      /* faites ce que vous voulez avec les données */
+    }
+ }</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Proxys"><a class='permalink' href='#Proxys'>Proxys</a></h1>
+<p class="Pp">Ce que &quot;proxy&quot; signifie selon Merriam-Webster : &quot;une
+    personne autorisée à agir pour une autre&quot; mais aussi &quot;l'agence, la
+    fonction ou le bureau d'un député qui agit comme substitut pour une
+  autre&quot;.</p>
+<p class="Pp">Les proxys sont extrêmement courants de nos jours. Les entreprises
+    n'offrent souvent un accès Internet aux employés que par leurs proxys. Les
+    clients réseau ou les agents utilisateurs demandent des documents au proxy, le
+    proxy effectue la requête réelle puis les renvoie.</p>
+<p class="Pp">libcurl prend en charge les proxys SOCKS et HTTP. Lorsqu'une URL donnée
+    est demandée, libcurl la demande au proxy au lieu d'essayer de se connecter à
+    l'hôte distant réel identifié dans l'URL.</p>
+<p class="Pp">Si vous utilisez un proxy SOCKS, vous constaterez peut-être que libcurl
+    ne prend pas entièrement en charge toutes les opérations à travers lui.</p>
+<p class="Pp">Pour les proxys HTTP : le fait que le proxy soit un proxy HTTP impose
+    certaines restrictions sur ce qui peut réellement se passer. Une URL demandée
+    qui n'est peut-être pas une URL HTTP est transmise au proxy HTTP pour être
+    renvoyée à libcurl. Cela se fait de manière transparente, et une application
+    peut ne pas avoir besoin de le savoir. Je dis &quot;peut&quot;, car parfois il
+    est important de comprendre que toutes les opérations via un proxy HTTP utilisent
+    le protocole HTTP. Par exemple, vous ne pouvez pas invoquer vos propres
+    commandes FTP personnalisées ni même des listages de répertoires FTP
+  appropriés.</p>
+<dl class="Bl-tag">
+  <dt id="Proxy_2"><a class="permalink" href="#Proxy_2">Options de proxy</a></dt>
+  <dd>Pour indiquer à libcurl d'utiliser un proxy à un numéro de port donné :
+    <pre> curl_easy_setopt(handle, CURLOPT_PROXY, &quot;proxy-host.com:8080&quot;);</pre>
+    Certains proxys nécessitent une authentification utilisateur avant d'autoriser
+      une requête, et vous passez ces informations de manière similaire :
+    <pre> curl_easy_setopt(handle, CURLOPT_PROXYUSERPWD, &quot;user:password&quot;);</pre>
+    Si vous le souhaitez, vous pouvez spécifier uniquement le nom d'hôte dans
+      l'option <a href='/man/CURLOPT_PROXY.3.en'>CURLOPT_PROXY(3)</a>, et définir
+      le numéro de port séparément avec
+      <a href='/man/CURLOPT_PROXYPORT.3.en'>CURLOPT_PROXYPORT(3)</a>.
+    <p class="Pp">Indiquez à libcurl de quel type de proxy il s'agit avec
+        <a href='/man/CURLOPT_PROXYTYPE.3.en'>CURLOPT_PROXYTYPE(3)</a> (sinon, il
+        suppose par défaut un proxy HTTP) :</p>
+    <pre> curl_easy_setopt(handle, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS4);</pre>
+  </dd>
+  <dt id="Variables_d'environnement"><a class="permalink" href="#Variables_d'environnement">Variables
+    d'environnement</a></dt>
+  <dd>libcurl vérifie et utilise automatiquement un ensemble de variables d'environnement
+      pour savoir quels proxys utiliser pour certains protocoles. Les noms des
+      variables suivent une vieille tradition et sont construits comme
+      &quot;[protocole]_proxy&quot; (notez la casse minuscule). Cela fait que la
+      variable 'http_proxy' est vérifiée pour le nom d'un proxy à utiliser lorsque
+      l'URL d'entrée est HTTP. Suivant la même règle, la variable nommée
+      'ftp_proxy' est vérifiée pour les URL FTP. Encore une fois, les proxys sont
+      toujours des proxys HTTP, les noms différents des variables permettent simplement
+      d'utiliser différents proxys HTTP.
+    <p class="Pp">Le contenu de la variable d'environnement proxy doit être au
+        format &quot;[protocole://][utilisateur:motdepasse@]machine[:port]&quot;.
+        Où la partie protocole:// spécifie le type de proxy et le numéro de port
+        optionnel spécifie sur quel port le proxy opère. Si non spécifié, le
+        numéro de port par défaut interne est utilisé et ce n'est très probablement
+        pas celui que vous voudriez.</p>
+    <p class="Pp">Il existe deux variables d'environnement spéciales. 'all_proxy'
+        définit le proxy pour n'importe quelle URL au cas où la variable spécifique
+        au protocole n'aurait pas été définie, et 'no_proxy' définit une liste
+        d'hôtes qui ne devraient pas utiliser de proxy même si une variable l'indique.
+        Si 'no_proxy' est un simple astérisque (&quot;*&quot;), il correspond à
+        tous les hôtes.</p>
+    <p class="Pp">Pour désactiver explicitement la vérification par libcurl des
+        variables d'environnement proxy et leur utilisation, définissez le nom du
+        proxy à &quot;&quot; - une chaîne vide - avec
+        <a href='/man/CURLOPT_PROXY.3.en'>CURLOPT_PROXY(3)</a>.</p>
+  </dd>
+  <dt id="SSL_et_Proxys"><a class="permalink" href="#SSL_et_Proxys">SSL et Proxys</a></dt>
+  <dd>SSL concerne les connexions point à point sécurisées. Cela implique un cryptage
+      solide et des choses similaires, ce qui rend en fait impossible pour un proxy
+      d'opérer comme un &quot;homme du milieu&quot; dont c'est la tâche, comme
+      discuté précédemment. Au lieu de cela, la seule façon pour que le SSL
+      fonctionne sur un proxy HTTP est de demander au proxy de tout faire passer
+      sans pouvoir vérifier ou manipuler le trafic.
+    <p class="Pp">L'ouverture d'une connexion SSL sur un proxy HTTP est donc une
+        question de demander au proxy une connexion directe à l'hôte cible sur un
+        port spécifié. Cela se fait avec la requête HTTP CONNECT.
+        (&quot;veuillez cher proxy, connectez-moi à cet hôte distant&quot;).</p>
+    <p class="Pp">En raison de la nature de cette opération, où le proxy n'a aucune
+        idée du type de données qui transite par ce tunnel, cela brise certains
+        des rares avantages qui découlent de l'utilisation d'un proxy, tels que la
+        mise en cache. De nombreuses organisations empêchent ce type de tunneling
+        vers des numéros de port de destination autres que 443 (qui est le numéro
+        de port HTTPS par défaut).</p>
+  </dd>
+  <dt id="Tunneling"><a class="permalink" href="#Tunneling">Tunnelisation</a></dt>
+  <dd>Dans le contexte des proxys HTTP, la tunnelisation est utilisée pour les protocoles
+      qui ne sont pas HTTP (ou HTTPS). L'une des utilisations les plus courantes est
+      pour les connexions SSL/TLS vers une destination différente de celle du proxy
+      HTTP.
+    <p class="Pp">Lorsque vous demandez une connexion SSL via un proxy HTTP, libcurl
+        envoie une requête HTTP `CONNECT` au proxy. Cette requête demande au proxy de
+        créer un tunnel TCP direct entre lui et le serveur de destination sur le port
+        spécifié. Une fois le tunnel établi, libcurl et le serveur de destination
+        communiquent directement à travers ce tunnel, le proxy ne voyant que les
+        données chiffrées sans pouvoir les inspecter.</p>
+    <p class="Pp">Cela est particulièrement important pour HTTPS, où le trafic est
+        chiffré de bout en bout. Le proxy HTTP ne peut pas déchiffrer le trafic SSL/TLS.
+        Par conséquent, la seule façon pour lui de gérer une demande HTTPS est de
+        fournir un tunnel.</p>
+    <p class="Pp">Notez que certains pare-feu ou proxys peuvent bloquer ou restreindre
+        les requêtes `CONNECT` vers des ports autres que le port HTTPS standard (443)
+        pour des raisons de sécurité.</p>
+  </dd>
+</dl>
+</section>
+="#Tunneling">Tunnelage</a></dt>
+  <dd>Comme expliqué ci-dessus, le tunneling est nécessaire pour que le SSL fonctionne et est souvent même
+      restreint à l'opération prévue pour le SSL ; HTTPS.
+    <p class="Pp">Ce n'est cependant pas la seule fois où le tunneling proxy peut vous offrir des avantages
+        à vous ou à votre application.</p>
+    <p class="Pp">Comme le tunneling ouvre une connexion directe de votre application
+        à la machine distante, il réintroduit soudainement la possibilité d'effectuer des opérations non-HTTP sur un proxy HTTP. Vous pouvez en fait utiliser des choses comme le téléchargement FTP ou des commandes personnalisées FTP de cette manière.</p>
+    <p class="Pp">Encore une fois, cela est souvent empêché par les administrateurs
+        des proxys et est rarement autorisé.</p>
+    <p class="Pp">Demandez à libcurl d'utiliser le tunneling proxy comme ceci:</p>
+    <pre> curl_easy_setopt(handle, CURLOPT_HTTPPROXYTUNNEL, 1L);</pre>
+    En fait, il peut même y avoir des moments où vous souhaitez effectuer des opérations HTTP simples
+      en utilisant un tunnel comme celui-ci, car cela vous permet d'opérer sur le serveur distant
+      au lieu de demander au proxy de le faire. libcurl ne fait pas obstacle à de telles actions innovantes non plus !</dd>
+  <dt id="Proxy~2"><a class="permalink" href="#Proxy~2">Configuration automatique du proxy</a></dt>
+  <dd>Netscape a été le premier à proposer cela. Il s'agit essentiellement d'une page Web (généralement avec une extension .pac) contenant un JavaScript qui, lorsqu'il est exécuté par le navigateur avec l'URL demandée comme entrée, renvoie des informations au navigateur sur la manière de se connecter à l'URL. Les informations renvoyées peuvent être "DIRECT" (ce qui signifie qu'aucun proxy ne doit être utilisé), "PROXY hôte:port" (pour indiquer au navigateur où se trouve le proxy pour cette URL particulière) ou "SOCKS hôte:port" (pour diriger le navigateur vers un proxy SOCKS).
+    <p class="Pp">libcurl n'a aucun moyen d'interpréter ou d'évaluer le JavaScript et
+        ne le prend donc pas en charge. Si vous vous retrouvez dans une situation où vous êtes confronté à cette invention désagréable, les conseils suivants ont été mentionnés et utilisés par le passé:</p>
+    <p class="Pp">- Selon la complexité du JavaScript, rédigez un script
+        qui le traduit dans une autre langue et exécutez-le.</p>
+    <p class="Pp">- Lisez le code JavaScript et réécrivez la même logique dans une autre langue.</p>
+    <p class="Pp">- Implémentez un interpréteur JavaScript ; des personnes ont utilisé avec succès le moteur JavaScript de Mozilla par le passé.</p>
+    <p class="Pp">- Demandez à vos administrateurs d'arrêter cela, pour une configuration de proxy statique ou similaire.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Persistence_Is_The_Way_to_Happiness'><a class='permalink' href='#Persistence_Is_The_Way_to_Happiness'>La persistance est le chemin du bonheur</a></h1>
+<p class="Pp">Recycler plusieurs fois le même descripteur easy lors de requêtes multiples est la solution.</p>
+<p class="Pp">Après chaque opération unique <a href='/man/curl_easy_perform.3.en'>curl_easy_perform(3)</a>, libcurl maintient la connexion vivante et ouverte. Une requête ultérieure utilisant le même descripteur easy vers le même hôte pourrait simplement utiliser la connexion déjà ouverte ! Cela réduit considérablement l'impact réseau.</p>
+<p class="Pp">Même si la connexion est perdue, toutes les connexions impliquant du SSL vers le même hôte bénéficient à nouveau du cache d'ID de session de libcurl, ce qui réduit considérablement le temps de reconnexion.</p>
+<p class="Pp">Les connexions FTP qui sont maintenues vivantes font gagner beaucoup de temps, car les allers-retours de commandes-réponses sont évités, et vous ne risquez pas non plus d'être bloqué sans autorisation de vous reconnecter, comme sur de nombreux serveurs FTP qui n'autorisent que N personnes à être connectées en même temps.</p>
+<p class="Pp">libcurl met en cache les résultats de la résolution de noms DNS, ce qui rend les recherches d'un nom précédemment recherché beaucoup plus rapides.</p>
+<p class="Pp">D'autres détails intéressants qui améliorent les performances pour les requêtes ultérieures pourraient également être ajoutés à l'avenir.</p>
+<p class="Pp">Chaque descripteur easy tente de maintenir les quelques dernières connexions actives pendant un certain temps au cas où elles seraient réutilisées. Vous pouvez définir la taille de ce "cache" avec l'option <a href='/man/CURLOPT_MAXCONNECTS.3.en'>CURLOPT_MAXCONNECTS(3)</a>. La valeur par défaut est 5. Il est rarement utile de modifier cette valeur, et si vous pensez à la modifier, c'est souvent juste une question de repenser.</p>
+<p class="Pp">Pour forcer votre prochaine requête à ne pas utiliser une connexion déjà existante, vous pouvez le faire en définissant <a href='/man/CURLOPT_FRESH_CONNECT.3.en'>CURLOPT_FRESH_CONNECT(3)</a> à 1. Dans un esprit similaire, vous pouvez également interdire à la prochaine requête d'"exister" inutilement et éventuellement d'être réutilisée après la requête en définissant <a href='/man/CURLOPT_FORBID_REUSE.3.en'>CURLOPT_FORBID_REUSE(3)</a> à 1.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HTTP_Headers_Used_by_libcurl'><a class='permalink' href='#HTTP_Headers_Used_by_libcurl'>En-têtes HTTP utilisés par libcurl</a></h1>
+<p class="Pp">Lorsque vous utilisez libcurl pour effectuer des requêtes HTTP, il transmet une série d'en-têtes automatiquement. Il peut être bon pour vous de connaître et de comprendre ceux-ci. Vous pouvez les remplacer ou les supprimer en utilisant l'option <a href='/man/CURLOPT_HTTPHEADER.3.en'>CURLOPT_HTTPHEADER(3)</a>.</p>
+<dl class="Bl-tag">
+  <dt id="Host"><a class="permalink" href="#Host">Hôte</a></dt>
+  <dd>Cet en-tête est requis par HTTP 1.1 et même par de nombreux serveurs 1.0 et doit
+      être le nom du serveur auquel nous voulons parler. Cela inclut le numéro de port
+      si autre chose que le port par défaut.</dd>
+  <dt id="Accept"><a class="permalink" href="#Accept">Accepter</a></dt>
+  <dd>&quot;<i>/</i>&quot;</dd>
+  <dt id="Expect"><a class="permalink" href="#Expect">Attendre</a></dt>
+  <dd>Lors de requêtes POST, libcurl définit cet en-tête sur
+      &quot;100-continue&quot; pour demander au serveur un message &quot;OK&quot; avant de continuer à envoyer la partie données du POST. Si la quantité de données POSTée est jugée &quot;petite&quot;, libcurl n'utilise pas cet en-tête.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Customizing_Operations'><a class='permalink' href='#Customizing_Operations'>Personnalisation des opérations</a></h1>
+<p class="Pp">Il y a un développement continu aujourd'hui où de plus en plus de
+    protocoles sont construits sur HTTP pour le transport. Cela présente des avantages évidents car HTTP est un protocole éprouvé et fiable, largement déployé et doté d'un excellent support proxy.</p>
+<p class="Pp">Lorsque vous utilisez l'un de ces protocoles, et même lorsque vous effectuez d'autres types de programmation, vous pourriez avoir besoin de modifier les manières traditionnelles de HTTP (ou FTP ou...) . Vous pourriez avoir besoin de changer des mots, des en-têtes ou diverses données.</p>
+<p class="Pp">libcurl est aussi votre ami ici.</p>
+<dl class="Bl-tag">
+  <dt id="CURLOPT_CUSTOMREQUEST"><a class="permalink" href="#CURLOPT_CUSTOMREQUEST">CURLOPT_CUSTOMREQUEST</a></dt>
+  <dd>Si vous souhaitez simplement modifier le mot-clé de la requête HTTP réelle, comme
+      lorsque GET, HEAD ou POST ne vous suffisent pas,
+      <a href='/man/CURLOPT_CUSTOMREQUEST.3.en'>CURLOPT_CUSTOMREQUEST(3)</a> est là pour vous. C'est simple à utiliser :
+        <pre>curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, &quot;MYOWNREQUEST&quot;);</pre>
+    <p class="Pp">Lorsque vous utilisez la requête personnalisée, vous changez le mot-clé de la requête
+        réelle que vous effectuez. Ainsi, par défaut, vous effectuez une requête GET, mais vous pouvez également effectuer une opération POST (comme décrit précédemment) et remplacer ensuite le mot-clé POST si vous le souhaitez. C'est vous le patron.</p>
+  </dd>
+  <dt id="Modify"><a class="permalink" href="#Modify">Modifier les en-têtes</a></dt>
+  <dd>Les protocoles de type HTTP transmettent une série d'en-têtes au serveur lors de la requête, et vous êtes libre de transmettre n'importe quel nombre d'en-têtes supplémentaires qui vous semblent appropriés. L'ajout d'en-têtes est aussi simple que cela :
+        <pre>struct curl_slist *headers=NULL; /* l'initialisation à NULL est importante */
+headers = curl_slist_append(headers, &quot;Hey-server-hey: comment allez-vous ?&quot;);
+headers = curl_slist_append(headers, &quot;X-silly-content: oui&quot;);
+/* passez notre liste d'en-têtes personnalisés */
+curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+curl_easy_perform(handle); /* transférer http */
+curl_slist_free_all(headers); /* libérer la liste d'en-têtes */</pre>
+    <p class="Pp">... et si vous pensez que certains des en-têtes générés en interne,
+        comme Accept: ou Host:, ne contiennent pas les données que vous souhaitez,
+        vous pouvez les remplacer en les définissant également :</p>
+        <pre>headers = curl_slist_append(headers, &quot;Accept: Agent-007&quot;);
+headers = curl_slist_append(headers, &quot;Host: munged.host.line&quot;);</pre>
+  </dd>
+  <dt id="Delete"><a class="permalink" href="#Delete">Supprimer les en-têtes</a></dt>
+  <dd>Si vous remplacez un en-tête existant par un en-tête vide, vous empêchez
+      l'envoi de l'en-tête. Par exemple, si vous souhaitez complètement empêcher l'envoi de l'en-tête &quot;Accept:&quot;, vous pouvez le désactiver avec un code similaire à celui-ci :
+    <p class="Pp">
+      <br/>
+       headers = curl_slist_append(headers, &quot;Accept:&quot;);</p>
+    <p class="Pp">Le remplacement et l'annulation des en-têtes internes doivent être effectués
+        avec soin et vous devez être conscient que vous pourriez violer
+        le protocole HTTP en le faisant.</p>
+  </dd>
+  <dt id="Enforcing"><a class="permalink" href="#Enforcing">Imposer le codage par morceaux</a></dt>
+  <dd>En vous assurant qu'une requête utilise l'en-tête personnalisé &quot;Transfer-Encoding:
+      chunked&quot; lors d'une opération HTTP autre que GET, libcurl passe en mode
+      téléchargement &quot;par morceaux&quot;, même si la taille des données à télécharger
+      est connue. Par défaut, libcurl passe généralement en mode téléchargement par morceaux
+      automatiquement si la taille des données à télécharger est inconnue.</dd>
+  <dt id="HTTP"><a class="permalink" href="#HTTP">Version HTTP</a></dt>
+  <dd>Toutes les requêtes HTTP incluent le numéro de version pour indiquer au serveur quelle
+      version nous prenons en charge. libcurl utilise HTTP 1.1 par défaut. Certains anciens serveurs
+      n'aiment pas recevoir des requêtes 1.1 et lorsque vous traitez des choses anciennes et récalcitrantes comme celles-ci, vous pouvez demander à libcurl d'utiliser 1.0 à la place en faisant quelque chose comme ceci :
+    <p class="Pp">
+      <br/>
+       curl_easy_setopt(handle, CURLOPT_HTTP_VERSION,
+      CURL_HTTP_VERSION_1_0);</p>
+  </dd>
+  <dt id="FTP"><a class="permalink" href="#FTP">Commandes FTP personnalisées</a></dt>
+  <dd>Tous les protocoles ne sont pas de type HTTP, et donc ce qui précède pourrait ne pas vous aider lorsque vous souhaitez que, par exemple, vos transferts FTP se comportent différemment.
+    <p class="Pp">L'envoi de commandes personnalisées à un serveur FTP signifie que vous devez
+        envoyer les commandes exactement comme le serveur FTP s'attend à les recevoir (RFC 959 est un bon guide ici), et vous ne pouvez utiliser que les commandes qui fonctionnent sur le
+        canal de contrôle seul. Toutes les commandes qui nécessitent un échange de données
+        et qui nécessitent donc un canal de données doivent être laissées au jugement de libcurl. Sachez également que libcurl fait de son mieux pour changer de répertoire vers le répertoire cible avant d'effectuer un transfert. Par conséquent, si vous changez de répertoire (avec CWD ou similaire), vous pourriez confondre libcurl et il pourrait alors ne pas tenter de transférer le fichier dans le bon répertoire distant.</p>
+    <p class="Pp">Un petit exemple qui supprime un fichier donné avant une opération :</p>
+        <pre> headers = curl_slist_append(headers, &quot;DELE fichier-a-supprimer&quot;);
+ /* passez la liste des commandes personnalisées au descripteur */
+ curl_easy_setopt(handle, CURLOPT_QUOTE, headers);
+ curl_easy_perform(handle); /* transférer les données ftp ! */
+ curl_slist_free_all(headers); /* libérer la liste d'en-têtes */</pre>
+    <p class="Pp">Si vous souhaitiez plutôt que cette opération (ou chaîne d'opérations) se produise _après_ le transfert de données, l'option pour
+        <a href='/man/curl_easy_setopt.3.en'>curl_easy_setopt(3)</a> serait plutôt appelée
+        <a href='/man/CURLOPT_POSTQUOTE.3.en'>CURLOPT_POSTQUOTE(3)</a> et utilisée exactement de la même manière.</p>
+    <p class="Pp">Les commandes FTP personnalisées sont</p>
+</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="FTP_Commands"><a class="permalink" href="#FTP_Commands">Commandes FTP</a></h1>
+<p class="Pp">Les commandes FTP, comme dans la plupart des protocoles d'envoi de fichiers, peuvent être envoyées avant le transfert réel. Libcurl vous permet de le faire en utilisant l'option <a href="/man/CURLOPT_QUOTE.3.en">CURLOPT_QUOTE(3)</a>. Vous fournissez un tableau de chaînes, où chaque chaîne est une commande FTP individuelle à envoyer au serveur. Ces commandes sont envoyées au serveur dans le même ordre où elles sont ajoutées à la liste, et si une commande reçoit un code d'erreur du serveur, aucune autre commande n'est envoyée et libcurl échoue avec un code d'erreur (CURLE_QUOTE_ERROR). Notez que si vous utilisez <a href="/man/CURLOPT_QUOTE.3.en">CURLOPT_QUOTE(3)</a> pour envoyer des commandes avant un transfert, aucun transfert n'a réellement lieu lorsqu'une commande de citation échoue.</p>
+<p class="Pp">Si vous définissez <a href="/man/CURLOPT_HEADER.3.en">CURLOPT_HEADER(3)</a> à 1, vous indiquez à libcurl d'obtenir des informations sur le fichier cible et de générer des « en-têtes » à son sujet. Les en-têtes sont de style « HTTP », ressemblant à ce qu'ils sont en HTTP.</p>
+<p class="Pp">L'option permettant d'activer les en-têtes ou d'exécuter des commandes FTP personnalisées peut être utile à combiner avec <a href="/man/CURLOPT_NOBODY.3.en">CURLOPT_NOBODY(3)</a>. Si cette option est définie, aucun transfert de contenu de fichier réel n'est effectué.</p>
+</dd>
+<dt id="FTP~2"><a class="permalink" href="#FTP~2">FTP Personnalisé
+CURLOPT_CUSTOMREQUEST</a></dt>
+<dd>Si vous souhaitez lister le contenu d'un répertoire FTP en utilisant votre propre commande FTP définie, <a href="/man/CURLOPT_CUSTOMREQUEST.3.en">CURLOPT_CUSTOMREQUEST(3)</a> fait exactement cela. « NLST » est la commande par défaut pour lister les répertoires, mais vous êtes libre de fournir votre propre alternative.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Cookies_Sans_Pépites_de_Chocolat"><a class='permalink' href='#Cookies_Sans_Pépites_de_Chocolat'>Cookies Sans Pépites de Chocolat</a></h1>
+<p class="Pp">Dans le sens HTTP, un cookie est un nom associé à une valeur. Un serveur envoie le nom et la valeur au client, et s'attend à ce qu'ils soient renvoyés à chaque requête ultérieure vers le serveur qui correspond aux conditions particulières définies. Les conditions incluent que le nom de domaine et le chemin correspondent et que le cookie n'est pas devenu trop ancien.</p>
+<p class="Pp">Dans les cas du monde réel, les serveurs envoient de nouveaux cookies pour remplacer ceux existants afin de les mettre à jour. Les serveurs utilisent les cookies pour « suivre » les utilisateurs et maintenir les « sessions ».</p>
+<p class="Pp">Les cookies sont envoyés du serveur aux clients avec l'en-tête <code>Set-Cookie:</code> et sont envoyés des clients aux serveurs avec l'en-tête <code>Cookie:</code>.</p>
+<p class="Pp">Pour simplement envoyer le cookie de votre choix à un serveur, vous pouvez utiliser <a href="/man/CURLOPT_COOKIE.3.en">CURLOPT_COOKIE(3)</a> pour définir une chaîne de cookie comme ceci :</p>
+<pre> curl_easy_setopt(handle, CURLOPT_COOKIE, "name1=var1; name2=var2;");</pre>
+<p class="Pp">Dans de nombreux cas, cela ne suffit pas. Vous pourriez vouloir enregistrer dynamiquement tous les cookies que le serveur distant vous transmet, et vous assurer que ces cookies sont ensuite utilisés en conséquence lors des requêtes ultérieures.</p>
+<p class="Pp">Une façon de faire cela est d'enregistrer tous les en-têtes que vous recevez dans un fichier texte brut et, lorsque vous effectuez une requête, vous dites à libcurl de lire les en-têtes précédents pour déterminer quels cookies utiliser. Définissez le fichier d'en-têtes à lire avec <a href="/man/CURLOPT_COOKIEFILE.3.en">CURLOPT_COOKIEFILE(3)</a>.</p>
+<p class="Pp">L'option <a href="/man/CURLOPT_COOKIEFILE.3.en">CURLOPT_COOKIEFILE(3)</a> active également automatiquement l'analyseur de cookies dans libcurl. Tant que l'analyseur de cookies n'est pas activé, libcurl n'analyse pas et ne comprend pas les cookies entrants, et ils sont simplement ignorés. Cependant, lorsque l'analyseur est activé, les cookies sont compris, conservés en mémoire et utilisés correctement dans les requêtes ultérieures lorsque le même handle est utilisé. Souvent, cela suffit, et vous n'avez pas besoin d'enregistrer les cookies sur disque. Notez que le fichier que vous spécifiez à <a href="/man/CURLOPT_COOKIEFILE.3.en">CURLOPT_COOKIEFILE(3)</a> n'a pas besoin d'exister pour activer l'analyseur, donc une façon courante d'activer simplement l'analyseur et de ne lire aucun cookie est d'utiliser le nom d'un fichier qui, selon vous, n'existe pas.</p>
+<p class="Pp">Si vous préférez utiliser des cookies existants que vous avez précédemment reçus avec vos navigateurs Netscape ou Mozilla, vous pouvez faire en sorte que libcurl utilise ce fichier de cookies comme entrée. <a href="/man/CURLOPT_COOKIEFILE.3.en">CURLOPT_COOKIEFILE(3)</a> est également utilisé à cette fin, car libcurl détermine automatiquement le type de fichier et agit en conséquence.</p>
+<p class="Pp">Peut-être l'opération de cookies la plus avancée que libcurl propose est l'enregistrement de l'état complet des cookies internes dans un fichier de cookies formaté Netscape/Mozilla. Nous appelons cela le « cookie-jar ». Lorsque vous définissez un nom de fichier avec <a href="/man/CURLOPT_COOKIEJAR.3.en">CURLOPT_COOKIEJAR(3)</a>, ce nom de fichier est créé et tous les cookies reçus y sont stockés lorsque <a href="/man/curl_easy_cleanup.3.en">curl_easy_cleanup(3)</a> est appelé. Cela permet de passer correctement les cookies entre plusieurs handles sans aucune perte d'informations.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Particularités_FTP_dont_nous_avons_besoin"><a class='permalink' href='#Particularités_FTP_dont_nous_avons_besoin'>Particularités FTP dont nous avons besoin</a></h1>
+<p class="Pp">Les transferts FTP utilisent une deuxième connexion TCP/IP pour le transfert de données. C'est généralement un fait que vous pouvez oublier et ignorer, mais parfois ce détail revient vous hanter. Libcurl offre plusieurs façons de personnaliser la manière dont la deuxième connexion est établie.</p>
+<p class="Pp">Libcurl peut soit se connecter une deuxième fois au serveur, soit demander au serveur de se reconnecter à lui. La première option est la valeur par défaut et c'est aussi ce qui fonctionne le mieux pour toutes les personnes derrière des pare-feux, des NAT ou des configurations d'IP masquée. Libcurl demande alors au serveur d'ouvrir un nouveau port et d'attendre une deuxième connexion. Par défaut, cela est tenté avec EPSV d'abord, et si cela ne fonctionne pas, il essaie PASV à la place. (EPSV est une extension de la spécification FTP d'origine et n'existe ni ne fonctionne sur tous les serveurs FTP.)</p>
+<p class="Pp">Vous pouvez empêcher libcurl d'essayer d'abord la commande EPSV en définissant <a href="/man/CURLOPT_FTP_USE_EPSV.3.en">CURLOPT_FTP_USE_EPSV(3)</a> à zéro.</p>
+<p class="Pp">Dans certains cas, vous souhaitez que le serveur vous recontacte pour la deuxième connexion. Cela peut être lorsque le serveur est peut-être derrière un pare-feu ou quelque chose de similaire et n'autorise que les connexions sur un seul port. Libcurl informe alors le serveur distant de l'adresse IP et du numéro de port auxquels se connecter. Ceci est fait avec l'option <a href="/man/CURLOPT_FTPPORT.3.en">CURLOPT_FTPPORT(3)</a>. Si vous la définissez sur « - », libcurl utilise l'« adresse IP par défaut » de votre système. Si vous souhaitez utiliser une IP particulière, vous pouvez définir l'adresse IP complète, un nom d'hôte à résoudre en une adresse IP, voire un nom d'interface réseau local à partir duquel libcurl obtient l'adresse IP.</p>
+<p class="Pp">Lorsqu'il utilise l'approche « PORT », libcurl tente d'utiliser EPRT et LPRT avant d'essayer PORT, car ils fonctionnent avec plus de protocoles. Vous pouvez désactiver ce comportement en définissant <a href="/man/CURLOPT_FTP_USE_EPRT.3.en">CURLOPT_FTP_USE_EPRT(3)</a> à zéro.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="API_MIME_revue_pour_SMTP_et_IMAP"><a class='permalink' href='#API_MIME_revue_pour_SMTP_et_IMAP'>API MIME revue pour SMTP et IMAP</a></h1>
+<p class="Pp">En plus de prendre en charge les champs de formulaire multi-parties HTTP, l'API MIME peut être utilisée pour construire des messages électroniques structurés et les envoyer via SMTP ou les ajouter à des répertoires IMAP.</p>
+<p class="Pp">Un message électronique structuré peut contenir plusieurs parties : certaines sont affichées en ligne par le MUA, d'autres sont des pièces jointes. Les parties peuvent également être structurées comme des multi-parties, par exemple pour inclure un autre message électronique ou pour offrir plusieurs alternatives de formats de texte. Cela peut être imbriqué à n'importe quel niveau.</p>
+<p class="Pp">Pour construire un tel message, vous préparez la multi-partie de niveau n, puis vous l'incluez comme source à la multi-partie parente en utilisant la fonction <a href="/man/curl_mime_subparts.3.en">curl_mime_subparts(3)</a>. Une fois qu'elle a été liée à sa multi-partie parente, une multi-partie de niveau n lui appartient et ne doit pas être libérée explicitement.</p>
+<p class="Pp">Les données des messages électroniques ne sont pas censées être non-ASCII et la longueur des lignes est limitée : heureusement, certains encodages de transfert sont définis par les normes pour prendre en charge la transmission de données incompatibles. La fonction <a href="/man/curl_mime_encoder.3.en">curl_mime_encoder(3)</a> indique à une partie que ses données source doivent être encodées avant d'être envoyées. Elle génère également l'en-tête correspondant pour cette partie. Si les données de la partie que vous souhaitez envoyer sont déjà encodées selon un tel schéma, n'utilisez pas cette fonction (cela la sur-encoderait), mais définissez explicitement l'en-tête de partie correspondant.</p>
+<p class="Pp">Lors de l'envoi d'un tel message, libcurl le préfixe avec la liste d'en-têtes définie avec <a href="/man/CURLOPT_HTTPHEADER.3.en">CURLOPT_HTTPHEADER(3)</a>, comme en-têtes de partie MIME de niveau zéro.</p>
+<p class="Pp">Voici un exemple de construction d'un message électronique avec une alternative texte brut/html en ligne et une pièce jointe codée en base64 :</p>
+<pre> curl_mime *message = curl_mime_init(handle);
+ /* La partie en ligne est une alternative proposant les versions html et texte
+    du courrier électronique. */
+ curl_mime *alt = curl_mime_init(handle);
+ /* Message HTML. */
+ curl_mimepart *part = curl_mime_addpart(alt);
+ curl_mime_data(part, "&lt;html&gt;&lt;body&gt;&lt;p&gt;Ceci est du HTML&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;",
+                      CURL_ZERO_TERMINATED);
+ curl_mime_type(part, "text/html");
+ /* Message texte. */
+ part = curl_mime_addpart(alt);
+ curl_mime_data(part, "Ceci est un message en texte brut",
+                      CURL_ZERO_TERMINATED);
+ /* Créer la partie en ligne. */
+ part = curl_mime_addpart(message);
+ curl_mime_subparts(part, alt);
+ curl_mime_type(part, "multipart/alternative");
+ struct curl_slist *headers = curl_slist_append(NULL,
+                   "Content-Disposition: inline");
+ curl_mime_headers(part, headers, TRUE);
+ /* Ajouter la pièce jointe. */
+ part = curl_mime_addpart(message);
+ curl_mime_filedata(part, "manual.pdf");
+ curl_mime_encoder(part, "base64");
+ /* Construire les en-têtes du courrier. */
+ headers = curl_slist_append(NULL, "From: me@example.com");
+ headers = curl_slist_append(headers, "To: you@example.com");
+ /* Les définir dans le handle easy. */
+ curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+ curl_easy_setopt(handle, CURLOPT_MIMEPOST, mime);</pre>
+<p class="Pp">Il convient de noter que l'ajout d'un message à un répertoire IMAP nécessite que la taille du message soit connue avant le téléchargement. Il n'est donc pas possible d'inclure des parties de taille de données inconnue dans ce contexte.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="Les_en-têtes_sont_égaux_à_l'amusement"><a class='permalink' href='#Les_en-têtes_sont_égaux_à_l'amusement'>Les en-têtes sont égaux à l'amusement</a></h1>
+<p class="Pp">Certains protocoles fournissent des « en-têtes », des métadonnées séparées des données normales. Ces en-têtes ne sont pas inclus par défaut dans le flux de données normal, mais vous pouvez les faire apparaître dans le flux de données en définissant <a href="/man/CURLOPT_HEADER.3.en">CURLOPT_HEADER(3)</a> à 1.</p>
+<p class="Pp">Ce qui pourrait être encore plus utile, c'est la capacité de libcurl à séparer les en-têtes des données et ainsi à différencier les callbacks. Vous pouvez par exemple définir un pointeur différent à passer au callback d'écriture ordinaire en définissant <a href="/man/CURLOPT_HEADERDATA.3.en">CURLOPT_HEADERDATA(3)</a>.</p>
+<p class="Pp">Ou, vous pouvez définir une fonction entièrement distincte pour recevoir les en-têtes, en utilisant <a href="/man/CURLOPT_HEADERFUNCTION.3.en">CURLOPT_HEADERFUNCTION(3)</a>.</p>
+<p class="Pp">Les en-têtes sont passés à la fonction de rappel un par un, et vous pouvez vous y fier. Cela vous permet d'ajouter plus facilement des analyseurs d'en-têtes personnalisés, etc.</p>
+<p class="Pp">Les « en-têtes » pour les transferts FTP correspondent à toutes les réponses du serveur FTP. Ce ne sont pas de vrais en-têtes, mais dans ce cas, nous prétendons qu'ils le sont.</p>
+</section>
+! ;-)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Post_Transfer_Information'><a class='permalink' href='#Post_Transfer_Information'>Informations   après transfert</a></h1>
+<p class="Pp">Voir <a href='/man/curl_easy_getinfo.3.en'>curl_easy_getinfo(3)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='The_multi_Interface'><a class='permalink' href='#The_multi_Interface'>L'interface   multi</a></h1>
+<p class="Pp">L'interface facile décrite en détail dans ce document est une
+    interface synchrone qui transfère un fichier à la fois et ne retourne pas
+    avant que ce soit fait.</p>
+<p class="Pp">L'interface multi, en revanche, permet à votre programme de
+    transférer plusieurs fichiers dans les deux directions en même temps, sans
+    vous obliger à utiliser plusieurs threads. Le nom pourrait laisser penser que
+    l'interface multi est destinée aux programmes multi-threadés, mais la vérité
+    est presque l'inverse. L'interface multi permet à une application single-threadée
+    d'effectuer les mêmes types de transferts multiples et simultanés que les
+    programmes multi-threadés peuvent effectuer. Elle permet de bénéficier de
+    nombreux avantages des transferts multi-threadés sans la complexité de la
+    gestion et de la synchronisation de nombreux threads.</p>
+<p class="Pp">Pour compliquer un peu plus les choses, il existe même deux versions
+    de l'interface multi. Celle basée sur les événements, également appelée
+    multi_socket, et celle "normale" conçue pour être utilisée avec select().
+    Voir la page man libcurl-multi.3 pour les détails sur l'API basée sur les
+    événements multi_socket, cette description ici est pour celle orientée
+    select().</p>
+<p class="Pp">Pour utiliser cette interface, il est préférable de comprendre d'abord
+    les bases de l'utilisation de l'interface facile. L'interface multi est
+    simplement une façon de réaliser plusieurs transferts en même temps en
+    ajoutant plusieurs handles faciles dans une "pile multi".</p>
+<p class="Pp">Vous créez les handles faciles que vous souhaitez, un pour chaque
+    transfert concurrent, et vous définissez toutes les options comme vous l'avez
+    appris ci-dessus, puis vous créez un handle multi avec
+    <a href='/man/curl_multi_init.3.en'>curl_multi_init(3)</a> et ajoutez tous ces handles faciles à ce
+    handle multi avec <a href='/man/curl_multi_add_handle.3.en'>curl_multi_add_handle(3)</a>.</p>
+<p class="Pp">Lorsque vous avez ajouté les handles que vous avez pour le moment (vous
+    pouvez toujours en ajouter de nouveaux à tout moment), vous démarrez les
+    transferts en appelant <a href='/man/curl_multi_perform.3.en'>curl_multi_perform(3)</a>.</p>
+<p class="Pp"><a href='/man/curl_multi_perform.3.en'>curl_multi_perform(3)</a> est asynchrone. Il n'effectue que ce qui peut
+    être fait maintenant, puis retourne le contrôle à votre programme. Il est
+    conçu pour ne jamais bloquer. Vous devez continuer à appeler la fonction
+    jusqu'à ce que tous les transferts soient terminés.</p>
+<p class="Pp">La meilleure utilisation de cette interface est lorsque vous faites un
+    select() sur tous les descripteurs de fichiers ou sockets possibles pour savoir
+    quand rappeler libcurl. Cela vous permet également d'attendre et de répondre
+    aux actions sur les sockets/handles de votre propre application. Vous déterminez
+    ce qu'il faut sélectionner() en utilisant <a href='/man/curl_multi_fdset.3.en'>curl_multi_fdset(3)</a>, qui remplit
+    un ensemble de variables <i>fd_set</i> pour vous avec les descripteurs de
+    fichiers particuliers que libcurl utilise pour le moment.</p>
+<p class="Pp">Lorsque vous appelez ensuite select(), il retourne lorsque l'un des
+    handles de fichiers signale une action et vous appelez alors
+    <a href='/man/curl_multi_perform.3.en'>curl_multi_perform(3)</a> pour permettre à libcurl de faire ce qu'il
+    veut faire. Notez que libcurl dispose également d'un code de délai d'attente,
+    nous vous conseillons donc de ne jamais utiliser de longs délais d'attente sur
+    select() avant de rappeler <a href='/man/curl_multi_perform.3.en'>curl_multi_perform(3)</a>.
+    <a href='/man/curl_multi_timeout.3.en'>curl_multi_timeout(3)</a> est fourni pour vous aider à obtenir une période de
+    délai d'attente appropriée.</p>
+<p class="Pp">Une autre précaution à prendre : appelez toujours
+    <a href='/man/curl_multi_fdset.3.en'>curl_multi_fdset(3)</a> immédiatement avant l'appel à select() car l'ensemble
+    actuel des descripteurs de fichiers peut changer lors de toute invocation de
+    fonction curl.</p>
+<p class="Pp">Si vous souhaitez arrêter le transfert d'un des handles faciles de la
+    pile, vous pouvez utiliser <a href='/man/curl_multi_remove_handle.3.en'>curl_multi_remove_handle(3)</a> pour supprimer des handles
+    faciles individuels. N'oubliez pas que les handles faciles doivent être
+    nettoyés avec <a href='/man/curl_easy_cleanup.3.en'>curl_easy_cleanup(3)</a>.</p>
+<p class="Pp">Lorsqu'un transfert dans la pile multi est terminé, le compteur des
+    transferts en cours (tel que rempli par <a href='/man/curl_multi_perform.3.en'>curl_multi_perform(3)</a>) diminue.
+    Lorsque le nombre atteint zéro, tous les transferts sont terminés.</p>
+<p class="Pp"><a href='/man/curl_multi_info_read.3.en'>curl_multi_info_read(3)</a> peut être utilisé pour obtenir des
+    informations sur les transferts terminés. Il retourne alors le CURLcode pour
+    chaque transfert facile, pour vous permettre de déterminer le succès de chaque
+    transfert individuel.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SSL,_Certificates_and_Other_Tricks'><a class='permalink' href='#SSL,_Certificates_and_Other_Tricks'>SSL,   Certificats et autres astuces</a></h1>
+<br/>
+<p class="Pp"> [ initialisation, mots de passe, clés, certificats, ENGINE, certificats ca ]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Sharing_Data_Between_Easy_Handles'><a class='permalink' href='#Sharing_Data_Between_Easy_Handles'>Partage   de données entre handles faciles</a></h1>
+<p class="Pp">Vous pouvez partager certaines données entre handles faciles lorsque
+    l'interface facile est utilisée, et certaines données sont partagées
+    automatiquement lorsque vous utilisez l'interface multi.</p>
+<p class="Pp">Lorsque vous ajoutez des handles faciles à un handle multi, ces handles
+    faciles partagent automatiquement une grande partie des données qui seraient
+    sinon conservées sur une base par handle facile lorsque l'interface facile
+    est utilisée.</p>
+<p class="Pp">Le cache DNS est partagé entre les handles au sein d'un handle multi,
+    accélérant la résolution de noms ultérieure, et le pool de connexions qui est
+    maintenu pour mieux permettre les connexions persistantes et la réutilisation
+    des connexions est également partagé. Si vous utilisez l'interface facile,
+    vous pouvez toujours les partager entre des handles faciles spécifiques en
+    utilisant l'interface de partage, voir <a href='/man/libcurl-share.3.en'>libcurl-share(3)</a>.</p>
+<p class="Pp">Certaines choses ne sont jamais partagées automatiquement, pas même
+    au sein des handles multi, comme par exemple les cookies, donc la seule façon
+    de les partager est avec l'interface de partage.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Footnotes'><a class='permalink' href='#Footnotes'>Notes de bas de page</a></h1>
+<dl class="Bl-tag">
+  <dt>[1]</dt>
+  <dd>libcurl 7.10.3 et versions ultérieures ont la capacité de passer à
+      l'encodage de transfert par morceaux (chunked Transfer-Encoding) dans les cas
+      où les téléversements HTTP sont effectués avec des données de taille
+      inconnue.</dd>
+  <dt>[2]</dt>
+  <dd>Cela se produit sur les machines Windows lorsque libcurl est compilé et
+      utilisé comme une DLL. Cependant, vous pouvez toujours le faire sous Windows
+      si vous liez avec une bibliothèque statique.</dd>
+  <dt>[3]</dt>
+  <dd>L'outil curl-config est généré au moment de la compilation (sur les systèmes
+      de type Unix) et devrait être installé avec l'instruction 'make install' ou
+      similaire qui installe la bibliothèque, les fichiers d'en-tête, les pages
+      man, etc.</dd>
+  <dt>[4]</dt>
+  <dd>Ce comportement était différent dans les versions antérieures à 7.17.0, où
+      les chaînes devaient rester valides après la fin de l'appel
+      <a href='/man/curl_easy_setopt.3.en'>curl_easy_setopt(3)</a>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR   AUSSI</a></h1>
+<p class="Pp"><a href='/man/libcurl-easy.3.en'>libcurl-easy(3)</a>, <a href='/man/libcurl-errors.3.en'>libcurl-errors(3)</a>,
+    <a href='/man/libcurl-multi.3.en'>libcurl-multi(3)</a>, <a href='/man/libcurl-url.3.en'>libcurl-url(3)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-11-13</td>
+    <td class="foot-os">libcurl</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/curl/">core/curl</a></dd>
+        <dt>Version :</dt>
+        <dd>8.17.0-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://curl.se/">https://curl.se/</a></dd>
+        <dt>Licences :</dt>
+        <dd>MIT</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/curl/">/listing/core/curl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#Objective">Objectif</a></li>
+        
+            <li><a href="#Building">Compilation</a></li>
+        
+            <li><a href="#Portable_Code_in_a_Portable_World">Code portable dans un monde portable</a></li>
+        
+            <li><a href="#Global_Preparation">Préparation globale</a></li>
+        
+            <li><a href="#Features_libcurl_Provides">Fonctionnalités fournies par libcurl</a></li>
+        
+            <li><a href="#Two_Interfaces">Deux interfaces</a></li>
+        
+            <li><a href="#Handle_the_Easy_libcurl">Gérer le libcurl facile</a></li>
+        
+            <li><a href="#Multi-threading_Issues">Problèmes de multi-threading</a></li>
+        
+            <li><a href="#When_It_does_not_Work">Quand ça ne marche pas</a></li>
+        
+            <li><a href="#Upload_Data_to_a_Remote_Site">Envoyer des données vers un site distant</a></li>
+        
+            <li><a href="#Passwords">Mots de passe</a></li>
+        
+            <li><a href="#HTTP_Authentication">Authentification HTTP</a></li>
+        
+            <li><a href="#HTTP_POSTing">POST HTTP</a></li>
+        
+            <li><a href="#Converting_from_deprecated_form_API_to_MIME_API">Conversion de l'API de formulaire obsolète vers l'API MIME</a></li>
+        
+            <li><a href="#Showing_Progress">Affichage de la progression</a></li>
+        
+            <li><a href="#libcurl_with_C++">libcurl avec C++</a></li>
+        
+            <li><a href="#Proxies">Proxys</a></li>
+        
+            <li><a href="#Persistence_Is_The_Way_to_Happiness">La persistance est le chemin vers le bonheur</a></li>
+        
+            <li><a href="#HTTP_Headers_Used_by_libcurl">En-têtes HTTP utilisés par libcurl</a></li>
+        
+            <li><a href="#Customizing_Operations">Personnalisation des opérations</a></li>
+        
+            <li><a href="#Cookies_Without_Chocolate_Chips">Cookies sans pépites de chocolat</a></li>
+        
+            <li><a href="#FTP_Peculiarities_We_Need">Peculiarités FTP dont nous avons besoin</a></li>
+        
+            <li><a href="#MIME_API_revisited_for_SMTP_and_IMAP">API MIME revisitée pour SMTP et IMAP</a></li>
+        
+            <li><a href="#Headers_Equal_Fun">Les en-têtes sont synonymes de plaisir</a></li>
+        
+            <li><a href="#Post_Transfer_Information">Informations après transfert</a></li>
+        
+            <li><a href="#The_multi_Interface">L'interface multi</a></li>
+        
+            <li><a href="#SSL,_Certificates_and_Other_Tricks">SSL, Certificats et autres astuces</a></li>
+        
+            <li><a href="#Sharing_Data_Between_Easy_Handles">Partage de données entre handles faciles</a></li>
+        
+            <li><a href="#Footnotes">Notes de bas de page</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/libcurl-tutorial.3.en.txt">txt</a>, 
+        
+            <a href="/man/libcurl-tutorial.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

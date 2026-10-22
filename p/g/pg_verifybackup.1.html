@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pg_verifybackup(1) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pg_verifybackup(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/postgresql/">postgresql</a></p>
+<p class="lic">Licences: PostgreSQL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PG_VERIFYBACKUP(1)</td>
+    <td class="head-vol">Documentation PostgreSQL 18.1</td>
+    <td class="head-rtitle">PG_VERIFYBACKUP(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pg_verifybackup - vérifier l'intégrité d'une sauvegarde de base d'un
+    cluster PostgreSQL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp HP"><b>pg_verifybackup</b> [<i>option</i>...]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pg_verifybackup est utilisé pour vérifier l'intégrité d'une sauvegarde
+    de cluster de base de données effectuée à l'aide de <b>pg_basebackup</b>
+    par rapport à un fichier `backup_manifest` généré par le serveur au moment de
+    la sauvegarde. La sauvegarde peut être stockée dans le format «&nbsp;plain&nbsp;»
+    ou «&nbsp;tar&nbsp;»; cela inclut les sauvegardes au format tar compressées avec
+    n'importe quel algorithme supporté par pg_basebackup. Cependant, à l'heure
+    actuelle, la vérification des WAL n'est prise en charge que pour les sauvegardes
+    au format plain. Par conséquent, si la sauvegarde est stockée au format tar,
+    l'option `-n`, `--no-parse-wal` doit être utilisée.</p>
+<p class="Pp">Il est important de noter que la validation effectuée par
+    pg_verifybackup ne comprend pas et ne peut pas inclure toutes les vérifications
+    qui seront effectuées par un serveur en cours d'exécution lorsqu'il tentera
+    d'utiliser la sauvegarde. Même si vous utilisez cet outil, vous devriez
+    toujours effectuer des restaurations de test et vérifier que les bases de
+    données résultantes fonctionnent comme prévu et qu'elles semblent contenir
+    les bonnes données. Cependant, pg_verifybackup peut détecter de nombreux
+    problèmes qui surviennent couramment en raison de problèmes de stockage ou
+    d'erreurs utilisateur.</p>
+<p class="Pp">La vérification de la sauvegarde se déroule en quatre étapes. Premièrement,
+    pg_verifybackup lit le fichier `backup_manifest`. Si ce fichier n'existe pas,
+    ne peut pas être lu, est mal formé, ne correspond pas à l'identifiant du
+    système avec `pg_control` du répertoire de sauvegarde ou échoue à la vérification
+    par rapport à sa propre somme de contrôle interne, pg_verifybackup se
+    terminera avec une erreur fatale.</p>
+<p class="Pp">Deuxièmement, pg_verifybackup tentera de vérifier que les fichiers de
+    données actuellement stockés sur disque sont exactement les mêmes que les
+    fichiers de données que le serveur avait l'intention d'envoyer, avec quelques
+    exceptions décrites ci-dessous. Les fichiers supplémentaires et manquants seront
+    détectés, avec quelques exceptions. Cette étape ignorera la présence ou l'absence,
+    ou toute modification, de `postgresql.auto.conf`, `standby.signal` et
+    `recovery.signal`, car il est attendu que ces fichiers puissent avoir été créés
+    ou modifiés dans le cadre du processus de sauvegarde. Il ne se plaindra pas
+    non plus d'un fichier `backup_manifest` dans le répertoire cible ni de quoi que
+    ce soit à l'intérieur de `pg_wal`, même si ces fichiers ne seront pas listés dans
+    le manifeste de sauvegarde. Seuls les fichiers sont vérifiés ; la présence ou
+    l'absence de répertoires n'est pas vérifiée, sauf indirectement&nbsp;: si un
+    répertoire est manquant, tous les fichiers qu'il aurait dû contenir seront
+    nécessairement manquants également.</p>
+<p class="Pp">Ensuite, pg_verifybackup calculera la somme de contrôle de tous les
+    fichiers, comparera ces sommes de contrôle aux valeurs du manifeste et
+    signalera des erreurs pour tous les fichiers pour lesquels la somme de contrôle
+    calculée ne correspond pas à la somme de contrôle stockée dans le manifeste.
+    Cette étape n'est pas effectuée pour les fichiers qui ont produit des erreurs
+    à l'étape précédente, car ils sont déjà connus pour avoir des problèmes. Les
+    fichiers qui ont été ignorés à l'étape précédente sont également ignorés à cette
+    étape.</p>
+<p class="Pp">Enfin, pg_verifybackup utilisera le manifeste pour vérifier que les
+    enregistrements du journal d'écriture anticipée (WAL) qui seront nécessaires
+    pour récupérer la sauvegarde sont présents et qu'ils peuvent être lus et
+    analysés. Le `backup_manifest` contient des informations sur les enregistrements
+    WAL qui seront nécessaires, et pg_verifybackup utilisera ces informations pour
+    appeler `pg_waldump` afin d'analyser ces enregistrements WAL. Le drapeau
+    `--quiet` sera utilisé, de sorte que `pg_waldump` ne signalera que les erreurs,
+    sans produire d'autre sortie. Bien que ce niveau de vérification soit suffisant
+    pour détecter des problèmes évidents tels qu'un fichier manquant ou un fichier dont
+    les sommes de contrôle internes ne correspondent pas, il n'est pas assez complet
+    pour détecter tous les problèmes possibles qui pourraient survenir lors de la
+    tentative de récupération. Par exemple, un bug du serveur qui produit des
+    enregistrements WAL ayant les bonnes sommes de contrôle mais spécifiant des
+    actions absurdes ne peut pas être détecté par cette méthode.</p>
+<p class="Pp">Notez que si des fichiers WAL supplémentaires non requis pour la
+    récupération de la sauvegarde sont présents, ils ne seront pas vérifiés par cet
+    outil, bien qu'une invocation distincte de `pg_waldump` puisse être utilisée à
+    cette fin. Notez également que la vérification des WAL est spécifique à la
+    version&nbsp;: vous devez utiliser la version de pg_verifybackup, et donc de
+    pg_waldump, qui correspond à la sauvegarde vérifiée. En revanche, les vérifications
+    d'intégrité des fichiers de données devraient fonctionner avec n'importe quelle
+    version du serveur qui génère un fichier `backup_manifest`.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">pg_verifybackup accepte les arguments de ligne de commande suivants&nbsp;:</p>
+<p class="Pp"><b>-e</b>
+  <br/>
+  <b>--exit-on-error</b></p>
+<div class="Bd-indent">Sortir dès qu'un problème avec la sauvegarde est détecté. Si
+    cette option n'est pas spécifiée, pg_verifybackup continuera à vérifier la
+    sauvegarde même après la détection d'un problème, et signalera tous les
+    problèmes détectés comme des erreurs.</div>
+<p class="Pp"><b>-F </b><b></b><i>format</i>
+  <br/>
+  <b>--format=</b><b></b><i>format</i></p>
+<div class="Bd-indent">Spécifie le format de la sauvegarde. <i>format</i> peut être
+    l'une des valeurs suivantes&nbsp;:
+<p class="Pp">p
+  <br/>
+  plain</p>
+<div class="Bd-indent">La sauvegarde se compose de fichiers simples avec la même
+    structure que le répertoire de données et les tablespaces du serveur source.</div>
+<p class="Pp">t
+  <br/>
+  tar</p>
+<div class="Bd-indent">La sauvegarde se compose de fichiers tar, qui peuvent être
+    compressés. Une sauvegarde valide inclut le répertoire de données principal
+    dans un fichier nommé `base.tar`, les fichiers WAL dans `pg_wal.tar`, et des
+    fichiers tar séparés pour chaque tablespace, nommés d'après l'OID du
+    tablespace. Si la sauvegarde est compressée, l'extension de compression
+    pertinente est ajoutée à la fin de chaque nom de fichier.</div>
+</div>
+<p class="Pp"><b>-i </b><b></b><i>chemin</i>
+  <br/>
+  <b>--ignore=</b><b></b><i>chemin</i></p>
+<div class="Bd-indent">Ignorer le fichier ou répertoire spécifié, qui doit être
+    exprimé comme un nom de chemin relatif, lors de la comparaison de la liste des
+    fichiers de données réellement présents dans la sauvegarde avec ceux listés dans
+    le fichier `backup_manifest`. Si un répertoire est spécifié, cette option affecte
+    l'intégralité du sous-arbre à cet emplacement. Les signalements de fichiers
+    supplémentaires, de fichiers manquants, de différences de taille de fichier ou
+    de sommes de contrôle non correspondantes seront supprimés si le nom du chemin
+    relatif correspond au nom du chemin spécifié. Cette option peut être spécifiée
+    plusieurs fois.</div>
+<p class="Pp"><b>-m </b><b></b><i>chemin</i>
+  <br/>
+  <b>--manifest-path=</b><b></b><i>chemin</i></p>
+<div class="Bd-indent">Utiliser le fichier manifeste situé au chemin spécifié, plutôt
+    que celui situé à la racine du répertoire de sauvegarde.</div>
+<p class="Pp"><b>-n</b>
+  <br/>
+  <b>--no-parse-wal</b></p>
+<div class="Bd-indent">Ne pas tenter d'analyser les données du journal d'écriture anticipée
+    qui seront nécessaires pour récupérer à partir de cette sauvegarde.</div>
+<p class="Pp"><b>-P</b>
+  <br/>
+  <b>--progress</b></p>
+<div class="Bd-indent">Activer le rapport de progression. Activer cette option fournira
+    un rapport de progression lors de la vérification des sommes de contrôle.
+<p class="Pp">Cette option ne peut pas être utilisée conjointement avec l'option
+    <b>--quiet</b>.</p>
+</div>
+<p class="Pp"><b>-q</b>
+  <br/>
+  <b>--quiet</b></p>
+<div class="Bd-indent">Ne rien imprimer lorsqu'une sauvegarde est vérifiée avec succès.</div>
+<p class="Pp"><b>-s</b>
+  <br/>
+  <b>--skip-checksums</b></p>
+<div class="Bd-indent">Ne pas vérifier les sommes de contrôle des fichiers de données. La
+    présence ou l'absence de fichiers et leurs tailles seront toujours vérifiées.
+    C'est beaucoup plus rapide, car les fichiers eux-mêmes n'ont pas besoin d'être lus.</div>
+<p class="Pp"><b>-w </b><b></b><i>chemin</i>
+  <br/>
+  <b>--wal-directory=</b><b></b><i>chemin</i></p>
+<div class="Bd-indent">Essayer d'analyser les fichiers WAL stockés dans le répertoire
+    spécifié, plutôt que dans `pg_wal`. Cela peut être utile si la sauvegarde est
+    stockée dans un emplacement distinct de l'archive WAL.</div>
+<p class="Pp">D'autres options sont également disponibles&nbsp;:</p>
+<p class="Pp"><b>-V</b>
+  <br/>
+  <b>--version</b></p>
+<div class="Bd-indent">Imprimer la version de pg_verifybackup et quitter.</div>
+<p class="Pp"><b>-?</b>
+  <br/>
+  <b>--help</b></p>
+<div class="Bd-indent">Afficher l'aide sur les arguments de la ligne de commande
+    pg_verifybackup et quitter.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Pour créer une sauvegarde de base du serveur sur `mydbserver` et vérifier
+    l'intégrité de la sauvegarde&nbsp;:</p>
+<div class="Bd-indent">
+<pre>$ <b>pg_basebackup -h mydbserver -D /usr/local/pgsql/data</b>
+$ <b>pg_verifybackup /usr/local/pgsql/data</b></pre>
+</div>
+<p class="Pp">Pour créer une sauvegarde de base du serveur sur `mydbserver`, déplacer
+    le manifeste ailleurs que dans le répertoire de sauvegarde, et vérifier la
+    sauvegarde&nbsp;:</p>
+<div class="Bd-indent">
+<pre>$ <b>pg_basebackup -h mydbserver -D /usr/local/pgsql/backup1234</b>
+$ <b>mv /usr/local/pgsql/backup1234/backup_manifest /my/secure/location/backup_manifest.1234</b>
+$ <b>pg_verifybackup -m /my/secure/location/backup_manifest.1234 /usr/local/pgsql/backup1234</b></pre>
+</div>
+<p class="Pp">Pour vérifier une sauvegarde en ignorant un fichier ajouté manuellement
+    au répertoire de sauvegarde, et en sautant également la vérification des sommes
+    de contrôle&nbsp;:</p>
+<div class="Bd-indent">
+<pre>$ <b>pg_basebackup -h mydbserver -D /usr/local/pgsql/data</b>
+$ <b>edit /usr/local/pgsql/data/note.to.self</b>
+$ <b>pg_verifybackup --ignore=note.to.self --skip-checksums /u</pre>
+</div>
+</div>
+</section>
+
+                
+            </article>
+        </main>
+    </body>
+</html>
+<div class="manual-content">
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class="permalink" href="#NOM">NOM</a></h1>
+<p class="Nm">pg_verifybackup</p>
+<p class="Nd">vérifie l'intégrité d'une sauvegarde de base PostgreSQL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SYNOPIS"><a class="permalink" href="#SYNOPIS">SYNOPIS</a></h1>
+<p class="In">pg_verifybackup</p>
+<pre>
+[option...] [chemin_de_la_sauvegarde]
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Bd">pg_verifybackup</p>
+est un utilitaire pour vérifier l'intégrité des sauvegardes générées par pg_basebackup(1). Il vérifie que tous les fichiers de données de la sauvegarde sont présents et que leurs sommes de contrôle correspondent aux sommes de contrôle enregistrées dans le fichier control du répertoire de sauvegarde. Il vérifie également que le fichier de manifeste, s'il est présent, correspond à la liste des fichiers attendus.
+</p>
+<p class="Pp">Il n'exécute pas la sauvegarde, il ne fait que vérifier son intégrité.</p>
+<p class="Pp">Le répertoire de sauvegarde doit être spécifié comme argument positionnel. Si aucun répertoire n'est spécifié, le répertoire courant est utilisé.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="OPTIONS"><a class="permalink" href="#OPTIONS">OPTIONS</a></h1>
+<dl class="Bl Dx">
+<dt><b>-V</b></dt>
+<dt><b>--version</b></dt>
+<dd>Affiche la version de pg_verifybackup et quitte.</dd>
+<dt><b>-?</b></dt>
+<dt><b>--help</b></dt>
+<dd>Affiche l'aide sur les options de commande et quitte.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="EXEMPLES"><a class="permalink" href="#EXEMPLES">EXEMPLES</a></h1>
+<p class="Pp">Vérifie le contenu du répertoire de sauvegarde courant :</p>
+<pre>
+pg_verifybackup
+</pre>
+<p class="Pp">Vérifie le contenu du répertoire /sr/local/pgsql/data :</p>
+<pre>
+pg_verifybackup /sr/local/pgsql/data
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="VOIR_AUSSI"><a class="permalink" href="#VOIR_AUSSI">VOIR AUSSI</a></h1>
+<p class=" Pp"><a href="/man/pg_basebackup.1.en">pg_basebackup(1)</a></p>
+</section>
+</div>
+<table class="foot">
+<tr>
+<td class="foot-date">2025</td>
+<td class="foot-os">PostgreSQL 18.1</td>
+</tr>
+</table>
+</section>
+</article>
+<aside id="sidebar">
+<section class="search">
+<form action="/search" class="search direct-search" method="get" role="search">
+<input name="q" placeholder="Rechercher dans la page man" type="search" value=""/>
+<input name="go" type="submit" value="Go"/>
+</form>
+</section>
+<section class="package-info">
+<p>Informations sur le paquet :</p>
+<dl>
+<dt>Nom du paquet :</dt>
+<dd><a href="https://www.archlinux.org/packages/extra/x86_64/postgresql/">extra/postgresql</a></dd>
+<dt>Version :</dt>
+<dd>18.1-1</dd>
+<dt>Amont :</dt>
+<dd><a href="https://www.postgresql.org/">https://www.postgresql.org/</a></dd>
+<dt>Licences :</dt>
+<dd>PostgreSQL</dd>
+<dt>Manuels :</dt>
+<dd><a href="/listing/extra/postgresql/">/listing/extra/postgresql/</a></dd>
+</dl>
+</section>
+<details>
+<summary>Table des matières</summary>
+<nav class="toc">
+<ul>
+<li><a href="#NOM">NOM</a></li>
+<li><a href="#SYNOPIS">SYNOPIS</a></li>
+<li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+<li><a href="#OPTIONS">OPTIONS</a></li>
+<li><a href="#EXEMPLES">EXEMPLES</a></li>
+<li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+</ul>
+</nav>
+</details>
+<nav class="other-formats">
+<p>Autres formats :</p>
+<a href="/man/pg_verifybackup.1.en.txt">txt</a>,
+<a href="/man/pg_verifybackup.1.en.raw">raw</a>
+</nav>
+</aside>
+</main>
+<footer>
+
+<p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+à l'exception du contenu des pages man, qui ont leur propre licence
+spécifiée dans le paquet Arch Linux correspondant.
+</p>
+</footer>
+</body>
+</html>

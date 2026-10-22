@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>llvm-exegesis(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">llvm-exegesis(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/llvm/">llvm</a></p>
+<p class="lic">Licences: Apache-2.0 WITH LLVM-exception</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LLVM-EXEGESIS(1)</td>
+    <td class="head-vol">LLVM</td>
+    <td class="head-rtitle">LLVM-EXEGESIS(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">llvm-exegesis - Banc d'essai d'instructions machine LLVM</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><b>llvm-exegesis</b> [<i>options</i>]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><b>llvm-exegesis</b> est un outil de banc d'essai qui utilise les informations disponibles dans LLVM pour mesurer les caractéristiques des instructions de la machine hôte telles que la latence, le débit ou la décomposition des micro-opérations (uops).</p>
+<p class="Pp">Étant donné un nom d'opcode LLVM et un mode de banc d'essai, <b>llvm-exegesis</b> génère un extrait de code qui rend l'exécution aussi sérielle (resp. aussi parallèle) que possible afin que nous puissions mesurer la latence (resp. le débit inverse/la décomposition des uops) de l'instruction. L'extrait de code est compilé à la volée (jitted) et, sauf demande contraire, exécuté sur le sous-objet cible de l'hôte. Le temps pris (resp. l'utilisation des ressources) est mesuré à l'aide de compteurs de performance matériels. Le résultat est imprimé en YAML sur la sortie standard.</p>
+<p class="Pp">L'objectif principal de cet outil est de valider (ou invalider) automatiquement les modèles de planification TableDef de LLVM. À cette fin, nous fournissons également une analyse des résultats.</p>
+<p class="Pp"><b>llvm-exegesis</b> peut également effectuer des bancs d'essai sur des extraits de code arbitraires fournis par l'utilisateur.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PLATEFORMES_SUPPORTÉES'><a class='permalink' href='#PLATEFORMES_SUPPORTÉES'>PLATEFORMES SUPPORTÉES</a></h1>
+<p class="Pp"><b>llvm-exegesis</b> prend actuellement en charge uniquement X86 (64 bits uniquement), ARM (AArch64 uniquement, génération d'extraits limitée), MIPS, PowerPC (PowerPC64LE uniquement) et RISC-V (RV64I/E et RV32I/E) sous Linux pour les bancs d'essai. Toutes les fonctionnalités de banc d'essai ne sont pas garanties de fonctionner sur toutes les plateformes. <b>llvm-exegesis</b> dispose également d'un mode d'analyse séparé pris en charge sur toutes les plateformes sur lesquelles LLVM est disponible.</p>
+<p class="Pp">Pour activer les bancs d'essai dans llvm-exegesis, LLVM doit être configuré et compilé avec <i>LLVM_ENABLE_LIBPFM</i> activé, car <b>llvm-exegesis</b> dépend de libpfm4 pour accéder aux compteurs de performance. Les bancs d'essai peuvent échouer si le CPU cible n'est pas pris en charge par libpfm. Cela peut être vérifié en définissant les variables d'environnement <i>LIBPFM_VERBOSE</i> et <i>LIBPFM_DEBUG</i> pour activer le mode verbeux ou de débogage pour libpfm. Si libpfm est installé dans un répertoire non standard, LLVM peut être configuré pour localiser la bibliothèque et les fichiers d'en-tête nécessaires en définissant les variables d'environnement <i>LIBRARY_PATH</i>, <i>C_INCLUDE_PATH</i> et <i>CPLUS_INCLUDE_PATH</i>. De plus, <i>LD_LIBRARY_PATH</i> doit être défini afin que <b>llvm-exegesis</b> puisse localiser la bibliothèque libpfm lors de l'exécution.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ANNOTATIONS_DES_EXTRAITS'><a class='permalink' href='#ANNOTATIONS_DES_EXTRAITS'>ANNOTATIONS DES EXTRAITS</a></h1>
+<p class="Pp"><b>llvm-exegesis</b> prend en charge les bancs d'essai d'extraits d'assemblage arbitraires. Cependant, les bancs d'essai de ces extraits nécessitent souvent une configuration pour qu'ils puissent s'exécuter correctement. <b>llvm-exegesis</b> dispose de cinq annotations et de quelques utilitaires supplémentaires pour aider à la configuration afin que les extraits puissent être testés correctement.</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li><i>LLVM-EXEGESIS-DEFREG &lt;nom de registre&gt;</i> - L'ajout de cette annotation à l'extrait d'assemblage texte à tester marque le registre comme nécessitant une définition. Une valeur sera automatiquement fournie, sauf si un deuxième paramètre, une valeur hexadécimale, est passé. Ceci est fait avec le format <i>LLVM-EXEGESIS-DEFREG &lt;nom de registre&gt; &lt;valeur hexadécimale&gt;</i>. <i>&lt;valeur hexadécimale&gt;</i> est un schéma de bits utilisé pour remplir le registre. S'il s'agit d'une valeur inférieure à celle du registre, elle est étendue en signe pour correspondre à la taille du registre.</li>
+  <li><i>LLVM-EXEGESIS-LIVEIN &lt;nom de registre&gt;</i> - Cette annotation permet de spécifier les registres qui doivent conserver leur valeur au démarrage du banc d'essai. Des valeurs peuvent être passées via des registres depuis la configuration du banc d'essai dans certains cas. Les registres et les valeurs qui leur sont assignées et qui peuvent être utilisés dans le script de banc d'essai avec un <i>LLVM-EXEGESIS-LIVEIN</i> sont les suivants :</li>
+</ul>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Registre de mémoire temporaire - Le registre spécifique dans lequel cette valeur est placée dépend de la plateforme (par exemple, c'est le registre RDI sous X86 Linux). Définir ce registre comme live-in garantit qu'un pointeur vers un bloc de mémoire (1 Mo) est placé dans ce registre et peut être utilisé par l'extrait.</dd>
+</dl>
+</div>
+<ul class="Bl-bullet">
+  <li><i>LLVM-EXEGESIS-MEM-DEF &lt;nom de valeur&gt; &lt;taille&gt; &lt;valeur&gt;</i> - Cette annotation permet de spécifier des définitions de mémoire qui peuvent ensuite être mappées dans le processus d'exécution d'un extrait avec l'annotation <i>LLVM-EXEGESIS-MEM-MAP</i>. Chaque valeur est nommée en utilisant l'argument <i>&lt;nom de valeur&gt;</i> afin qu'elle puisse être référencée plus tard dans une annotation de mappage. La taille est spécifiée en nombre décimal d'octets et la valeur est donnée en hexadécimal. Si la taille de la valeur est inférieure à la taille spécifiée, la valeur sera répétée jusqu'à ce qu'elle remplisse toute la section de mémoire. L'utilisation de cette annotation nécessite le mode d'exécution par sous-processus.</li>
+  <li><i>LLVM-EXEGESIS-MEM-MAP &lt;nom de valeur&gt; &lt;adresse&gt;</i> - Cette annotation permet de mapper des définitions de mémoire précédemment définies dans le contexte d'exécution d'un processus. Le nom de la valeur fait référence à une définition de mémoire précédemment définie et l'adresse est un nombre décimal spécifiant l'adresse à laquelle la définition de mémoire doit commencer. Notez qu'une seule définition de mémoire peut être mappée plusieurs fois. L'utilisation de cette annotation nécessite le mode d'exécution par sous-processus.</li>
+  <li><i>LLVM-EXEGESIS-SNIPPET-ADDRESS &lt;adresse&gt;</i> - Cette annotation permet de définir l'adresse où le début de l'extrait à exécuter sera mappé. L'adresse est donnée en hexadécimal. Notez que l'extrait inclut également du code de configuration, de sorte que l'instruction exacte à l'adresse spécifiée ne sera pas la première instruction de l'extrait. L'utilisation de cette annotation nécessite le mode d'exécution par sous-processus. Ceci est utile dans les cas où la mémoire accédée par l'extrait dépend de l'emplacement de l'extrait, comme l'adressage relatif à RIP.</li>
+  <li><i>LLVM-EXEGESIS-LOOP-REGISTER &lt;nom de registre&gt;</i> - Cette annotation spécifie le registre de boucle à utiliser pour suivre l'itération actuelle lors de l'utilisation du mode de répétition de boucle. <b>llvm-exegesis</b> doit suivre l'itération de boucle actuelle dans le mode de répétition de boucle de manière performante (c'est-à-dire sans accès mémoire), et utilise un registre pour ce faire. Ce registre a une valeur par défaut spécifique à l'architecture (par exemple, <i>R8</i> sur X86), mais cela pourrait entrer en conflit avec certains extraits. Cette annotation permet de changer le registre pour éviter les interférences entre le registre d'index de boucle et l'extrait.</li>
+</ul>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_1:_TESTER_DES_INSTRUCTIONS'><a class='permalink' href='#EXEMPLE_1:_TESTER_DES_INSTRUCTIONS'>EXEMPLE 1: TESTER DES INSTRUCTIONS</a></h1>
+<p class="Pp">Supposons que vous ayez une machine X86-64. Pour mesurer la latence d'une seule instruction, exécutez :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ llvm-exegesis --mode=latency --opcode-name=ADD64rr</pre>
+</div>
+</div>
+<p class="Pp">Mesurer la décomposition des uops ou le débit inverse d'une instruction fonctionne de manière similaire :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ llvm-exegesis --mode=uops --opcode-name=ADD64rr
+$ llvm-exegesis --mode=inverse_throughput --opcode-name=ADD64rr</pre>
+</div>
+</div>
+<p class="Pp">La sortie est un document YAML (par défaut, il écrit sur stdout, mais vous pouvez rediriger la sortie vers un fichier en utilisant <i>--benchmarks-file</i>) :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>---
+key:
+  opcode_name:     ADD64rr
+  mode:            latency
+  config:          ''
+cpu_name:        haswell
+llvm_triple:     x86_64-unknown-linux-gnu
+num_repetitions: 10000
+measurements:
+  - { key: latency, value: 1.0058, debug_string: '' }
+error:           ''
+info:            'explicit self cycles, selecting one aliasing configuration.
+Snippet:
+ADD64rr R8, R8, R10
+'
+...</pre>
+</div>
+</div>
+<p class="Pp">Pour mesurer la latence de toutes les instructions pour l'architecture hôte, exécutez :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ llvm-exegesis --mode=latency --opcode-index=-1</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_2:_TESTER_UN_EXTRAIT_DE_CODE_PERSONNALISÉ'><a class='permalink' href='#EXEMPLE_2:_TESTER_UN_EXTRAIT_DE_CODE_PERSONNALISÉ'>EXEMPLE 2: TESTER UN EXTRAIT DE CODE PERSONNALISÉ</a></h1>
+<p class="Pp">Pour mesurer la latence/les uops d'un morceau de code personnalisé, vous pouvez spécifier l'option <i>snippets-file</i> (<i>-</i> lit depuis l'entrée standard).</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ echo &quot;vzeroupper&quot; | llvm-exegesis --mode=uops --snippets-file=-</pre>
+</div>
+</div>
+<p class="Pp">Les extraits de code réels dépendent généralement des registres ou de la mémoire. <b>llvm-exegesis</b> vérifie la vivacité des registres (c'est-à-dire que toute utilisation de registre a une définition correspondante ou est un &quot;live in&quot;). Si votre code dépend de la valeur de certains registres, vous devez utiliser les annotations d'extrait pour garantir que la configuration est correctement effectuée.</p>
+<p class="Pp">
+<!-- FIXME: need to handle cases where snippet depends on memory or registers -->
+</p>
+</div>
+</section>
+
+</section>
+                
+            </article>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+">Par exemple, l'extrait de code suivant dépend des valeurs de
+    XMM1 (qui sera défini par l'outil) et du tampon mémoire passé dans RDI
+    (en direct).</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre># LLVM-EXEGESIS-LIVEIN RDI
+# LLVM-EXEGESIS-DEFREG XMM1 42
+vmulps        (%rdi), %xmm1, %xmm2
+vhaddps       %xmm2, %xmm2, %xmm3
+addq $0x10, %rdi</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_3:_MESURE_AVEC_ANNOTATIONS_MÉMOIRE'><a class='permalink' href='#EXEMPLE_3:_MESURE_AVEC_ANNOTATIONS_MÉMOIRE'>EXEMPLE   3: MESURE AVEC ANNOTATIONS MÉMOIRE</a></h1>
+<p class="Pp">Certains extraits nécessitent une configuration mémoire à des endroits
+    spécifiques pour s'exécuter sans planter. La configuration de la mémoire peut
+    être accomplie avec les annotations <i>LLVM-EXEGESIS-MEM-DEF</i> et
+    <i>LLVM-EXEGESIS-MEM-MAP</i>. Pour exécuter l'extrait suivant :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>movq $8192, %rax
+movq (%rax), %rdi</pre>
+</div>
+</div>
+<p class="Pp">Nous devons avoir au moins huit octets de mémoire alloués à partir de
+    <i>0x2000</i>. Nous pouvons créer l'environnement d'exécution nécessaire avec
+    les annotations suivantes ajoutées à l'extrait :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre># LLVM-EXEGESIS-MEM-DEF test1 4096 7fffffff
+# LLVM-EXEGESIS-MEM-MAP test1 8192
+movq $8192, %rax
+movq (%rax), %rdi</pre>
+</div>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_4:_ANALYSE'><a class='permalink' href='#EXEMPLE_4:_ANALYSE'>EXEMPLE   4: ANALYSE</a></h1>
+<p class="Pp">En supposant que vous ayez un ensemble d'instructions mesurées (en
+    latence ou en uops) au format YAML dans le fichier <i>/tmp/benchmarks.yaml</i>,
+    vous pouvez analyser les résultats en utilisant la commande suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>  $ llvm-exegesis --mode=analysis \
+--benchmarks-file=/tmp/benchmarks.yaml \
+--analysis-clusters-output-file=/tmp/clusters.csv \
+--analysis-inconsistencies-output-file=/tmp/inconsistencies.html</pre>
+</div>
+</div>
+<p class="Pp">Cela regroupera les instructions en clusters ayant les mêmes
+    caractéristiques de performance. Les clusters seront écrits dans
+    <i>/tmp/clusters.csv</i> dans le format suivant :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>cluster_id,opcode_name,config,sched_class
+...
+2,ADD32ri8_DB,,WriteALU,1.00
+2,ADD32ri_DB,,WriteALU,1.01
+2,ADD32rr,,WriteALU,1.01
+2,ADD32rr_DB,,WriteALU,1.00
+2,ADD32rr_REV,,WriteALU,1.00
+2,ADD64i32,,WriteALU,1.01
+2,ADD64ri32,,WriteALU,1.01
+2,MOVSX64rr32,,BSWAP32r_BSWAP64r_MOVSX64rr32,1.00
+2,VPADDQYrr,,VPADDBYrr_VPADDDYrr_VPADDQYrr_VPADDWYrr_VPSUBBYrr_VPSUBDYrr_VPSUBQYrr_VPSUBWYrr,1.02
+2,VPSUBQYrr,,VPADDBYrr_VPADDDYrr_VPADDQYrr_VPADDWYrr_VPSUBBYrr_VPSUBDYrr_VPSUBQYrr_VPSUBWYrr,1.01
+2,ADD64ri8,,WriteALU,1.00
+2,SETBr,,WriteSETCC,1.01
+...</pre>
+</div>
+</div>
+<p class="Pp"><b>llvm-exegesis</b> analysera également les clusters pour signaler
+    les incohérences dans les informations de planification. La sortie est un
+    fichier HTML. Par exemple, <i>/tmp/inconsistencies.html</i> contiendra des
+    messages tels que les suivants : [image]</p>
+<p class="Pp">Notez que les noms des classes de planification ne seront résolus que
+    lorsque <b>llvm-exegesis</b> est compilé en mode débogage, sinon seul
+    l'identifiant de la classe sera affiché. Cela n'invalide cependant aucun des
+    résultats de l'analyse.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="help"><a class="permalink" href="#help"><b>--help</b></a></dt>
+  <dd>Imprimer un résumé des options de ligne de commande.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="opcode"><a class="permalink" href="#opcode"><b>--opcode-index=&lt;indice
+    d'opcode LLVM&gt;</b></a></dt>
+  <dd>Spécifier l'opcode à mesurer, par indice. Spécifier <i>-1</i> entraînera
+      la mesure de chaque opcode existant. Voir l'exemple 1 pour les détails.
+      <i>opcode-index</i>, <i>opcode-name</i> ou <i>snippets-file</i> doivent
+      être définis.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="opcode~2"><a class="permalink" href="#opcode~2"><b>--opcode-name=&lt;nom
+    d'opcode 1&gt;,&lt;nom d'opcode 2&gt;,...</b></a></dt>
+  <dd>Spécifier l'opcode à mesurer, par nom. Plusieurs opcodes peuvent être
+      spécifiés sous forme de liste séparée par des virgules. Voir l'exemple 1
+      pour les détails. <i>opcode-index</i>, <i>opcode-name</i> ou
+      <i>snippets-file</i> doivent être définis.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="snippets"><a class="permalink" href="#snippets"><b>--snippets-file=&lt;nom
+    de fichier&gt;</b></a></dt>
+  <dd>Spécifier l'extrait de code personnalisé à mesurer. Voir l'exemple 2 pour
+      les détails. <i>opcode-index</i>, <i>opcode-name</i> ou
+      <i>snippets-file</i> doivent être définis.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="mode=_latency_uops_inverse_throughput_analysis_"><a class="permalink" href="#mode=_latency_uops_inverse_throughput_analysis_"><b>--mode=[latency|uops|inverse_throughput|analysis]</b></a></dt>
+  <dd>Spécifier le mode d'exécution. Notez que certains modes ont des exigences
+      et des options supplémentaires.
+    <p class="Pp">Le mode <i>latency</i> peut utiliser soit RDTSC, soit LBR.
+        <i>latency[LBR]</i> n'est disponible que sur X86 (au moins depuis
+        <i>Skylake</i>). Pour exécuter en mode <i>latency</i>, une valeur positive
+        doit être spécifiée pour <i>x86-lbr-sample-period</i> et
+        <i>--repetition-mode=loop</i>.</p>
+    <p class="Pp">En mode <i>analysis</i>, vous devez également spécifier au
+        moins l'une des options <i>-analysis-clusters-output-file=</i> et
+        <i>-analysis-inconsistencies-output-file=</i>.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="benchmark"><a class="permalink" href="#benchmark"><b>--benchmark-phase=[prepare-snippet|prepare-and-assemble-snippet|assemble-measured-code|measure]</b></a></dt>
+  <dd>Par défaut, lorsque <i>-mode=</i> est spécifié, l'extrait généré sera
+      exécuté et mesuré, ce qui nécessite que nous soyons sur le matériel pour
+      lequel l'extrait a été généré, et qui prend en charge les mesures de
+      performance. Cependant, il est possible de s'arrêter à une certaine étape
+      avant la mesure. Les choix sont : * <b>prepare-snippet</b>: Générer
+      uniquement la séquence d'instructions minimale. *
+      <b>prepare-and-assemble-snippet</b>: Identique à <b>prepare-snippet</b>,
+      mais affiche également un extrait de la séquence (encodé en hexadécimal). *
+      <b>assemble-measured-code</b>: Identique à
+      <b>prepare-and-assemble-snippet</b>, mais crée également la séquence
+      complète qui peut être exportée dans un fichier en utilisant
+      <b>--dump-object-to-disk</b>. * <b>measure</b>: Identique à
+      <b>assemble-measured-code</b>, mais exécute également la mesure.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="x86"><a class="permalink" href="#x86"><b>--x86-lbr-sample-period=&lt;nBranches/sample&gt;</b></a></dt>
+  <dd>Spécifier la période d'échantillonnage LBR - combien de branches avant de
+      prendre un échantillon. Lorsqu'une valeur positive est spécifiée pour cette
+      option et que le mode est <i>latency</i>, nous utiliserons les LBR pour la
+      mesure. Pour choisir la "bonne" période d'échantillonnage, une petite valeur
+      est préférée, mais un ralentissement pourrait se produire si
+      l'échantillonnage est trop fréquent. Un nombre premier doit être utilisé
+      pour éviter de sauter systématiquement certains blocs.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="x86~2"><a class="permalink" href="#x86~2"><b>--x86-disable-upper-sse-registers</b></a></dt>
+  <dd>L'utilisation des registres xmm supérieurs (xmm8-xmm15) force un encodage
+      d'instruction plus long, ce qui peut exercer une pression plus grande sur
+      les étapes de recherche et de décodage du frontend, réduisant potentiellement
+      le taux de dispatch des instructions vers le backend, en particulier sur le
+      matériel plus ancien. Comparer les résultats de base avec ce mode activé
+      peut aider à déterminer les effets du frontend et peut être utilisé pour
+      améliorer les estimations de latence et de débit.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="repetition"><a class="permalink" href="#repetition"><b>--repetition-mode=[duplicate|loop|min|middle-half-duplicate|middle-half-loop]</b></a></dt>
+  <dd>Spécifier le mode de répétition. <i>duplicate</i> créera un bloc de base
+      large et linéaire avec <i>min-instructions</i> instructions (en répétant
+      l'extrait <i>min-instructions</i>/<i>taille de l'extrait</i> fois).
+      <i>loop</i>, éventuellement, dupliquera l'extrait jusqu'à ce que le corps de
+      la boucle contienne au moins <i>loop-body-size</i> instructions, puis
+      encapsulera le résultat dans une boucle qui exécutera <i>min-instructions</i>
+      instructions (donc, encore une fois, en répétant l'extrait
+      <i>min-instructions</i>/<i>taille de l'extrait</i> fois). Le mode
+      <i>loop</i>, en particulier avec le déroulement de boucle, a tendance à mieux
+      masquer les effets du frontend du CPU sur les architectures qui mettent en
+      cache les instructions décodées, mais consomme un registre pour compter les
+      itérations. Si vous effectuez une analyse sur de nombreux opcodes, il peut
+      être préférable d'utiliser le mode <i>min</i>, qui exécutera chaque autre
+      mode et produira le résultat mesuré minimal. Les modes de répétition de la
+      moitié centrale dupliqueront ou exécuteront l'extrait en boucle selon le
+      mode spécifique. Les modes de répétition de la moitié centrale exécuteront
+      deux mesures, l'une deux fois plus longue que la première, puis soustrairont
+      la différence entre les deux pour obtenir des valeurs sans surcharge.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="min"><a class="permalink" href="#min"><b>--min-instructions=&lt;Nombre
+    d'instructions&gt;</b></a></dt>
+  <dd>Spécifier le nombre cible d'instructions exécutées. Notez que le nombre
+      réel de répétitions de l'extrait sera <i>min-instructions</i>/<i>taille de
+      l'extrait</i>. Des valeurs plus élevées conduisent à des mesures plus
+      précises mais allongent la mesure.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="loop"><a class="permalink" href="#loop"><b>--loop-body-size=&lt;Taille
+    préférée du corps de boucle&gt;</b></a></dt>
+  <dd>Uniquement efficace pour <i>-repetition-mode=[loop|min]</i>. Au lieu de
+      boucler directement sur l'extrait, dupliquez-le d'abord pour que le corps de
+      la boucle contienne au moins ce nombre d'instructions. Cela peut potentiellement
+      conduire à ce que le corps de la boucle soit mis en cache dans le CPU Op
+      Cache / Loop Cache, ce qui permet d'obtenir un débit potentiellement plus
+      élevé que les décodeurs CPU.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="max"><a class="permalink" href="#max"><b>--max-configs-per-opcode=&lt;valeur&gt;</b></a></dt>
+  <dd>Spécifier le nombre maximum de configurations qui peuvent être générées pour
+      chaque opcode. Par défaut, il est de <i>1</i>, ce qui signifie que nous
+      supposons qu'une seule mesure suffit à caractériser un opcode. Cela peut ne
+      pas être vrai pour toutes les instructions : par exemple, les caractéristiques
+      de performance de l'instruction LEA sur X86 dépendent de la valeur des
+      registres et des immédiats assignés. Définir une valeur de
+      <i>-max-configs-per-opcode</i> supérieure à <i>1</i> permet à
+      <i>llvm-exegesis</i> d'explorer plus de configurations pour découvrir si
+      certaines assignations de registres ou d'immédiats entraînent des
+      caractéristiques de performance différentes.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="benchmarks"><a class="permalink" href="#benchmarks"><b>--benchmarks-file=&lt;/chemin/vers/fichier&gt;</b></a></dt>
+  <dd>Fichier pour lire (mode <i>analysis</i>) ou écrire (modes
+      <i>latency</i>/<i>uops</i>/<i>inverse_throughput</i>) les résultats des
+      mesures. &quot;-&quot; utilise stdin/stdout.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis"><a class="permalink" href="#analysis"><b>--analysis-clusters-output-file=&lt;/chemin/vers/fichier&gt;</b></a></dt>
+  <dd>Si fourni, écrire les clusters d'analyse sous forme de CSV dans ce fichier.
+      &quot;-&quot; imprime sur stdout. Par défaut, cette analyse n'est pas
+      exécutée.</dd>
+</dl>
+</div>
+<div class="B<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~2"><a class="permalink" href="#analysis~2"><b>--analysis-inconsistencies-output-file=&lt;/chemin/vers/fichier&gt;</b></a></dt>
+  <dd>Si non vide, écrit les incohérences trouvées pendant l'analyse dans ce fichier.
+      <i>-</i> imprime sur stdout. Par défaut, cette analyse n'est pas exécutée.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~3"><a class="permalink" href="#analysis~3"><b>--analysis-filter=[all|reg-only|mem-only]</b></a></dt>
+  <dd>Par défaut, tous les résultats de benchmark sont analysés, mais il peut être
+      utile parfois de ne regarder que ceux qui n'impliquent pas de mémoire, ou vice versa.
+      Cette option permet soit de conserver tous les benchmarks, soit de filtrer (ignorer)
+      soit tous ceux qui impliquent de la mémoire (impliquent des instructions pouvant
+      lire ou écrire en mémoire), soit l'inverse, de ne conserver que ces
+    benchmarks.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~4"><a class="permalink" href="#analysis~4"><b>--analysis-clustering=[dbscan,naive]</b></a></dt>
+  <dd>Spécifie l'algorithme de clustering à utiliser. Par défaut, DBSCAN sera utilisé.
+      L'algorithme de clustering naïf est mieux adapté pour un travail ultérieur sur la
+      sortie de <i>-analysis-inconsistencies-output-file=</i>, il créera un cluster par opcode,
+      et vérifiera que le cluster est stable (tous les points sont voisins).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~5"><a class="permalink" href="#analysis~5"><b>--analysis-numpoints=&lt;paramètre numPoints de dbscan&gt;</b></a></dt>
+  <dd>Spécifie le paramètre numPoints à utiliser pour le clustering DBSCAN
+      (mode <i>analysis</i>, DBSCAN uniquement).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~6"><a class="permalink" href="#analysis~6"><b>--analysis-clustering-epsilon=&lt;paramètre epsilon de dbscan&gt;</b></a></dt>
+  <dd>Spécifie le paramètre epsilon utilisé pour le clustering des points de benchmark
+      (mode <i>analysis</i>).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~7"><a class="permalink" href="#analysis~7"><b>--analysis-inconsistency-epsilon=&lt;epsilon&gt;</b></a></dt>
+  <dd>Spécifie le paramètre epsilon utilisé pour la détection des cas où le cluster est
+      différent des valeurs du profil d'ordonnancement LLVM (mode <i>analysis</i>).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~8"><a class="permalink" href="#analysis~8"><b>--analysis-display-unstable-clusters</b></a></dt>
+  <dd>S'il y a plus d'un benchmark pour un opcode, ces benchmarks peuvent ne pas être groupés
+      dans le même cluster si les caractéristiques de performance mesurées sont différentes.
+      Par défaut, tous ces opcodes sont filtrés. Ce drapeau affichera uniquement ces opcodes instables.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ignore"><a class="permalink" href="#ignore"><b>--ignore-invalid-sched-class=false</b></a></dt>
+  <dd>S'il est défini, ignore les instructions qui n'ont pas de classe d'ordonnancement (indice de classe = 0).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="mtriple=_triple"><a class="permalink" href="#mtriple=_triple"><b>--mtriple=&lt;nom du triple&gt;</b></a></dt>
+  <dd>Triple cible. Voir <i>-version</i> pour les cibles disponibles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="mcpu=_cpu"><a class="permalink" href="#mcpu=_cpu"><b>--mcpu=&lt;nom du cpu&gt;</b></a></dt>
+  <dd>S'il est défini, mesure les caractéristiques du CPU en utilisant les compteurs pour ce CPU.
+      Ceci est utile lors de la création de nouveaux modèles d'ordonnancement (le CPU hôte n'est pas connu de LLVM). (<i>-mcpu=help</i> pour plus de détails)</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="analysis~9"><a class="permalink" href="#analysis~9"><b>--analysis-override-benchmark-triple-and-cpu</b></a></dt>
+  <dd>Par défaut, llvm-exegesis analysera les benchmarks pour le triple/CPU pour lesquels ils ont été mesurés, mais si vous souhaitez les analyser pour une autre combinaison (spécifiée via <i>-mtriple</i>/<i>-mcpu</i>), vous pouvez passer ce drapeau.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="dump"><a class="permalink" href="#dump"><b>--dump-object-to-disk=&lt;nom de fichier&gt;</b></a></dt>
+  <dd>S'il est défini, llvm-exegesis exportera le code généré dans un fichier temporaire pour permettre l'inspection du code. Désactivé par défaut.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="use"><a class="permalink" href="#use"><b>--use-dummy-perf-counters</b></a></dt>
+  <dd>S'il est défini, llvm-exegesis ne lira aucun compteur de performance réel et
+      renverra une valeur factice à la place. Ceci peut être utilisé pour s'assurer qu'un extrait de code ne plante pas lorsque les compteurs de performance matériels ne sont pas disponibles et pour déboguer
+      <b>llvm-exegesis</b> lui-même.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="execution"><a class="permalink" href="#execution"><b>--execution-mode=[inprocess,subprocess]</b></a></dt>
+  <dd>Cette option spécifie le mode d'exécution à utiliser. Le mode d'exécution <i>inprocess</i>
+      est le mode par défaut. Le mode d'exécution <i>subprocess</i> permet des fonctionnalités supplémentaires telles que les annotations mémoire, mais est actuellement limité à X86-64 sous Linux.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="benchmark~2"><a class="permalink" href="#benchmark~2"><b>--benchmark-repeat-count=&lt;nombre de répétitions&gt;</b></a></dt>
+  <dd>Cette option permet de spécifier le nombre de fois où la mesure doit être répétée
+      lors de la mesure de la latence. Par défaut,
+      llvm-exegesis répétera une mesure de latence suffisamment de fois pour équilibrer
+      le temps d'exécution et la réduction du bruit.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="validation"><a class="permalink" href="#validation"><b>--validation-counter=[instructions-retired,l1d-cache-load-misses,</b></a></dt>
+  <dd></dd>
+  <dt id="l1d"><a class="permalink" href="#l1d"><b>l1d-cache-store-misses,l1i-cache-load-misses,data-tlb-load-misses,</b></a></dt>
+  <dd></dd>
+  <dt id="data"><a class="permalink" href="#data"><b>data-tld-store-misses,instruction-tlb-load-misses]</b></a></dt>
+  <dd>Cette option permet l'utilisation de compteurs de validation, qui mesurent
+      des événements microarchitecturaux supplémentaires tels que les misses de cache pour valider les conditions d'exécution des extraits. Ces événements sont mesurés à l'aide du sous-système perf
+      dans un groupe avec le compteur de performance utilisé pour mesurer la valeur d'intérêt. Ce drapeau peut être spécifié plusieurs fois pour mesurer plusieurs événements. Le nombre maximum de compteurs de validation dépend de la plateforme.
+    </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="benchmark~3"><a class="permalink" href="#benchmark~3"><b>--benchmark-process-cpu=&lt;ID du CPU&gt;</b></a></dt>
+  <dd>Cette option spécifie le numéro du CPU qui doit être utilisé pour exécuter le
+      sous-processus de benchmark. Lors du démarrage du sous-processus,
+      <b>llvm-exegesis</b> définira l'affinité du sous-processus pour qu'il n'inclue que le CPU spécifié. Cette option ne fonctionne qu'en mode d'exécution par sous-processus.</dd>
+</dl>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXIT_STATUS'><a class='permalink' href='#EXIT_STATUS'>STATUT   DE SORTIE</a></h1>
+<p class="Pp"><b>llvm-exegesis</b> retourne 0 en cas de succès. Sinon, un message d'erreur est imprimé sur la sortie d'erreur standard, et l'outil retourne une valeur non nulle.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Author'><a class='permalink' href='#Author'>Auteur</a></h1>
+<p class="Pp">Maintenu par l'équipe LLVM (<a href='https://llvm.org/'>https://llvm.org/</a>).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Copyright'><a class='permalink' href='#Copyright'>Copyright</a></h1>
+<p class="Pp">2003-2025, Projet LLVM</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-11-19</td>
+    <td class="foot-os">21</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/llvm/">extra/llvm</a></dd>
+        <dt>Version :</dt>
+        <dd>21.1.6-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://llvm.org/">https://llvm.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache-2.0 WITH LLVM-exception</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/llvm/">/listing/extra/llvm/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#SUPPORTED_PLATFORMS">PLATEFORMES PRISES EN CHARGE</a></li>
+        
+            <li><a href="#SNIPPET_ANNOTATIONS">ANNOTATIONS DE SNIPPETS</a></li>
+        
+            <li><a href="#EXAMPLE_1:_BENCHMARKING_INSTRUCTIONS">EXEMPLE 1 : MESURE DES INSTRUCTIONS</a></li>
+        
+            <li><a href="#EXAMPLE_2:_BENCHMARKING_A_CUSTOM_CODE_SNIPPET">EXEMPLE 2 : MESURE D'UN EXTRAIT DE CODE PERSONNALISÉ</a></li>
+        
+            <li><a href="#EXAMPLE_3:_BENCHMARKING_WITH_MEMORY_ANNOTATIONS">EXEMPLE 3 : MESURE AVEC ANNOTATIONS MÉMOIRE</a></li>
+        
+            <li><a href="#EXAMPLE_4:_ANALYSIS">EXEMPLE 4 : ANALYSE</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#EXIT_STATUS">STATUT DE SORTIE</a></li>
+        
+            <li><a href="#Author">AUTEUR</a></li>
+        
+            <li><a href="#Copyright">COPYRIGHT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/llvm-exegesis.1.fr.txt">txt</a>, 
+        
+            <a href="/man/llvm-exegesis.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

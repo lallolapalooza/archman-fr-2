@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlcall(1perl) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlcall.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLCALL(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLCALL(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlcall - Conventions d'appel de Perl depuis C</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Le but de ce document est de vous montrer comment appeler des sous-programmes Perl directement depuis C, c'est-à-dire comment écrire des <i>callbacks</i> (rappels).</p>
+<p class="Pp">En plus de discuter de l'interface C fournie par Perl pour écrire des callbacks, le document utilise une série d'exemples pour montrer comment l'interface fonctionne en pratique. De plus, certaines techniques de codage de callbacks sont abordées.</p>
+<p class="Pp">Les exemples où des callbacks sont nécessaires incluent :</p>
+<ul class="Bl-bullet">
+  <li>Un gestionnaire d'erreurs :
+    <p class="Pp">Vous avez créé une interface XSUB vers l'API C d'une application.</p>
+    <p class="Pp">Une fonctionnalité assez courante dans les applications est de permettre la définition d'une fonction C qui sera appelée chaque fois que quelque chose de grave se produit. Ce que nous aimerions, c'est pouvoir spécifier un sous-programme Perl qui sera appelé à la place.</p>
+  </li>
+  <li>Un programme événementiel :
+    <p class="Pp">L'exemple classique d'utilisation de callbacks est l'écriture d'un programme événementiel, comme pour une application X11. Dans ce cas, vous enregistrez des fonctions à appeler chaque fois que des événements spécifiques se produisent, par exemple, un bouton de souris est pressé, le curseur entre dans une fenêtre ou un élément de menu est sélectionné.</p>
+  </li>
+</ul>
+<p class="Pp">Bien que les techniques décrites ici soient applicables lors de l'intégration de Perl dans un programme C, ce n'est pas l'objectif principal de ce document. D'autres détails doivent être pris en compte et sont spécifiques à l'intégration de Perl. Pour plus d'informations sur l'intégration de Perl dans C, référez-vous à
+<a href="perlembed.html">perlembed</a>.</p>
+<p class="Pp">Avant de vous lancer tête baissée dans le reste de ce document, il serait judicieux d'avoir lu les deux documents suivants : <a href="perlxs.html">perlxs</a> et <a href="perlguts.html">perlguts</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LES_FONCTIONS_CALL'><a class='permalink' href='#LES_FONCTIONS_CALL'>LES FONCTIONS CALL</a></h1>
+<p class="Pp">Bien que ce soit plus facile à expliquer à l'aide d'exemples, vous devez d'abord connaître quelques définitions importantes.</p>
+<p class="Pp">Perl dispose d'un certain nombre de fonctions C qui vous permettent d'appeler des sous-programmes Perl. Ce sont :</p>
+<pre>I32 call_sv(SV* sv, I32 flags);
+I32 call_pv(char *subname, I32 flags);
+I32 call_method(char *methname, I32 flags);
+I32 call_argv(char *subname, I32 flags, char **argv);</pre>
+<p class="Pp">La fonction clé est <i>call_sv</i>. Toutes les autres fonctions sont des wrappers assez simples qui facilitent l'appel de sous-programmes Perl dans des cas spéciaux. Au final, elles appelleront toutes <i>call_sv</i> pour invoquer le sous-programme Perl.</p>
+<p class="Pp">Toutes les fonctions <i>call_*</i> ont un paramètre
+    <span class="Li">&quot;flags&quot;</span> qui est utilisé pour passer un masque de bits d'options à Perl. Ce masque de bits fonctionne de manière identique pour chacune des fonctions. Les paramètres disponibles dans le masque de bits sont discutés dans &quot;VALEURS DES FLAGS&quot;.</p>
+<p class="Pp">Chacune des fonctions sera maintenant discutée tour à tour.</p>
+<dl class="Bl-tag">
+  <dt id="call_sv"><a class="permalink" href="#call_sv">call_sv</a></dt>
+  <dd><i>call_sv</i> prend deux paramètres. Le premier,
+      <span class="Li">&quot;sv&quot;</span>, est un SV*. Cela vous permet de
+      spécifier le sous-programme Perl à appeler, soit sous forme de chaîne C
+      (qui a été préalablement convertie en SV) soit sous forme de référence à
+      un sous-programme. La section &quot;Utilisation de call_sv&quot; montre
+      comment vous pouvez utiliser <i>call_sv</i>.</dd>
+  <dt id="call_pv"><a class="permalink" href="#call_pv">call_pv</a></dt>
+  <dd>La fonction <i>call_pv</i> est similaire à <i>call_sv</i>, sauf qu'elle attend
+      que son premier paramètre soit un char* C identifiant le sous-programme
+      Perl que vous souhaitez appeler, par exemple
+      <span class="Li">&quot;call_pv(\&quot;fred\&quot;, 0)&quot;</span>. Si le
+      sous-programme que vous souhaitez appeler se trouve dans un autre package,
+      incluez simplement le nom du package dans la chaîne, par exemple
+      <span class="Li">&quot;pkg::fred&quot;</span>.</dd>
+  <dt id="call_method"><a class="permalink" href="#call_method">call_method</a></dt>
+  <dd>La fonction <i>call_method</i> est utilisée pour appeler une méthode d'une
+      classe Perl. Le paramètre <span class="Li">&quot;methname&quot;</span>
+      correspond au nom de la méthode à appeler. Notez que la classe à laquelle
+      appartient la méthode est passée sur la pile Perl plutôt que dans la liste
+      des paramètres. Cette classe peut être soit le nom de la classe (pour une
+      méthode statique) soit une référence à un objet (pour une méthode
+      virtuelle). Voir <a href="perlobj.html">perlobj</a> pour plus d'informations
+      sur les méthodes statiques et virtuelles et &quot;Utilisation de
+      call_method&quot; pour un exemple d'utilisation de
+      <i>call_method</i>.</dd>
+  <dt id="call_argv"><a class="permalink" href="#call_argv">call_argv</a></dt>
+  <dd><i>call_argv</i> appelle le sous-programme Perl spécifié par la chaîne C
+      stockée dans le paramètre <span class="Li">&quot;subname&quot;</span>. Elle
+      prend également le paramètre habituel <span class="Li">&quot;flags&quot;</span>.
+      Le dernier paramètre, <span class="Li">&quot;argv&quot;</span>, consiste en
+      une liste de chaînes C se terminant par NULL, à passer comme paramètres au
+      sous-programme Perl. Voir &quot;Utilisation de call_argv&quot;.</dd>
+</dl>
+<p class="Pp">Toutes ces fonctions retournent un entier. Il s'agit du nombre d'éléments retournés par le sous-programme Perl. Les éléments réels retournés par le sous-programme sont stockés sur la pile Perl.</p>
+<p class="Pp">En règle générale, vous devriez <i>toujours</i> vérifier la valeur de retour de ces fonctions. Même si vous vous attendez à un nombre particulier de valeurs retournées par le sous-programme Perl, rien n'empêche quelqu'un de faire quelque chose d'inattendu - ne dites pas que vous n'avez pas été prévenu.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VALEURS_DES_FLAGS'><a class='permalink' href='#VALEURS_DES_FLAGS'>VALEURS DES FLAGS</a></h1>
+<p class="Pp">Le paramètre <span class="Li">&quot;flags&quot;</span> dans toutes les
+    fonctions <i>call_*</i> est soit
+    <span class="Li">&quot;G_VOID&quot;</span>,
+    <span class="Li">&quot;G_SCALAR&quot;</span>, soit
+    <span class="Li">&quot;G_LIST&quot;</span>, qui indiquent le contexte d'appel,
+    combinés par OU (OR) avec un masque de bits de n'importe quelle combinaison
+    des autres symboles G_* définis ci-dessous.</p>
+<section class="Ss">
+<h2 class="Ss" id='G_VOID'><a class='permalink' href='#G_VOID'>G_VOID</a></h2>
+<p class="Pp">Appelle le sous-programme Perl dans un contexte vide.</p>
+<p class="Pp">Ce flag a 2 effets :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Il indique au sous-programme appelé qu'il s'exécute dans un contexte vide
+      (s'il exécute <i>wantarray</i>, le résultat sera la valeur indéfinie).</dd>
+  <dt>2.</dt>
+  <dd>Il garantit que rien n'est effectivement retourné par le sous-programme.</dd>
+</dl>
+<p class="Pp">La valeur retournée par la fonction <i>call_*</i> indique le
+    nombre d'éléments retournés par le sous-programme Perl - dans ce cas, ce
+    sera 0.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_SCALAR'><a class='permalink' href='#G_SCALAR'>G_SCALAR</a></h2>
+<p class="Pp">Appelle le sous-programme Perl dans un contexte scalaire. C'est le
+    paramètre de contexte par défaut pour toutes les fonctions <i>call_*</i>.</p>
+<p class="Pp">Ce flag a 2 effets :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Il indique au sous-programme appelé qu'il s'exécute dans un contexte
+      scalaire (s'il exécute <i>wantarray</i>, le résultat sera faux).</dd>
+  <dt>2.</dt>
+  <dd>Il garantit qu'un seul scalaire est effectivement retourné par le
+      sous-programme. Le sous-programme peut, bien sûr, ignorer <i>wantarray</i>
+      et retourner une liste de toute façon. Si c'est le cas, seul le dernier
+      élément de la liste sera retourné.</dd>
+</dl>
+<p class="Pp">La valeur retournée par la fonction <i>call_*</i> indique le
+    nombre d'éléments retournés par le sous-programme Perl - dans ce cas, ce
+    sera soit 0, soit 1.</p>
+<p class="Pp">Si c'est 0, alors vous avez spécifié le flag G_DISCARD.</p>
+<p class="Pp">Si c'est 1, alors l'élément effectivement retourné par le sous-programme
+    Perl sera stocké sur la pile Perl - la section &quot;Retour d'un scalaire&quot;
+    montre comment accéder à cette valeur sur la pile. Rappelez-vous que quel
+    que soit le nombre d'éléments retournés par le sous-programme Perl, seul le
+    dernier sera accessible depuis la pile - considérez le cas où une seule
+    valeur est retournée comme une liste avec un seul élément. Tous les autres
+    éléments qui ont été retournés n'existeront pas lorsque le contrôle
+    reviendra de la fonction <i>call_*</i>. La section &quot;Retour d'une liste
+    en contexte scalaire&quot; montre un exemple de ce comportement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_LIST'><a class='permalink' href='#G_LIST'>G_LIST</a></h2>
+<p class="Pp">Appelle le sous-programme Perl dans un contexte de liste. Avant la
+    version 5.35.1 de Perl, cela s'appelait <span class="Li">&quot;G_ARRAY&quot;</span>.</p>
+<p class="Pp">Comme pour G_SCALAR, ce flag a 2 effets :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Il indique au sous-programme appelé qu'il s'exécute dans un contexte de
+      liste (s'il exécute <i>wantarray</i>, le résultat sera vrai).</dd>
+  <dt>2.</dt>
+  <dd>Il garantit que tous les éléments retournés par le sous-programme seront
+      accessibles lorsque le contrôle reviendra de la fonction
+      <i>call_*</i>.</dd>
+</dl>
+<p class="Pp">La valeur retournée par la fonction <i>call_*</i> indique le
+    nombre d'éléments retournés par le sous-programme Perl.</p>
+<p class="Pp">Si c'est 0, alors vous avez spécifié le flag G_DISCARD.</p>
+<p class="Pp">Si ce n'est pas 0, alors il w</p>
+</section>
+</div>
+</section>
+                
+            </article>
+        </main>
+    </body>
+</html>
+ill be a count of the number of items returned
+    by the subroutine. These items will be stored on the Perl stack. The section
+    &quot;Returning a List of Values&quot; gives an example of using the G_LIST
+    flag and the mechanics of accessing the returned items from the Perl
+  stack.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_DISCARD'><a class='permalink' href='#G_DISCARD'>G_DISCARD</a></h2>
+<p class="Pp">Par défaut, les fonctions <i>call_*</i> placent les éléments retournés
+    par la sous-routine Perl sur la pile. Si vous ne vous intéressez pas à ces
+    éléments, définir ce drapeau les fera automatiquement supprimer par Perl. Notez qu'il est toujours possible d'indiquer un contexte à la sous-routine Perl en utilisant soit G_SCALAR soit G_LIST.</p>
+<p class="Pp">Si vous ne définissez pas ce drapeau, il est alors *très* important de vous assurer que tous les temporaires (c'est-à-dire les paramètres passés à la sous-routine Perl et les valeurs retournées par la sous-routine) sont éliminés par vous-même. La section « Retourner un scalaire » donne des détails sur la manière d'éliminer explicitement ces temporaires et la section « Utiliser Perl pour éliminer les temporaires » discute des circonstances spécifiques où vous pouvez ignorer le problème et laisser Perl s'en occuper pour vous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_NOARGS'><a class='permalink' href='#G_NOARGS'>G_NOARGS</a></h2>
+<p class="Pp">Chaque fois qu'une sous-routine Perl est appelée en utilisant l'une des
+    fonctions <i>call_*</i>, il est supposé par défaut que des paramètres doivent être
+    passés à la sous-routine. Si vous ne passez aucun paramètre à la sous-routine Perl, vous pouvez gagner un peu de temps en définissant ce drapeau. Il a pour effet de ne pas créer le tableau <span class="Li">@_</span> pour la sous-routine Perl.</p>
+<p class="Pp">Bien que la fonctionnalité fournie par ce drapeau puisse sembler
+    simple, elle ne doit être utilisée que s'il y a une bonne raison de le faire.
+    La raison d'être prudent est que, même si vous avez spécifié le
+    drapeau G_NOARGS, il est toujours possible que la sous-routine Perl qui a été appelée pense que vous lui avez passé des paramètres.</p>
+<p class="Pp">En fait, ce qui peut arriver, c'est que la sous-routine Perl que vous avez appelée puisse accéder au tableau <span class="Li">@_</span> d'une sous-routine Perl précédente. Cela se produira lorsque le code qui exécute la
+    fonction <i>call_*</i> a lui-même été appelé à partir d'une autre sous-routine Perl.
+    Le code ci-dessous illustre cela</p>
+<pre>sub fred
+  { print &quot;@_\n&quot;  }
+sub joe
+  { &amp;fred }
+&amp;joe(1,2,3);</pre>
+<p class="Pp">Cela imprimera</p>
+<pre>1 2 3</pre>
+<p class="Pp">Ce qui s'est passé, c'est que <span class="Li">&quot;fred&quot;</span>
+    accède au tableau <span class="Li">@_</span> qui appartient à
+    <span class="Li">&quot;joe&quot;</span>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_EVAL'><a class='permalink' href='#G_EVAL'>G_EVAL</a></h2>
+<p class="Pp">Il est possible que la sous-routine Perl que vous appelez se termine anormalement, par exemple en appelant explicitement <i>die</i> ou en n'existant pas réellement. Par défaut, lorsque l'un de ces événements se produit, le processus se termine immédiatement. Si vous souhaitez intercepter ce type d'événement, spécifiez le drapeau G_EVAL. Il placera un <i>eval { }</i> autour de l'appel de la sous-routine.</p>
+<p class="Pp">Chaque fois que le contrôle revient de la fonction <i>call_*</i>, vous devez vérifier la variable <span class="Li">$@</span> comme vous le feriez dans un script Perl normal.</p>
+<p class="Pp">La valeur retournée par la fonction <i>call_*</i> dépend des autres drapeaux spécifiés et si une erreur s'est produite. Voici tous les différents cas possibles :</p>
+<ul class="Bl-bullet">
+  <li>Si la fonction <i>call_*</i> retourne normalement, la valeur retournée est
+      comme spécifié dans les sections précédentes.</li>
+  <li>Si G_DISCARD est spécifié, la valeur de retour sera toujours 0.</li>
+  <li>Si G_LIST est spécifié *et* qu'une erreur s'est produite, la valeur de retour sera toujours 0.</li>
+  <li>Si G_SCALAR est spécifié *et* qu'une erreur s'est produite, la valeur de retour sera 1 et la valeur au sommet de la pile sera
+      <i>undef</i>. Cela signifie que si vous avez déjà détecté l'erreur en vérifiant <span class="Li">$@</span> et que vous souhaitez que le programme continue, vous devez vous souvenir de dépiler l' <i>undef</i> de la pile.</li>
+</ul>
+<p class="Pp">Voir « Utilisation de G_EVAL » pour plus de détails sur l'utilisation de G_EVAL.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='G_KEEPERR'><a class='permalink' href='#G_KEEPERR'>G_KEEPERR</a></h2>
+<p class="Pp">L'utilisation du drapeau G_EVAL décrit ci-dessus définira toujours
+    <span class="Li">$@</span> : le nettoyant s'il n'y avait pas d'erreur, et le définissant pour décrire l'erreur s'il y avait une erreur dans le code appelé. C'est ce que vous voulez si votre intention est de gérer les erreurs potentielles, mais parfois vous voulez simplement intercepter les erreurs et les empêcher d'interférer avec le reste du programme.</p>
+<p class="Pp">Ce scénario sera principalement applicable au code destiné à être appelé à partir de destructeurs, de rappels asynchrones et de gestionnaires de signaux. Dans de telles situations, où le code appelé a peu de relation avec le contexte dynamique environnant, le programme principal doit être isolé des erreurs dans le code appelé, même si elles ne peuvent pas être gérées intelligemment. Il peut également être utile de faire cela avec du code pour les crochets
+    <span class="Li">&quot;__DIE__&quot;</span> ou
+    <span class="Li">&quot;__WARN__&quot;</span>, et les fonctions
+    <span class="Li">&quot;tie&quot;</span>.</p>
+<p class="Pp">Le drapeau G_KEEPERR est destiné à être utilisé conjointement avec G_EVAL dans les
+    fonctions <i>call_*</i> qui sont utilisées pour implémenter un tel code, ou avec
+    <span class="Li">&quot;eval_sv&quot;</span>. Ce drapeau n'a aucun effet sur les
+    fonctions <i>call_*</i> lorsque G_EVAL n'est pas utilisé.</p>
+<p class="Pp">Lorsque G_KEEPERR est utilisé, toute erreur dans le code appelé terminera l'appel comme d'habitude, et l'erreur ne se propagera pas au-delà de l'appel (comme d'habitude pour G_EVAL), mais elle n'ira pas dans
+    <span class="Li">$@</span>. Au lieu de cela, l'erreur sera convertie en un avertissement, préfixé par la chaîne "\t(in cleanup)". Ceci peut être désactivé en utilisant
+    <span class="Li">&quot;no warnings 'misc'&quot;</span>. S'il n'y a pas d'erreur,
+    <span class="Li">$@</span> ne sera pas effacé.</p>
+<p class="Pp">Notez que le drapeau G_KEEPERR ne se propage pas dans les evals internes ;
+    ceux-ci peuvent toujours définir <span class="Li">$@</span>.</p>
+<p class="Pp">Le drapeau G_KEEPERR a été introduit dans la version 5.002 de Perl.</p>
+<p class="Pp">Voir « Utilisation de G_KEEPERR » pour un exemple de situation justifiant l'utilisation de ce drapeau.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Determining_the_Context'><a class='permalink' href='#Determining_the_Context'>Détermination du contexte</a></h2>
+<p class="Pp">Comme mentionné ci-dessus, vous pouvez déterminer le contexte de la sous-routine en cours d'exécution en Perl avec <i>wantarray</i>. Le test équivalent peut être fait en C en utilisant la macro <span class="Li">&quot;GIMME_V&quot;</span>, qui retourne <span class="Li">&quot;G_LIST&quot;</span> si vous avez été appelé dans un contexte de liste, <span class="Li">&quot;G_SCALAR&quot;</span> si dans un contexte scalaire, ou <span class="Li">&quot;G_VOID&quot;</span> si dans un contexte vide (c'est-à-dire que la valeur de retour ne sera pas utilisée). Une ancienne version dépréciée de cette macro s'appelle <span class="Li">&quot;GIMME&quot;</span> ; dans un contexte vide, elle retourne <span class="Li">&quot;G_SCALAR&quot;</span> au lieu de <span class="Li">&quot;G_VOID&quot;</span>. Un exemple d'utilisation de la macro <span class="Li">&quot;GIMME_V&quot;</span> est montré dans la section « Utilisation de GIMME_V ».</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLES'><a class='permalink' href='#EXAMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Assez de théorie ! Voici quelques exemples.</p>
+<p class="Pp">Perl fournit de nombreuses macros pour aider à accéder à la pile Perl.
+    Dans la mesure du possible, ces macros doivent toujours être utilisées lors de l'interfaçage avec les internes de Perl. Nous espérons que cela rendra le code moins vulnérable aux changements apportés à Perl à l'avenir.</p>
+<p class="Pp">Un autre point à noter est que dans la première série d'exemples, j'ai utilisé uniquement la fonction <i>call_pv</i>. Cela a été fait pour garder le code simple et vous introduire en douceur au sujet. Dans la mesure du possible, si le choix se situe entre l'utilisation de <i>call_pv</i> et <i>call_sv</i>, vous devriez toujours essayer d'utiliser <i>call_sv</i>. Voir « Utilisation de call_sv » pour plus de détails.</p>
+<section class="Ss">
+<h2 class="Ss" id='No_Parameters,_Nothing_Returned'><a class='permalink' href='#No_Parameters,_Nothing_Returned'>Aucun paramètre, rien retourné</a></h2>
+<p class="Pp">Ce premier exemple trivial appellera une sous-routine Perl,
+    <i>PrintUID</i>, pour afficher l'UID du processus.</p>
+<pre>sub PrintUID
+{
+    print &quot;UID is $&lt;\n&quot;;
+}</pre>
+<p class="Pp">et voici une fonction C pour l'appeler</p>
+<pre>static void
+call_PrintUID()
+{
+    dSP;
+    PUSHMARK(SP);
+    call_pv(&quot;PrintUID&quot;, G_DISCARD|G_NOARGS);
+}</pre>
+<p class="Pp">Simple, hein ?</p>
+<p class="Pp">Quelques points à noter à propos de cet exemple :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Ignorez <span class="Li">&quot;dSP&quot;</span> et
+      <span class="Li">PUSHMARK(SP)</span> pour l'instant. Ils seront discutés dans le prochain exemple.</dd>
+  <dt>2.</dt>
+  <dd>Nous ne passons aucun paramètre à <i>PrintUID</i>, donc G_NOARGS peut être spécifié.</dd>
+  <dt>3.</dt>
+  <dd>Nous ne nous intéressons à rien de retourné par <i>PrintUID</i>, donc
+      G_DISCARD est spécifié. Même si <i>PrintUID</i> était modifié pour retourner une ou plusieurs valeurs, le fait d'avoir spécifié G_DISCARD signifie qu'elles seront effacées au moment où le contrôle reviendra de <i>call_pv</i>.</dd>
+  <dt>4.</dt>
+  <dd>Comme <i>call_pv</i> est utilisé, la sous-routine Perl est spécifiée comme une chaîne C. Dans ce cas, le nom de la sous-routine a été "codé en dur" dans le code.</dd>
+  <dt>5.</dt>
+  <dd>Parce que nous avons spécifié G_DISCARD, il n'est pas nécessaire de vérifier la valeur retournée par <i>call_pv</i>. Elle sera toujours de 0.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Passing_Parameters'><a class='permalink' href='#Passing_Parameters'>Passage de paramètres</a></h2>
+<p class="Pp">Faisons maintenant un exemple un peu plus complexe. Cette fois, nous voulons appeler une sous-routine Perl, <span class="Li">&quot;LeftString&quot;</span>, qui prendra 2 paramètres - une chaîne ($s) et un entier ($n). La sous-routine imprimera simplement les <span class="Li">$n</span> premiers caractères de la chaîne.</p>
+<p class="Pp">La sous-routine Perl ressemblerait donc à ceci :</p>
+<pre>sub LeftString
+{
+    my($s, $n) = @_;
+    print substr($s, 0, $n), &quot;\n&quot;;
+}</pre>
+<p class="Pp">La fonction C requise pour appeler <i>LeftString</i> ressemblerait à ceci :</p>
+<pre>static void
+call_LeftString(a, b)
+char * a;
+int b;
+{
+    dSP;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSVpv(a, 0)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    call_pv(&quot;LeftString&quot;, G_DISCARD);
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Voici quelques notes sur la fonction C <i>call_LeftString</i>.</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Les paramètres sont passés à la sous-routine Perl en utilisant la pile Perl. C'est le but du code commençant par la ligne
+      <span class="Li">&quot;dSP&quot;</span> et se terminant par la ligne
+      <span class="Li">&quot;PUTBACK&quot;</span>. Le
+      <span class="Li">&quot;dSP&quot;</span> déclare une copie locale du pointeur de pile. Cette copie locale doit **toujours** être accédée en tant que
+      <span class="Li">&quot;SP&quot;</span>.</dd>
+  <dt>2.</dt>
+</dl>
+  <dd>Si vous allez placer quelque chose dans la pile Perl, vous devez savoir
+      où le placer. C'est le but de la macro
+      <span class="Li">&quot;dSP&quot;</span>--elle déclare et initialise une copie
+      <i>locale</i> du pointeur de pile Perl.
+    <p class="Pp">Toutes les autres macros qui seront utilisées dans cet exemple
+        nécessitent que vous ayez utilisé cette macro.</p>
+    <p class="Pp">L'exception à cette règle est si vous appelez une sous-routine Perl
+        directement depuis une fonction XSUB. Dans ce cas, il n'est pas nécessaire
+        d'utiliser explicitement la macro <span class="Li">&quot;dSP&quot;</span>--elle
+        sera déclarée pour vous automatiquement.</p>
+  </dd>
+  <dt>3.</dt>
+  <dd>Tous les paramètres à empiler doivent être encadrés par les macros
+      <span class="Li">&quot;PUSHMARK&quot;</span> et
+      <span class="Li">&quot;PUTBACK&quot;</span>. Le but de ces deux macros, dans
+      ce contexte, est de compter automatiquement le nombre de paramètres que vous
+      empilez. Ensuite, lorsque Perl crée le tableau
+      <span class="Li">@_</span> pour la sous-routine, il sait quelle taille lui
+      donner.
+    <p class="Pp">La macro <span class="Li">&quot;PUSHMARK&quot;</span> indique à
+        Perl de prendre note du pointeur de pile actuel. Même si vous ne passez
+        aucun paramètre (comme dans l'exemple montré dans la section &quot;Pas
+        de paramètres, rien en retour&quot;), vous devez quand même appeler la
+        macro <span class="Li">&quot;PUSHMARK&quot;</span> avant de pouvoir appeler
+        les fonctions <i>call_*</i>--Perl a toujours besoin de savoir qu'il n'y a
+        pas de paramètres.</p>
+    <p class="Pp">La macro <span class="Li">&quot;PUTBACK&quot;</span> ajuste la
+        copie globale du pointeur de pile pour qu'elle soit identique à notre
+        copie locale. Si nous ne faisions pas cela, <i>call_pv</i> ne saurait pas
+        où se trouvent les deux paramètres que nous avons empilés--rappelez-vous
+        que jusqu'à présent, toute la manipulation du pointeur de pile que nous avons
+        faite concerne notre copie locale, <i>pas</i> la copie globale.</p>
+  </dd>
+  <dt>4.</dt>
+  <dd>Ensuite, nous arrivons à EXTEND et PUSHs. C'est là que les paramètres sont
+      réellement empilés. Dans ce cas, nous empilons une chaîne de caractères et
+      un entier.
+    <p class="Pp">Alternativement, vous pouvez utiliser la macro
+        <b>XPUSHs()</b>, qui combine un <span class="Li">&quot;EXTEND(SP, 1)&quot;</span>
+        et un <span class="Li">PUSHs()</span>. C'est moins efficace si vous empilez
+        plusieurs valeurs.</p>
+    <p class="Pp">Voir &quot;XSUBs et la pile d'arguments&quot; dans perlguts pour
+        plus de détails sur le fonctionnement des macros PUSH.</p>
+  </dd>
+  <dt>5.</dt>
+  <dd>Parce que nous avons créé des valeurs temporaires (au moyen d'appels à
+        <b>sv_2mortal()</b>), nous devrons nettoyer la pile Perl et disposer des
+        SV mortels.
+    <p class="Pp">C'est le but de</p>
+        <pre>ENTER;
+SAVETMPS;
+</pre>
+    <p class="Pp">au début de la fonction, et</p>
+        <pre>FREETMPS;
+LEAVE;
+</pre>
+    <p class="Pp">à la fin. La paire
+        <span class="Li">&quot;ENTER&quot;</span>/<span class="Li">&quot;SAVETMPS&quot;</span>
+        crée une limite pour tous les temporaires que nous créons. Cela signifie
+        que les temporaires que nous éliminons seront limités à ceux qui ont été
+        créés après ces appels.</p>
+    <p class="Pp">La paire
+        <span class="Li">&quot;FREETMPS&quot;</span>/<span class="Li">&quot;LEAVE&quot;</span>
+        éliminera toutes les valeurs retournées par la sous-routine Perl (voir
+        l'exemple suivant), plus elle videra également les SV mortels que nous avons
+        créés. Avoir
+        <span class="Li">&quot;ENTER&quot;</span>/<span class="Li">&quot;SAVETMPS&quot;</span>
+        au début du code garantit qu'aucun autre mortel ne sera détruit.</p>
+    <p class="Pp">Considérez ces macros comme fonctionnant un peu comme
+        <span class="Li">&quot;{&quot;</span> et
+        <span class="Li">&quot;}&quot;</span> en Perl pour limiter la portée des
+        variables locales.</p>
+    <p class="Pp">Voir la section &quot;Utilisation de Perl pour disposer des
+        temporaires&quot; pour des détails sur une alternative à l'utilisation de
+        ces macros.</p>
+  </dd>
+  <dt>6.</dt>
+  <dd>Enfin, <i>LeftString</i> peut maintenant être appelé via la fonction
+        <i>call_pv</i>. Le seul drapeau spécifié cette fois est G_DISCARD. Parce que
+        nous passons 2 paramètres à la sous-routine Perl cette fois-ci, nous n'avons
+        pas spécifié G_NOARGS.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Returning_a_Scalar'><a class='permalink' href='#Returning_a_Scalar'>Retourner un scalaire</a></h2>
+<p class="Pp">Maintenant, voici un exemple de traitement des éléments retournés par une sous-routine Perl.</p>
+<p class="Pp">Voici une sous-routine Perl, <i>Adder</i>, qui prend 2 paramètres entiers et retourne simplement leur somme.</p>
+<pre>sub Adder
+{
+    my($x, $y) = @_;
+    $x + $y;
+}</pre>
+<p class="Pp">Parce que nous nous intéressons maintenant à la valeur de retour
+    de <i>Adder</i>, la fonction C requise pour l'appeler est maintenant un peu plus
+    complexe.</p>
+<pre>static void
+call_Adder(a, b)
+int a;
+int b;
+{
+    dSP;
+    int count;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(a)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    count = call_pv(&quot;Adder&quot;, G_SCALAR);
+    SPAGAIN;
+    if (count != 1)
+        croak(&quot;Gros problème\n&quot;);
+    printf (&quot;La somme de %d et %d est %d\n&quot;, a, b, POPi);
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Points à noter cette fois-ci</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Le seul drapeau spécifié cette fois était G_SCALAR. Cela signifie que le
+      tableau <span class="Li">@_</span> sera créé et que la valeur retournée par
+        <i>Adder</i> existera toujours après l'appel à <i>call_pv</i>.</dd>
+  <dt>2.</dt>
+  <dd>Le but de la macro <span class="Li">&quot;SPAGAIN&quot;</span> est de rafraîchir
+      la copie locale du pointeur de pile. Ceci est nécessaire car il est possible que
+      la mémoire allouée à la pile Perl ait été réallouée pendant l'appel à
+        <i>call_pv</i>.
+    <p class="Pp">Si vous utilisez le pointeur de pile Perl dans votre code, vous
+        devez toujours rafraîchir la copie locale en utilisant SPAGAIN chaque fois
+        que vous utilisez les fonctions <i>call_*</i> ou toute autre fonction
+        interne de Perl.</p>
+  </dd>
+  <dt>3.</dt>
+  <dd>Bien qu'une seule valeur doive être retournée par <i>Adder</i>, il est
+      quand même de bonne pratique de vérifier le code de retour de <i>call_pv</i>.
+    <p class="Pp">S'attendre à une seule valeur n'est pas tout à fait la même chose
+        que savoir qu'il y en aura une. Si quelqu'un modifiait <i>Adder</i> pour
+        retourner une liste et que nous ne vérifiions pas cette possibilité et n'agissions
+        pas en conséquence, la pile Perl se retrouverait dans un état incohérent. C'est
+        quelque chose que vous ne voulez *vraiment* jamais qu'il arrive.</p>
+  </dd>
+  <dt>4.</dt>
+  <dd>La macro <span class="Li">&quot;POPi&quot;</span> est utilisée ici pour dépiler
+      la valeur de retour de la pile. Dans ce cas, nous voulions un entier, donc
+        <span class="Li">&quot;POPi&quot;</span> a été utilisé.
+    <p class="Pp">Voici la liste complète des macros POP disponibles, ainsi que
+        les types qu'elles retournent.</p>
+        <pre>POPs        SV
+POPp        pointeur (PV)
+POPpbytex   pointeur vers des octets (PV)
+POPn        double (NV)
+POPi        entier (IV)
+POPu        entier non signé (UV)
+POPl        long
+POPul       unsigned long
+</pre>
+    <p class="Pp">Comme ces macros ont des effets secondaires, ne les utilisez pas
+        comme arguments de macros qui peuvent évaluer leurs arguments plusieurs fois, par
+        exemple :</p>
+        <pre>/* Mauvaise idée, ne faites pas ça */
+STRLEN len;
+const char *s = SvPV(POPs, len);
+</pre>
+    <p class="Pp">Utilisez plutôt une variable temporaire :</p>
+        <pre>STRLEN len;
+SV *sv = POPs;
+const char *s = SvPV(sv, len);
+</pre>
+    <p class="Pp">ou une macro qui garantit qu'elle n'évaluera ses arguments qu'une seule
+        fois :</p>
+        <pre>STRLEN len;
+const char *s = SvPVx(POPs, len);
+</pre>
+  </dd>
+  <dt>5.</dt>
+  <dd>Le dernier <span class="Li">&quot;PUTBACK&quot;</span> est utilisé pour laisser
+      la pile Perl dans un état cohérent avant de quitter la fonction. Ceci est nécessaire
+      car lorsque nous avons dépilé la valeur de retour de la pile avec
+        <span class="Li">&quot;POPi&quot;</span>, cela n'a mis à jour que notre copie
+      locale du pointeur de pile. Rappelez-vous, <span class="Li">&quot;PUTBACK&quot;</span>
+      définit le pointeur de pile global pour qu'il soit identique à notre copie
+      locale.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Returning_a_List_of_Values'><a class='permalink' href='#Returning_a_List_of_Values'>Retourner une liste de valeurs</a></h2>
+<p class="Pp">Maintenant, étendons l'exemple précédent pour retourner à la fois la somme des paramètres et la différence.</p>
+<p class="Pp">Voici la sous-routine Perl</p>
+<pre>sub AddSubtract
+{
+   my($x, $y) = @_;
+   ($x+$y, $x-$y);
+}</pre>
+<p class="Pp">et voici la fonction C</p>
+<pre>static void
+call_AddSubtract(a, b)
+int a;
+int b;
+{
+    dSP;
+    int count;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(a)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    count = call_pv(&quot;AddSubtract&quot;, G_LIST);
+    SPAGAIN;
+    if (count != 2)
+        croak(&quot;Gros problème\n&quot;);
+    printf (&quot;%d - %d = %d\n&quot;, a, b, POPi);
+    printf (&quot;%d + %d = %d\n&quot;, a, b, POPi);
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Si <i>call_AddSubtract</i> est appelé ainsi</p>
+<pre>call_AddSubtract(7, 4);</pre>
+<p class="Pp">alors voici la sortie</p>
+<pre>7 - 4 = 3
+7 + 4 = 11</pre>
+<p class="Pp">Notes</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Nous voulions un contexte de liste, donc G_LIST a été utilisé.</dd>
+  <dt>2.</dt>
+  <dd>Sans surprise, <span class="Li">&quot;POPi&quot;</span> est utilisé deux fois
+      cette fois car nous récupérions 2 valeurs de la pile. La chose importante à
+      noter est que lors de l'utilisation des macros
+        <span class="Li">&quot;POP*&quot;</span>, elles sortent de la pile dans l'ordre
+        <i>inverse</i>.
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Returning_a_List_in_Scalar_Context'><a class='permalink' href='#Returning_a_List_in_Scalar_Context'>Retourner une liste dans un contexte scalaire</a></h2>
+<p class="Pp">Disons que la sous-routine Perl de la section précédente a été appelée dans un contexte scalaire, comme ceci</p>
+<pre>static void
+call_AddSubScalar(a, b)
+int a;
+int b;
+{
+    dSP;
+    int count;
+    int i;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(a)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    count = call_pv(&quot;AddSubtract&quot;, G_SCALAR);
+    SPAGAIN;
+    printf (&quot;Éléments retournés = %d\n&quot;, count);
+    for (i = 1; i &lt;= count; ++i)
+        printf (&quot;Valeur %d = %d\n&quot;, i, POPi);
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">L'autre modification apportée est que <i>call_AddSubScalar</i> affichera le nombre d'éléments retournés par la sous-routine Perl et leur valeur (par souci de simplicité, il suppose qu'ils sont entiers). Donc, si <i>call_AddSubScalar</i> est appelé</p>
+<pre>call_AddSubScalar(7, 4);</pre>
+<p class="Pp">alors la sortie sera</p>
+<pre>Éléments retournés = 1
+Valeur 1 = 3</pre>
+<p class="Pp">Dans ce cas, le point principal à noter est que seul le dernier élément de la liste est retourné par la sous-routine. <i>AddSubtract</i> a effectivement renvoyé des informations à <i>call_AddSubScalar</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Returning_Data_from_Perl_via_the_Parameter_List'><a class='permalink' href='#Returning_Data_from_Perl_via_the_Parameter_List'>Retourner des données de Perl via la liste de paramètres</a></h2>
+<p class="Pp">Il est également possible de retourner des valeurs directement via la liste de paramètres--qu'il soit réellement souhaitable de le faire est une autre question.</p>
+<p class="Pp">La sous-routine Perl, <i>Inc</i>, ci-dessous prend 2 paramètres et incrémente</p>
+rements chacun directement.</p>
+<pre>sub Inc
+{
+    ++ $_[0];
+    ++ $_[1];
+}</pre>
+<p class="Pp">et voici une fonction C pour l'appeler.</p>
+<pre>static void
+call_Inc(a, b)
+int a;
+int b;
+{
+    dSP;
+    int count;
+    SV * sva;
+    SV * svb;
+    ENTER;
+    SAVETMPS;
+    sva = sv_2mortal(newSViv(a));
+    svb = sv_2mortal(newSViv(b));
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sva);
+    PUSHs(svb);
+    PUTBACK;
+    count = call_pv(&quot;Inc&quot;, G_DISCARD);
+    if (count != 0)
+        croak (&quot;call_Inc: expected 0 values from 'Inc', got %d\n&quot;,
+               count);
+    printf (&quot;%d + 1 = %d\n&quot;, a, SvIV(sva));
+    printf (&quot;%d + 1 = %d\n&quot;, b, SvIV(svb));
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Pour pouvoir accéder aux deux paramètres qui ont été empilés après leur
+    retour de <i>call_pv</i>, il est nécessaire de noter leurs adresses - d'où les
+    deux variables <span class="Li">&quot;sva&quot;</span> et
+    <span class="Li">&quot;svb&quot;</span>.</p>
+<p class="Pp">La raison pour laquelle cela est nécessaire est que la zone de la pile
+    Perl qui les contenait aura très probablement été écrasée par autre chose au
+    moment où le contrôle retourne de <i>call_pv</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_G_EVAL'><a class='permalink' href='#Utilisation_de_G_EVAL'>Utilisation de G_EVAL</a></h2>
+<p class="Pp">Voici maintenant un exemple utilisant G_EVAL. Ci-dessous se trouve une
+    sous-routine Perl qui calcule la différence de ses 2 paramètres. Si cela
+    résultait en un résultat négatif, la sous-routine appelle <i>die</i>.</p>
+<pre>sub Subtract
+{
+    my ($x, $y) = @_;
+    die &quot;death can be fatal\n&quot; if $x &lt; $y;
+    $x - $y;
+}</pre>
+<p class="Pp">et du C pour l'appeler</p>
+<pre>static void
+call_Subtract(a, b)
+int a;
+int b;
+{
+    dSP;
+    int count;
+    SV *err_tmp;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(a)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    count = call_pv(&quot;Subtract&quot;, G_EVAL|G_SCALAR);
+    SPAGAIN;
+    /* Check the eval first */
+    err_tmp = ERRSV;
+    if (SvTRUE(err_tmp))
+    {
+        printf (&quot;Uh oh - %s\n&quot;, SvPV_nolen(err_tmp));
+        POPs;
+    }
+    else
+    {
+      if (count != 1)
+       croak(&quot;call_Subtract: wanted 1 value from 'Subtract', got %d\n&quot;,
+             count);
+        printf (&quot;%d - %d = %d\n&quot;, a, b, POPi);
+    }
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Si <i>call_Subtract</i> est appelé ainsi</p>
+<pre>call_Subtract(4, 5)</pre>
+<p class="Pp">ce qui suit sera imprimé</p>
+<pre>Uh oh - death can be fatal</pre>
+<p class="Pp">Notes</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Nous voulons pouvoir intercepter le <i>die</i>, nous avons donc utilisé le drapeau
+      G_EVAL. Ne pas spécifier ce drapeau signifierait que le programme se terminerait
+      immédiatement à l'instruction <i>die</i> de la sous-routine <i>Subtract</i>.</dd>
+  <dt>2.</dt>
+  <dd>Le code
+        <pre>err_tmp = ERRSV;
+if (SvTRUE(err_tmp))
+{
+    printf (&quot;Uh oh - %s\n&quot;, SvPV_nolen(err_tmp));
+    POPs;
+}
+</pre>
+        <p class="Pp">est l'équivalent direct de ce bout de Perl</p>
+        <pre>print &quot;Uh oh - $@\n&quot; if $@;
+</pre>
+        <p class="Pp"><span class="Li">&quot;PL_errgv&quot;</span> est une globale perl
+            de type <span class="Li">&quot;GV *&quot;</span> qui pointe vers
+            l'entrée de la table des symboles contenant l'erreur.
+            <span class="Li">&quot;ERRSV&quot;</span> fait donc référence à l'équivalent
+            C de <span class="Li">$@</span>. Nous utilisons un temporaire local,
+            <span class="Li">&quot;err_tmp&quot;</span>, car
+            <span class="Li">&quot;ERRSV&quot;</span> est une macro qui appelle une
+            fonction, et <span class="Li">SvTRUE(ERRSV)</span> finirait par
+            appeler cette fonction plusieurs fois.</p>
+  </dd>
+  <dt>3.</dt>
+  <dd>Notez que la pile est dépilée en utilisant
+      <span class="Li">&quot;POPs&quot;</span> dans le bloc où
+      <span class="Li">SvTRUE(err_tmp)</span> est vrai. Ceci est nécessaire car,
+      chaque fois qu'une fonction <i>call_*</i> invoquée avec G_EVAL|G_SCALAR
+      retourne une erreur, le sommet de la pile contient la valeur <i>undef</i>.
+      Comme nous voulons que le programme continue après avoir détecté cette erreur,
+      il est essentiel que la pile soit nettoyée en supprimant l'<i>undef</i>.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_G_KEEPERR'><a class='permalink' href='#Utilisation_de_G_KEEPERR'>Utilisation de G_KEEPERR</a></h2>
+<p class="Pp">Considérez cet exemple plutôt facétieux, où nous avons utilisé une
+    version XS de l'exemple call_Subtract ci-dessus dans un destructeur :</p>
+<pre>package Foo;
+sub new { bless {}, $_[0] }
+sub Subtract {
+    my($x,$y) = @_;
+    die &quot;death can be fatal&quot; if $x &lt; $y;
+    $x - $y;
+}
+sub DESTROY { call_Subtract(5, 4); }
+sub foo { die &quot;foo dies&quot;; }
+package main;
+{
+    my $foo = Foo-&gt;new;
+    eval { $foo-&gt;foo };
+}
+print &quot;Saw: $@&quot; if $@;             # should be, but isn't</pre>
+<p class="Pp">Cet exemple ne parviendra pas à reconnaître qu'une erreur s'est
+    produite à l'intérieur de l'<span class="Li">&quot;eval {}&quot;</span>. Voici
+    pourquoi : le code call_Subtract a été exécuté pendant que Perl nettoyait les
+    temporaires lors de la sortie du bloc entre accolades externe, et comme
+    call_Subtract est implémenté avec <i>call_pv</i> utilisant le drapeau
+    G_EVAL, il a rapidement réinitialisé <span class="Li">$@</span>. Cela entraîne
+    l'échec du test le plus externe pour <span class="Li">$@</span>, et par
+    conséquent l'échec du piège d'erreur.</p>
+<p class="Pp">Ajouter le drapeau G_KEEPERR, de sorte que l'appel <i>call_pv</i>
+    dans call_Subtract lise :</p>
+<pre>count = call_pv(&quot;Subtract&quot;, G_EVAL|G_SCALAR|G_KEEPERR);</pre>
+<p class="Pp">préservera l'erreur et restaurera une gestion fiable des erreurs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_call_sv'><a class='permalink' href='#Utilisation_de_call_sv'>Utilisation de call_sv</a></h2>
+<p class="Pp">Dans tous les exemples précédents, j'ai "codé en dur" le nom de la
+    sous-routine Perl à appeler depuis C. La plupart du temps, cependant, il est
+    plus pratique de pouvoir spécifier le nom de la sous-routine Perl depuis le
+    script Perl, et vous voudrez utiliser call_sv.</p>
+<p class="Pp">Considérez le code Perl ci-dessous</p>
+<pre>sub fred
+{
+    print &quot;Hello there\n&quot;;
+}
+CallSubPV(&quot;fred&quot;);</pre>
+<p class="Pp">Voici un extrait de XSUB qui définit <i>CallSubPV</i>.</p>
+<pre>void
+CallSubPV(name)
+    char *  name
+    CODE:
+    PUSHMARK(SP);
+    call_pv(name, G_DISCARD|G_NOARGS);</pre>
+<p class="Pp">C'est bien pour ce que c'est. Le fait est que la sous-routine Perl peut
+    être spécifiée comme une simple chaîne, cependant, Perl autorise les
+    références aux sous-routines et les sous-routines anonymes. C'est là que
+    <i>call_sv</i> est utile.</p>
+<p class="Pp">Le code ci-dessous pour <i>CallSubSV</i> est identique à
+    <i>CallSubPV</i> à ceci près que le paramètre <span class="Li">&quot;name&quot;</span>
+    est maintenant défini comme un SV* et nous utilisons <i>call_sv</i> au lieu de
+    <i>call_pv</i>.</p>
+<pre>void
+CallSubSV(name)
+    SV *    name
+    CODE:
+    PUSHMARK(SP);
+    call_sv(name, G_DISCARD|G_NOARGS);</pre>
+<p class="Pp">Comme nous utilisons un SV pour appeler <i>fred</i>, les éléments
+    suivants peuvent tous être utilisés :</p>
+<pre>CallSubSV(&quot;fred&quot;);
+CallSubSV(\&amp;fred);
+$ref = \&amp;fred;
+CallSubSV($ref);
+CallSubSV( sub { print &quot;Hello there\n&quot; } );</pre>
+<p class="Pp">Comme vous pouvez le voir, <i>call_sv</i> vous donne beaucoup plus de
+    flexibilité dans la manière dont vous pouvez spécifier la sous-routine Perl.</p>
+<p class="Pp">Vous devriez noter que, s'il est nécessaire de stocker le SV
+    (<span class="Li">&quot;name&quot;</span> dans l'exemple ci-dessus) qui correspond à
+    la sous-routine Perl afin qu'il puisse être utilisé plus tard dans le
+    programme, il ne suffit pas de stocker une copie du pointeur vers le SV. Disons
+    que le code ci-dessus avait été comme ceci :</p>
+<pre>static SV * rememberSub;
+void
+SaveSub1(name)
+    SV *    name
+    CODE:
+    rememberSub = name;
+void
+CallSavedSub1()
+    CODE:
+    PUSHMARK(SP);
+    call_sv(rememberSub, G_DISCARD|G_NOARGS);</pre>
+<p class="Pp">La raison pour laquelle c'est faux est que, au moment où vous utilisez le
+    pointeur <span class="Li">&quot;rememberSub&quot;</span> dans
+    <span class="Li">&quot;CallSavedSub1&quot;</span>, il peut ou peut ne pas pointer
+    toujours vers la sous-routine Perl qui a été enregistrée dans
+    <span class="Li">&quot;SaveSub1&quot;</span>. Ceci est particulièrement vrai pour
+    ces cas :</p>
+<pre>SaveSub1(\&amp;fred);
+CallSavedSub1();
+SaveSub1( sub { print &quot;Hello there\n&quot; } );
+CallSavedSub1();</pre>
+<p class="Pp">Au moment où chacune des instructions
+    <span class="Li">&quot;SaveSub1&quot;</span> ci-dessus a été exécutée, les
+    SV* qui correspondaient aux paramètres n'existeront plus. Attendez-vous à un
+    message d'erreur de Perl du type</p>
+<pre>Can't use an undefined value as a subroutine reference at ...</pre>
+<p class="Pp">pour chacune des lignes
+    <span class="Li">&quot;CallSavedSub1&quot;</span>.</p>
+<p class="Pp">De même, avec ce code</p>
+<pre>$ref = \&amp;fred;
+SaveSub1($ref);
+$ref = 47;
+CallSavedSub1();</pre>
+<p class="Pp">vous pouvez vous attendre à l'un de ces messages (ce que vous obtenez
+    réellement dépend de la version de Perl que vous utilisez)</p>
+<pre>Not a CODE reference at ...
+Undefined subroutine &amp;main::47 called ...</pre>
+<p class="Pp">La variable <span class="Li">$ref</span> peut avoir pointé vers la
+    sous-routine <span class="Li">&quot;fred&quot;</span> chaque fois que l'appel à
+    <span class="Li">&quot;SaveSub1&quot;</span> a été effectué, mais au moment où
+    <span class="Li">&quot;CallSavedSub1&quot;</span> est appelée, elle contient maintenant
+    l'entier <span class="Li">47</span>. Parce que nous n'avons stocké qu'un pointeur
+    vers le SV d'origine dans <span class="Li">&quot;SaveSub1&quot;</span>, toute
+    modification de <span class="Li">$ref</span> sera suivie par le pointeur
+    <span class="Li">&quot;rememberSub&quot;</span>. Cela signifie que chaque fois que
+    <span class="Li">&quot;CallSavedSub1&quot;</span> est appelée, elle tentera d'exécuter
+    le code référencé par le SV* <span class="Li">&quot;rememberSub&quot;</span>. Dans ce cas,
+    il fait maintenant référence à l'entier <span class="Li">47</span>, attendez-vous
+    donc à ce que Perl se plaigne bruyamment.</p>
+<p class="Pp">Un problème similaire mais plus subtil est illustré par ce code :</p>
+<pre>$ref = \&amp;fred;
+SaveSub1($ref);
+$ref = \&amp;joe;
+CallSavedSub1();</pre>
+<p class="Pp">Cette fois, chaque fois que <span class="Li">&quot;CallSavedSub1&quot;</span>
+    est appelée, elle exécutera la sous-routine Perl <span class="Li">&quot;joe&quot;</span>
+    (en supposant qu'elle existe) plutôt que <span class="Li">&quot;fred&quot;</span>
+    comme demandé à l'origine dans l'appel à
+    <span class="Li">&quot;SaveSub1&quot;</span>.</p>
+<p class="Pp">Pour contourner ces problèmes, il est nécessaire de faire une copie
+    complète du SV. Le code ci-dessous montre <span class="Li">&quot;SaveSub2&quot;</span>
+    modifié pour ce faire.</p>
+<pre>/* this isn't thread-safe */
+static SV * keepSub = (SV*)NULL;
+void
+SaveSub2(name)
+    SV *    name
+    CODE:
+    /* Take a copy of the callback */
+    if (keepSub == (SV*)NULL)
+        /* First time, so create a new SV */
+        keepSub = newSVsv(name);
+    else
+        /* Been here before, so overwrite */
+        SvSetSV(keepSub, name);
+void
+CallSavedSub2()
+    CODE:
+    PUSHMARK(SP);
+    call_sv(keepSub, G_DISCARD|G_NOARGS);</pre>
+<p class="Pp">Pour éviter de créer un nouveau SV à chaque fois que
+    <span class="Li">&quot;SaveSub2&quot;</span> est appelé, la fonction vérifie
+    d'abord si elle a déjà été appelée. Sinon, de l'espace pour un nouveau SV est
+    alloué et la référence à la sous-routine Perl <span class="Li">&quot;name&quot;</span>
+    est copiée dans la variable <span class="Li">&quot;keepSub&quot;</span> en une
+    seule opération en utilisant <span class="Li">&quot;newSVsv&quot;</span>. Par la
+    suite, chaque fois que <span class="Li">&quot;SaveSub2&quot;</span> est
+    appelé</p>
+allé, la SV existante,
+    <span class="Li">&quot;keepSub&quot;</span>, est écrasée par la nouvelle
+    valeur en utilisant <span class="Li">&quot;SvSetSV&quot;</span>.</p>
+<p class="Pp">Note : l'utilisation d'une variable statique ou globale pour stocker la SV n'est pas
+    thread-safe. Vous pouvez soit utiliser le
+    mécanisme <span class="Li">&quot;MY_CXT&quot;</span> documenté dans
+    &quot;Stockage sécurisé des données statiques dans XS&quot; dans perlxs, qui est rapide, soit
+    stocker les valeurs dans des variables globales perl, en utilisant
+    <b>get_sv()</b>, ce qui est beaucoup plus lent.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_call_argv'><a class='permalink' href='#Utilisation_de_call_argv'>Utilisation de call_argv</a></h2>
+<p class="Pp">Voici une sous-routine Perl qui affiche tous les paramètres qui lui
+    sont passés.</p>
+<pre>sub PrintList
+{
+    my(@list) = @_;
+    foreach (@list) { print &quot;$_\n&quot; }
+}</pre>
+<p class="Pp">Et voici un exemple de <i>call_argv</i> qui appellera
+    <i>PrintList</i>.</p>
+<pre>static char * words[] = {&quot;alpha&quot;, &quot;beta&quot;, &quot;gamma&quot;, &quot;delta&quot;, NULL};
+static void
+call_PrintList()
+{
+    call_argv(&quot;PrintList&quot;, G_DISCARD, words);
+}</pre>
+<p class="Pp">Notez qu'il n'est pas nécessaire d'appeler
+    <span class="Li">&quot;PUSHMARK&quot;</span> dans ce cas. C'est parce que
+    <i>call_argv</i> le fera pour vous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_call_method'><a class='permalink' href='#Utilisation_de_call_method'>Utilisation de call_method</a></h2>
+<p class="Pp">Considérez le code Perl suivant :</p>
+<pre>{
+    package Mine;
+    sub new
+    {
+        my($type) = shift;
+        bless [@_]
+    }
+    sub Display
+    {
+        my ($self, $index) = @_;
+        print &quot;$index: $$self[$index]\n&quot;;
+    }
+    sub PrintID
+    {
+        my($class) = @_;
+        print &quot;This is Class $class version 1.0\n&quot;;
+    }
+}</pre>
+<p class="Pp">Il implémente une classe très simple pour gérer un tableau. Outre
+    le constructeur, <span class="Li">&quot;new&quot;</span>, il déclare des méthodes, une statique
+    et une virtuelle. La méthode statique, <span class="Li">&quot;PrintID&quot;</span>, affiche
+    simplement le nom de la classe et un numéro de version. La méthode virtuelle,
+    <span class="Li">&quot;Display&quot;</span>, affiche un seul élément du tableau. Voici un
+    exemple entièrement en Perl de son utilisation.</p>
+<pre>$x = Mine-&gt;new('red', 'green', 'blue');
+$x-&gt;Display(1);
+Mine-&gt;PrintID;</pre>
+<p class="Pp">affichera</p>
+<pre>1: green
+This is Class Mine version 1.0</pre>
+<p class="Pp">Appeler une méthode Perl depuis C est assez simple. Les éléments
+    suivants sont requis :</p>
+<ul class="Bl-bullet">
+  <li>Une référence à l'objet pour une méthode virtuelle ou le nom de la classe
+      pour une méthode statique</li>
+  <li>Le nom de la méthode</li>
+  <li>Tout autre paramètre spécifique à la méthode</li>
+</ul>
+<p class="Pp">Voici un XSUB simple qui illustre les mécanismes d'appel des méthodes
+    <span class="Li">&quot;PrintID&quot;</span> et <span class="Li">&quot;Display&quot;</span> depuis C.</p>
+<pre>void
+call_Method(ref, method, index)
+    SV *    ref
+    char *  method
+    int             index
+    CODE:
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(ref);
+    PUSHs(sv_2mortal(newSViv(index)));
+    PUTBACK;
+    call_method(method, G_DISCARD);
+void
+call_PrintID(class, method)
+    char *  class
+    char *  method
+    CODE:
+    PUSHMARK(SP);
+    XPUSHs(sv_2mortal(newSVpv(class, 0)));
+    PUTBACK;
+    call_method(method, G_DISCARD);</pre>
+<p class="Pp">Ainsi, les méthodes <span class="Li">&quot;PrintID&quot;</span> et
+    <span class="Li">&quot;Display&quot;</span> peuvent être invoquées comme suit :</p>
+<pre>$x = Mine-&gt;new('red', 'green', 'blue');
+call_Method($x, 'Display', 1);
+call_PrintID('Mine', 'PrintID');</pre>
+<p class="Pp">La seule chose à noter est que, dans les méthodes statiques et virtuelles,
+    le nom de la méthode n'est pas passé via la pile - il est utilisé comme premier
+    paramètre de <i>call_method</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_GIMME_V'><a class='permalink' href='#Utilisation_de_GIMME_V'>Utilisation de GIMME_V</a></h2>
+<p class="Pp">Voici un XSUB trivial qui affiche le contexte dans lequel il s'exécute
+    actuellement.</p>
+<pre>void
+PrintContext()
+    CODE:
+    U8 gimme = GIMME_V;
+    if (gimme == G_VOID)
+        printf (&quot;Context is Void\n&quot;);
+    else if (gimme == G_SCALAR)
+        printf (&quot;Context is Scalar\n&quot;);
+    else
+        printf (&quot;Context is Array\n&quot;);</pre>
+<p class="Pp">Et voici du Perl pour le tester.</p>
+<pre>PrintContext;
+$x = PrintContext;
+@a = PrintContext;</pre>
+<p class="Pp">La sortie de cela sera</p>
+<pre>Context is Void
+Context is Scalar
+Context is Array</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_Perl_pour_la_libération_des_temporaires'><a class='permalink' href='#Utilisation_de_Perl_pour_la_libération_des_temporaires'>Utilisation de Perl pour la libération des temporaires</a></h2>
+<p class="Pp">Dans les exemples donnés jusqu'à présent, tous les temporaires créés
+    dans le rappel (c'est-à-dire les paramètres passés sur la pile à la fonction
+    <i>call_*</i> ou les valeurs retournées via la pile) ont été libérés par l'une
+    de ces méthodes :</p>
+<ul class="Bl-bullet">
+  <li>Spécification du drapeau G_DISCARD avec <i>call_*</i></li>
+  <li>Utilisation explicite de la paire
+      <span class="Li">&quot;ENTER&quot;</span>/<span class="Li">&quot;SAVETMPS&quot;</span>--<span class="Li">&quot;FREETMPS&quot;</span>/<span class="Li">&quot;LEAVE&quot;</span></li>
+</ul>
+<p class="Pp">Il existe une autre méthode qui peut être utilisée, à savoir laisser
+    Perl s'en charger automatiquement chaque fois qu'il reprend le contrôle après
+    la fin du rappel. Ceci est fait en n'utilisant simplement pas la séquence</p>
+<pre>ENTER;
+SAVETMPS;
+...
+FREETMPS;
+LEAVE;</pre>
+<p class="Pp">dans le rappel (et en ne spécifiant bien sûr pas le drapeau
+    G_DISCARD).</p>
+<p class="Pp">Si vous allez utiliser cette méthode, vous devez être conscient d'une
+    possible fuite de mémoire qui peut survenir dans des circonstances très
+    spécifiques. Pour expliquer ces circonstances, vous devez connaître un peu le
+    flux de contrôle entre Perl et la routine de rappel.</p>
+<p class="Pp">Les exemples donnés au début du document (un gestionnaire d'erreurs
+    et un programme événementiel) sont typiques des deux principaux types de flux
+    de contrôle que vous êtes susceptible de rencontrer avec les rappels. Il y a
+    une distinction très importante entre eux, alors faites attention.</p>
+<p class="Pp">Dans le premier exemple, un gestionnaire d'erreurs, le flux de contrôle
+    pourrait être le suivant. Vous avez créé une interface vers une bibliothèque
+    externe. Le contrôle peut atteindre la bibliothèque externe comme suit :</p>
+<pre>perl --&gt; XSUB --&gt; bibliothèque externe</pre>
+<p class="Pp">Pendant que le contrôle est dans la bibliothèque, une condition d'erreur
+    se produit. Vous avez précédemment configuré un rappel Perl pour gérer cette
+    situation, elle sera donc exécutée. Une fois le rappel terminé, le contrôle
+    reviendra à Perl.</p>
+<p class="Pp">Voici à quoi ressemblera le flux de contrôle dans cette situation :</p>
+<pre>perl --&gt; XSUB --&gt; bibliothèque externe
+                  ...
+                  erreur se produit
+                  ...
+                  bibliothèque externe --&gt; call_* --&gt; perl
+                                                      |
+perl &lt;-- XSUB &lt;-- bibliothèque externe &lt;-- call_* &lt;----+</pre>
+<p class="Pp">Après le traitement de l'erreur à l'aide de <i>call_*</i>, le contrôle
+    revient à Perl plus ou moins immédiatement.</p>
+<p class="Pp">Dans le diagramme, plus vous allez vers la droite, plus la portée est
+    imbriquée. Ce n'est que lorsque le contrôle est de retour avec perl à l'extrême
+    gauche du diagramme que vous êtes revenu à la portée englobante et que tous les
+    temporaires que vous avez laissés traîner seront libérés.</p>
+<p class="Pp">Dans le second exemple, un programme événementiel, le flux de contrôle
+    ressemblera davantage à ceci :</p>
+<pre>perl --&gt; XSUB --&gt; gestionnaire d'événements
+                  ...
+                  gestionnaire d'événements --&gt; call_* --&gt; perl
+                                                   |
+                  gestionnaire d'événements &lt;-- call_* &lt;----+
+                  ...
+                  gestionnaire d'événements --&gt; call_* --&gt; perl
+                                                   |
+                  gestionnaire d'événements &lt;-- call_* &lt;----+
+                  ...
+                  gestionnaire d'événements --&gt; call_* --&gt; perl
+                                                   |
+                  gestionnaire d'événements &lt;-- call_* &lt;----+</pre>
+<p class="Pp">Dans ce cas, le flux de contrôle peut consister uniquement en la séquence
+    répétée</p>
+<pre>gestionnaire d'événements --&gt; call_* --&gt; perl</pre>
+<p class="Pp">pendant pratiquement toute la durée du programme. Cela signifie que le
+    contrôle peut <i>jamais</i> revenir à la portée englobante en Perl à l'extrême
+    gauche.</p>
+<p class="Pp">Alors quel est le gros problème ? Eh bien, si vous vous attendez à ce
+    que Perl nettoie ces temporaires pour vous, vous pourriez attendre longtemps.
+    Pour que Perl élimine vos temporaires, le contrôle doit revenir à la portée
+    englobante à un moment donné. Dans le scénario événementiel, cela peut ne jamais
+    se produire. Cela signifie qu'au fil du temps, votre programme créera de plus en
+    plus de temporaires, dont aucun ne sera jamais libéré. Comme chacun de ces
+    temporaires consomme de la mémoire, votre programme finira par consommer toute
+    la mémoire disponible de votre système - boum !</p>
+<p class="Pp">Voici donc la conclusion : si vous êtes sûr que le contrôle reviendra
+    rapidement à la portée Perl englobante après la fin de votre rappel, alors il
+    n'est pas absolument nécessaire de disposer explicitement des temporaires que
+    vous avez pu créer. Cela dit, si vous n'êtes pas du tout sûr de la marche à
+    suivre, nettoyer de toute façon ne fait pas de mal.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Stratégies_de_stockage_des_informations_de_contexte_de_rappel'><a class='permalink' href='#Stratégies_de_stockage_des_informations_de_contexte_de_rappel'>Stratégies de stockage des informations de contexte de rappel</a></h2>
+<p class="Pp">Potentiellement, l'un des problèmes les plus délicats à résoudre lors de
+    la conception d'une interface de rappel est de déterminer comment stocker la
+    correspondance entre la fonction de rappel C et son équivalent Perl.</p>
+<p class="Pp">Pour aider à comprendre pourquoi cela peut être un problème, considérez
+    d'abord comment un rappel est configuré dans un environnement entièrement en
+    C. Typiquement, une API C fournit une fonction pour enregistrer un rappel.
+    Celle-ci attendra un pointeur vers une fonction comme l'un de ses paramètres.
+    Ci-dessous, un appel à une fonction hypothétique <span class="Li">&quot;register_fatal&quot;</span>
+    qui enregistre la fonction C à appeler lorsqu'une erreur fatale se produit.</p>
+<pre>register_fatal(cb1);</pre>
+<p class="Pp">Le paramètre unique <span class="Li">&quot;cb1&quot;</span> est un pointeur vers une fonction,
+    vous devez donc avoir défini <span class="Li">&quot;cb1&quot;</span> dans votre code, disons quelque chose
+    comme ceci :</p>
+<pre>static void
+cb1()
+{
+    printf (&quot;Fatal Error\n&quot;);
+    exit(1);
+}</pre>
+<p class="Pp">Maintenant, changez cela pour appeler une sous-routine Perl à la place</p>
+<pre>static SV * callback = (SV*)NULL;
+static void
+cb1()
+{
+    dSP;
+    PUSHMARK(SP);
+    /* Appelle la sous-routine Perl pour traiter le rappel */
+    call_sv(callback, G_DISCARD);
+}
+void
+register_fatal(fn)
+    SV *    fn
+    CODE:
+    /* Se souvient de la sous-routine Perl */
+    if (callback == (SV*)NULL)
+        callback = newSVsv(fn);
+    else
+        SvSetSV(callback, fn);
+    /* enregistre le rappel auprès de la bibliothèque externe */
+    register_fatal(cb1);</pre>
+<p class="Pp">où l'équivalent Perl de <span class="Li">&quot;register_fatal&quot;</span>
+    et le rappel qu'elle enregistre, <span class="Li">&quot;pcb1&quot;</span>, pourrait ressembler
+    à ceci :</p>
+<pre># Enregistre la sous-routine pcb1
+register_fatal(\&amp;pcb1);
+sub pcb1
+{
+    die &quot;I'm dying...\n&quot;;
+}</pre>
+<p class="Pp">La correspondance entre le rappel C et son équivalent Perl est stockée
+    dans la variable globale</p>
+<p class="Pp">  <sp</p>
+an class="Li">&quot;callback&quot;</span>.</p>
+<p class="Pp">Ce sera suffisant si vous avez seulement besoin d'avoir un rappel
+    enregistré à la fois. Un exemple pourrait être un gestionnaire d'erreurs comme le code
+    esquissé ci-dessus. N'oubliez cependant pas que les appels répétés à
+    <span class="Li">&quot;register_fatal&quot;</span> remplaceront la
+    fonction de rappel précédemment enregistrée par la nouvelle.</p>
+<p class="Pp">Disons par exemple que vous souhaitez interagir avec une bibliothèque qui permet
+    des opérations d'E/S de fichiers asynchrones. Dans ce cas, vous pourriez être en mesure d'enregistrer un rappel
+    chaque fois qu'une opération de lecture est terminée. Pour être utile, nous voulons pouvoir
+    appeler des sous-routines Perl distinctes pour chaque fichier ouvert. Tel quel,
+    l'exemple du gestionnaire d'erreurs ci-dessus ne serait pas suffisant car il n'autorise
+    qu'un seul rappel à être défini à la fois. Ce dont nous avons besoin, c'est d'un moyen
+    de stocker la correspondance entre le fichier ouvert et la sous-routine Perl que nous
+    voulons appeler pour ce fichier.</p>
+<p class="Pp">Supposons que la bibliothèque d'E/S ait une fonction
+    <span class="Li">&quot;asynch_read&quot;</span> qui associe une fonction C
+    <span class="Li">&quot;ProcessRead&quot;</span> à un descripteur de fichier
+    <span class="Li">&quot;fh&quot;</span> - cela suppose qu'elle a également
+    fourni une routine pour ouvrir le fichier et obtenir ainsi le descripteur de fichier.</p>
+<pre>asynch_read(fh, ProcessRead)</pre>
+<p class="Pp">Cela peut attendre la fonction C
+    <i>ProcessRead</i> de cette forme</p>
+<pre>void
+ProcessRead(fh, buffer)
+int fh;
+char *      buffer;
+{
+     ...
+}</pre>
+<p class="Pp">Pour fournir une interface Perl à cette bibliothèque, nous devons pouvoir
+    mapper entre le paramètre <span class="Li">&quot;fh&quot;</span> et la
+    sous-routine Perl que nous voulons appeler. Une table de hachage est un mécanisme pratique pour stocker
+    cette correspondance. Le code ci-dessous montre une implémentation possible</p>
+<pre>static HV * Mapping = (HV*)NULL;
+void
+asynch_read(fh, callback)
+    int     fh
+    SV *    callback
+    CODE:
+    /* Si la table de hachage n'existe pas déjà, créez-la */
+    if (Mapping == (HV*)NULL)
+        Mapping = newHV();
+    /* Sauvegardez la correspondance fh -> callback */
+    hv_store(Mapping, (char*)&amp;fh, sizeof(fh), newSVsv(callback), 0);
+    /* Enregistrez auprès de la bibliothèque C */
+    asynch_read(fh, asynch_read_if);</pre>
+<p class="Pp">et <span class="Li">&quot;asynch_read_if&quot;</span> pourrait ressembler à ceci</p>
+<pre>static void
+asynch_read_if(fh, buffer)
+int fh;
+char *      buffer;
+{
+    dSP;
+    SV ** sv;
+    /* Obtenez le rappel associé à fh */
+    sv =  hv_fetch(Mapping, (char*)&amp;fh , sizeof(fh), FALSE);
+    if (sv == (SV**)NULL)
+        croak(&quot;Erreur interne...\n&quot;);
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(fh)));
+    PUSHs(sv_2mortal(newSVpv(buffer, 0)));
+    PUTBACK;
+    /* Appelez la sous-routine Perl */
+    call_sv(*sv, G_DISCARD);
+}</pre>
+<p class="Pp">Pour être complet, voici
+    <span class="Li">&quot;asynch_close&quot;</span>. Ceci montre comment supprimer
+    l'entrée de la table de hachage <span class="Li">&quot;Mapping&quot;</span>.</p>
+<pre>void
+asynch_close(fh)
+    int     fh
+    CODE:
+    /* Supprimez l'entrée de la table de hachage */
+    (void) hv_delete(Mapping, (char*)&amp;fh, sizeof(fh), G_DISCARD);
+    /* Appelez maintenant le vrai asynch_close */
+    asynch_close(fh);</pre>
+<p class="Pp">Donc, l'interface Perl ressemblerait à ceci</p>
+<pre>sub callback1
+{
+    my($handle, $buffer) = @_;
+}
+# Enregistrez le rappel Perl
+asynch_read($fh, \&amp;callback1);
+asynch_close($fh);</pre>
+<p class="Pp">La correspondance entre le rappel C et Perl est stockée dans la table de hachage
+    globale <span class="Li">&quot;Mapping&quot;</span> cette fois-ci. L'utilisation d'une table de hachage présente l'avantage distinct de permettre un nombre illimité de
+    rappels à enregistrer.</p>
+<p class="Pp">Et si l'interface fournie par le rappel C ne contient pas de paramètre
+    qui permet le mappage du descripteur de fichier à la sous-routine Perl ? Disons dans
+    le package d'E/S asynchrones, la fonction de rappel reçoit uniquement le
+    paramètre <span class="Li">&quot;buffer&quot;</span> comme ceci</p>
+<pre>void
+ProcessRead(buffer)
+char *      buffer;
+{
+    ...
+}</pre>
+<p class="Pp">Sans le descripteur de fichier, il n'y a aucun moyen simple de mapper
+    du rappel C à la sous-routine Perl.</p>
+<p class="Pp">Dans ce cas, une façon possible de contourner ce problème est de pré-définir une série de
+    fonctions C pour servir d'interface à Perl, ainsi</p>
+<pre>#define MAX_CB              3
+#define NULL_HANDLE -1
+typedef void (*FnMap)();
+struct MapStruct {
+    FnMap    Function;
+    SV *     PerlSub;
+    int      Handle;
+  };
+static void  fn1();
+static void  fn2();
+static void  fn3();
+static struct MapStruct Map [MAX_CB] =
+    {
+        { fn1, NULL, NULL_HANDLE },
+        { fn2, NULL, NULL_HANDLE },
+        { fn3, NULL, NULL_HANDLE }
+    };
+static void
+Pcb(index, buffer)
+int index;
+char * buffer;
+{
+    dSP;
+    PUSHMARK(SP);
+    XPUSHs(sv_2mortal(newSVpv(buffer, 0)));
+    PUTBACK;
+    /* Appelez la sous-routine Perl */
+    call_sv(Map[index].PerlSub, G_DISCARD);
+}
+static void
+fn1(buffer)
+char * buffer;
+{
+    Pcb(0, buffer);
+}
+static void
+fn2(buffer)
+char * buffer;
+{
+    Pcb(1, buffer);
+}
+static void
+fn3(buffer)
+char * buffer;
+{
+    Pcb(2, buffer);
+}
+void
+array_asynch_read(fh, callback)
+    int             fh
+    SV *    callback
+    CODE:
+    int index;
+    int null_index = MAX_CB;
+    /* Trouvez le même descripteur ou une entrée vide */
+    for (index = 0; index &lt; MAX_CB; ++index)
+    {
+        if (Map[index].Handle == fh)
+            break;
+        if (Map[index].Handle == NULL_HANDLE)
+            null_index = index;
+    }
+    if (index == MAX_CB &amp;&amp; null_index == MAX_CB)
+        croak (&quot;Trop de fonctions de rappel enregistrées\n&quot;);
+    if (index == MAX_CB)
+        index = null_index;
+    /* Sauvegardez le descripteur de fichier */
+    Map[index].Handle = fh;
+    /* Mémorisez la sous-routine Perl */
+    if (Map[index].PerlSub == (SV*)NULL)
+        Map[index].PerlSub = newSVsv(callback);
+    else
+        SvSetSV(Map[index].PerlSub, callback);
+    asynch_read(fh, Map[index].Function);
+void
+array_asynch_close(fh)
+    int     fh
+    CODE:
+    int index;
+    /* Trouvez le descripteur de fichier */
+    for (index = 0; index &lt; MAX_CB; ++ index)
+        if (Map[index].Handle == fh)
+            break;
+    if (index == MAX_CB)
+        croak (&quot;impossible de fermer fh %d\n&quot;, fh);
+    Map[index].Handle = NULL_HANDLE;
+    SvREFCNT_dec(Map[index].PerlSub);
+    Map[index].PerlSub = (SV*)NULL;
+    asynch_close(fh);</pre>
+<p class="Pp">Dans ce cas, les fonctions
+    <span class="Li">&quot;fn1&quot;</span>,
+    <span class="Li">&quot;fn2&quot;</span>, et
+    <span class="Li">&quot;fn3&quot;</span> sont utilisées pour mémoriser la sous-routine Perl
+    à appeler. Chacune des fonctions contient un index codé en dur distinct qui est utilisé dans la fonction <span class="Li">&quot;Pcb&quot;</span>
+    pour accéder au tableau <span class="Li">&quot;Map&quot;</span> et appeler effectivement la sous-routine Perl.</p>
+<p class="Pp">Il y a des inconvénients évidents à cette technique.</p>
+<p class="Pp">Premièrement, le code est considérablement plus complexe qu'avec l'exemple précédent.</p>
+<p class="Pp">Deuxièmement, il existe une limite codée en dur (ici 3) au nombre de
+    rappels qui peuvent exister simultanément. La seule façon d'augmenter la limite est de modifier le code pour ajouter plus de fonctions, puis de recompiler. Néanmoins, tant que le nombre de fonctions est choisi avec soin, cela reste une solution viable et dans certains cas, la seule disponible.</p>
+<p class="Pp">Pour résumer, voici un certain nombre de méthodes possibles à considérer pour stocker la correspondance entre C et le rappel Perl</p>
+<dl class="Bl-tag">
+  <dt>1. Ignorer le problème - Permettre un seul rappel</dt>
+  <dd>Pour de nombreuses situations, comme l'interface avec un gestionnaire d'erreurs, cela peut être
+      une solution parfaitement adéquate.</dd>
+  <dt>2. Créer une séquence de rappels - limite codée en dur</dt>
+  <dd>S'il est impossible de déterminer à partir des paramètres renvoyés par le rappel C quel est le contexte, vous devrez peut-être créer une séquence de fonctions d'interface de rappel C, et stocker des pointeurs vers chacune dans un tableau.</dd>
+  <dt>3. Utiliser un paramètre pour mapper au rappel Perl</dt>
+  <dd>Une table de hachage est un mécanisme idéal pour stocker la correspondance entre C et Perl.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Manipulation_Alternative_de_la_Pile'><a class='permalink' href='#Alternate_Stack_Manipulation'>Manipulation   Alternative de la Pile</a></h2>
+<p class="Pp">Bien que j'aie utilisé uniquement les macros
+    <span class="Li">&quot;POP*&quot;</span> pour accéder aux valeurs renvoyées par les sous-routines Perl, il est également possible de contourner ces macros et de lire la pile en utilisant la macro
+    <span class="Li">&quot;ST&quot;</span> (Voir perlxs pour une description complète de la macro
+    <span class="Li">&quot;ST&quot;</span>).</p>
+<p class="Pp">La plupart du temps, les macros
+    <span class="Li">&quot;POP*&quot;</span> devraient être suffisantes ; le principal problème avec elles est qu'elles vous obligent à traiter les valeurs renvoyées en séquence. Ce n'est peut-être pas la méthode la plus appropriée pour traiter les valeurs dans certains cas. Ce que nous voulons, c'est pouvoir accéder à la pile de manière aléatoire. La macro
+    <span class="Li">&quot;ST&quot;</span>, telle qu'utilisée lors du codage d'une XSUB, est idéale à cet effet.</p>
+<p class="Pp">Le code ci-dessous est l'exemple donné dans la section "Retourner une liste de valeurs" recodé pour utiliser
+    <span class="Li">&quot;ST&quot;</span> au lieu de
+    <span class="Li">&quot;POP*&quot;</span>.</p>
+<pre>static void
+call_AddSubtract2(a, b)
+int a;
+int b;
+{
+    dSP;
+    I32 ax;
+    int count;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    EXTEND(SP, 2);
+    PUSHs(sv_2mortal(newSViv(a)));
+    PUSHs(sv_2mortal(newSViv(b)));
+    PUTBACK;
+    count = call_pv(&quot;AddSubtract&quot;, G_LIST);
+    SPAGAIN;
+    SP -= count;
+    ax = (SP - PL_stack_base) + 1;
+    if (count != 2)
+        croak(&quot;Gros problème\n&quot;);
+    printf (&quot;%d + %d = %d\n&quot;, a, b, SvIV(ST(0)));
+    printf (&quot;%d - %d = %d\n&quot;, a, b, SvIV(ST(1)));
+    PUTBACK;
+    FREETMPS;
+    LEAVE;
+}</pre>
+<p class="Pp">Remarques</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Notez qu'il était nécessaire de définir la variable
+      <span class="Li">&quot;ax&quot;</span>. C'est parce que la macro
+      <span class="Li">&quot;ST&quot;</span> s'attend à ce qu'elle existe. Si nous étions dans une XSUB, il ne serait pas nécessaire de définir
+      <span class="Li">&quot;ax&quot;</span> car elle est déjà définie pour
+      nous.</dd>
+  <dt>2.</dt>
+  <dd>Le code
+        <pre>SPAGAIN;
+SP -= count;
+ax = (SP - PL_stack_base) + 1;
+</pre>
+    <p class="Pp">configure la pile de manière à pouvoir utiliser la macro
+        <span class="Li">&quot;ST&quot;</span>.</p>
+  </dd>
+  <dt>3.</dt>
+  <dd>Contrairement au codage original de cet exemple, les valeurs renvoyées ne sont pas
+      accédées dans l'ordre inverse. Ainsi <span class="Li">ST(0)</span> fait référence à la première valeur renvoyée par la sous-routine Perl et
+      <span class="Li">ST(count-1)</span> à la dernière.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Créer_et_Appeler_une_Sous-routine_Anonyme_en_C'><a class='permalink' href='#Creating_and_Calling_an_Anonymous_Subroutine_in_C'>Créer   et Appeler une Sous-routine Anonyme en C</a></h2>
+<p class="Pp">Comme nous l'avons déjà montré,
+    <span class="Li">&quot;call_sv&quot;</span> peut être utilisé pour invoquer une
+    sous-routine anonyme. Cependant, notre exemple montrait un script Perl invoquant une XSUB pour effectuer cette opération. Voyons comment cela peut être fait dans notre code C :</p>
+<pre>...
+SV *cvrv
+   = eval_pv(&quot;sub {
+               print 'Vous ne me trouverez pas à encombrer d\'espace de noms !'
+              }&quot;, TRUE);
+...
+call_sv(cvrv, G_VOID|G_NOARGS);</pre>
+<p class="Pp"><span class="Li">&quot;eval_pv&quot;</span> est utilisé pour compiler la
+    sous-routine anonyme, qui sera également la valeur de retour (lisez-en plus sur
+    <span class="L">i">&quot;eval_pv&quot;</span> dans &quot;eval_pv&quot; dans
+    perlapi). Une fois cette référence de code en main, elle peut être combinée avec tous
+    les exemples précédents que nous avons montrés.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CALLBACKS_LÉGERS'><a class='permalink' href='#CALLBACKS_LÉGERS'>CALLBACKS LÉGERS</a></h1>
+<p class="Pp">Parfois, vous devez invoquer la même sous-routine de manière répétée. Cela se produit généralement avec une fonction qui agit sur une liste de valeurs, comme la fonction intégrée de Perl <b>sort()</b>. Vous pouvez passer une fonction de comparaison à <b>sort()</b>, qui sera alors invoquée pour chaque paire de valeurs qui doit être comparée. Les fonctions <b>first()</b> et <b>reduce()</b> de List::Util suivent un schéma similaire.</p>
+<p class="Pp">Dans ce cas, il est possible d'accélérer la routine (souvent de manière substantielle) en utilisant l'API de rappel léger. L'idée est que le contexte d'appel ne doit être créé et détruit qu'une seule fois, et que la sous-routine peut être appelée arbitrairement de nombreuses fois entre les deux.</p>
+<p class="Pp">Il est d'usage de passer des paramètres en utilisant des variables globales (typiquement <span class="Li">$_</span> pour un paramètre, ou <span class="Li">$a</span> et <span class="Li">$b</span> pour deux paramètres) plutôt que via <span class="Li">@_</span>. (Il est possible d'utiliser le mécanisme <span class="Li">@_</span> si vous savez ce que vous faites, bien qu'il n'y ait pas encore d'API prise en charge pour cela. C'est aussi intrinsèquement plus lent.)</p>
+<p class="Pp">Le schéma des appels de macro est le suivant :</p>
+<pre>dMULTICALL;                 /* Déclarer les variables locales */
+U8 gimme = G_SCALAR;        /* contexte de l'appel : G_SCALAR,
+                             * G_LIST, ou G_VOID */
+PUSH_MULTICALL(cv);         /* Configurer le contexte pour l'appel de cv,
+                               et définir les variables locales en conséquence */
+/* boucle */ {
+    /* définir la ou les valeurs de vos variables paramètres */
+    MULTICALL;              /* Effectuer l'appel réel */
+} /* fin de la boucle */
+POP_MULTICALL;              /* Démonter le contexte d'appel */</pre>
+<p class="Pp">Pour des exemples concrets, voir l'implémentation des fonctions <b>first()</b> et <b>reduce()</b> de List::Util 1.18. Vous y trouverez également un fichier d'en-tête qui émule l'API multicall sur les anciennes versions de perl.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp">perlxs, perlguts, perlembed</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Paul Marquess</p>
+<p class="Pp">Remerciements spéciaux aux personnes suivantes qui ont aidé à la création du document.</p>
+<p class="Pp">Jeff Okamoto, Tim Bunce, Nick Gianniotis, Steve Kelem, Gurusamy
+    Sarathy et Larry Wall.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DATE'><a class='permalink' href='#DATE'>DATE</a></h1>
+<p class="Pp">Dernière mise à jour pour perl 5.23.1.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#LES_FONCTIONS_CALL">LES FONCTIONS CALL</a></li>
+        
+            <li><a href="#VALEURS_DES_FLAGS">VALEURS DES FLAGS</a></li>
+        
+            <li><a href="#EXEMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#CALLBACKS_LÉGERS">CALLBACKS LÉGERS</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#DATE">DATE</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlcall.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlcall.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

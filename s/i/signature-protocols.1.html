@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>signature-protocols(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">signature-protocols(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/containers-common/">containers-common</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">Signature(access)</td>
+    <td class="head-vol"></td>
+    <td class="head-rtitle">Signature(access)</td>
+  </tr>
+</table>
+<div class="manual-text">La bibliothèque <b>go.podman.io/image/v5</b> supporte
+  les signatures implémentées comme des blobs &#x201C;attachés&#x201D; à une image. Certains
+  transports d'images (formats de stockage locaux et protocoles distants) implémentent ces
+  signatures nativement ou trivialement ; pour d'autres, les extensions de protocole décrites ci-dessous sont nécessaires.
+<section class="Sh">
+<h1 class="Sh" id='docker/distribution_registries&amp;#x2014;separate_storage'><a class='permalink' href='#docker/distribution_registries&amp;#x2014;separate_storage'>Registres docker/distribution — Stockage séparé</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Usage'><a class='permalink' href='#Usage'>Usage</a></h2>
+<p class="Pp">Tout registre docker/distribution existant, qu'il supporte ou non nativement les signatures, peut être augmenté avec un stockage de signatures séparé en configurant une URL de stockage de signatures dans &#x27E8;containers-registries.d.md&#x27E9;. <b>registries.d</b> peut être configuré pour utiliser une URL de stockage pour un serveur docker/distribution entier, ou aussi des URL séparées pour des espaces de noms plus petits ou des dépôts individuels au sein du serveur (ce qui, par exemple, permet aux auteurs d'images de gérer leur propre stockage de signatures tout en publiant les images sur le serveur public <b>docker.io</b>).</p>
+<p class="Pp">L'URL de stockage des signatures définit la racine d'une hiérarchie de chemins. Il peut s'agir d'une URL <b>file:///&#x2026;</b>, pointant vers une structure de répertoire locale, ou d'une URL <b>http</b>/<b>https</b>, pointant vers un serveur distant. Le stockage de signatures <b>file:///</b> peut être lu et écrit, tandis que <b>http</b>/<b>https</b> ne supporte que la lecture.</p>
+<p class="Pp">La même hiérarchie de chemins est utilisée dans les deux cas, de sorte que le serveur HTTP/HTTPS peut être un simple serveur web statique servant une structure de répertoires créée en écrivant dans un stockage de signatures <b>file:///</b>. (Cela n'empêche bien sûr pas d'autres implémentations de serveurs, par exemple un serveur HTTP lisant les signatures à partir d'une base de données.)</p>
+<p class="Pp">Le flux de travail habituel pour produire et distribuer des images en utilisant le mécanisme de stockage séparé consiste à configurer le dépôt dans <b>registries.d</b> avec une URL <b>lookaside-staging</b> pointant vers une zone de staging privée <b>file:///</b>, et une URL <b>lookaside</b> pointant vers un serveur web public. Pour publier une image, l'auteur de l'image signerait l'image si nécessaire (par exemple en utilisant <b>skopeo copy</b>), puis copierait la structure de répertoires créée à partir de la zone de staging <b>file:///</b> vers un sous-répertoire de la racine web du serveur web public afin qu'elle soit accessible via l'URL publique <b>lookaside</b>. L'auteur indiquerait aux consommateurs de l'image de configurer une URL <b>lookaside</b> pointant vers le serveur web public, ou fournirait un fichier de configuration <b>registries.d</b> pour cela.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Path_structure'><a class='permalink' href='#Path_structure'>Structure des chemins</a></h2>
+<p class="Pp">Étant donné une URL de stockage de signatures de base <i>base</i> configurée dans <b>registries.d</b> comme mentionné ci-dessus, et une image conteneur stockée dans un registre docker/distribution en utilisant le nom <i>complètement développé</i> <i>hostname</i><b>/</b><i>namespaces</i><b>/</b><i>name</i>{<b>@</b><i>digest</i>,<b>:</b><i>tag</i>} (par exemple, pour <b>docker.io/library/busybox:latest</b>, <i>namespaces</i> est <b>library</b>, même si l'utilisateur fait référence à l'image en utilisant la syntaxe plus courte comme <b>busybox:latest</b>), les signatures sont accessibles en utilisant des URL de la forme :</p>
+<p class="Pp"><i>base</i><b>/</b><i>namespaces</i><b>/</b><i>name</i><b>@</b><i>digest-algo</i><b>=</b><i>digest-value</i><b>/signature-</b><i>index</i></p>
+<p class="Pp">où <i>digest-algo</i><b>:</b><i>digest-value</i> est une empreinte de manifeste utilisable pour référencer le manifeste d'image pertinent (c'est-à-dire que même si l'utilisateur a référencé l'image en utilisant une étiquette, le stockage des signatures est toujours désambiguïsé en utilisant des références d'empreinte). Notez que dans les URL utilisées pour les signatures, <i>digest-algo</i> et <i>digest-value</i> sont séparés par le caractère <b>=</b>, et non par <b>:</b> comme lors de l'accès au manifeste via l'API docker/distribution.</p>
+<p class="Pp">Au sein de l'URL, <i>index</i> est un entier décimal (sous forme canonique), commençant par 1. Les signatures sont stockées aux URL avec des valeurs d'<i>index</i> successives ; pour toutes les lire, commencez par <i>index</i>=1, et continuez à lire les signatures en augmentant <i>index</i> tant que les signatures avec ces valeurs d'<i>index</i> existent. De même, pour ajouter une signature supplémentaire à une image, trouvez le premier <i>index</i> qui n'existe pas, puis stockez la nouvelle signature en utilisant cette valeur d'<i>index</i>.</p>
+<p class="Pp">Il n'y a aucun moyen de lister les signatures existantes autre qu'en itérant sur les valeurs d'<i>index</i> successives, et aucun moyen de télécharger toutes les signatures en une seule fois.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Examples'><a class='permalink' href='#Examples'>Exemples</a></h2>
+<p class="Pp">Pour une image docker/distribution disponible sous
+    <b>busybox@sha256:817a12c32a39bbe394944ba49de563e085f1d3c5266eb8e9723256bc4448680e</b>
+    (ou sous <b>busybox:latest</b> si l'étiquette <b>latest</b> pointe vers un
+    manifeste avec la même empreinte), et avec une configuration <b>registries.d</b> spécifiant une URL <b>lookaside</b> <a href='https://example.com/lookaside'>https://example.com/lookaside</a> pour
+    la même image, les URL suivantes seraient accédées pour télécharger toutes
+    les signatures :</p>
+<p class="Pp"> -
+    <a href='https://example.com/lookaside/library/busybox@sha256=817a12c32a39bbe394944ba49de563e085f1d3c5266eb8e9723256bc4448680e/signature-1'>https://example.com/lookaside/library/busybox@sha256=817a12c32a39bbe394944ba49de563e085f1d3c5266eb8e9723256bc4448680e/signature-1</a>
+</p>
+<p class="Pp"> -
+    <a href='https://example.com/lookaside/library/busybox@sha256=817a12c32a39bbe394944ba49de563e085f1d3c5266eb8e9723256bc4448680e/signature-2'>https://example.com/lookaside/library/busybox@sha256=817a12c32a39bbe394944ba49de563e085f1d3c5266eb8e9723256bc4448680e/signature-2</a>
+</p>
+<p class="Pp"> - &#x2026;</p>
+<p class="Pp">Pour une image docker/distribution disponible sous
+    <b>example.com/ns1/ns2/ns3/repo@somedigest:digestvalue</b> et la même
+    URL <b>lookaside</b>, les signatures seraient disponibles à :</p>
+<p class="Pp"> <a href='https://example.com/lookaside/ns1/ns2/ns3/repo@somedigest=digestvalue/signature-1'>https://example.com/lookaside/ns1/ns2/ns3/repo@somedigest=digestvalue/signature-1</a></p>
+<p class="Pp">et ainsi de suite.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='(OpenShift)_docker/distribution_API_extension'><a class='permalink' href='#(OpenShift)_docker/distribution_API_extension'>Extension de l'API docker/distribution (OpenShift)</a></h1>
+<p class="Pp">Depuis <a href='https://github.com/openshift/origin/pull/12504/'>https://github.com/openshift/origin/pull/12504/</a>, le registre embarqué d'OpenShift fournit également une extension de l'API docker/distribution qui permet un accès plus simple aux signatures, en utilisant uniquement le point d'accès de l'API docker/distribution.</p>
+<p class="Pp">Cette API n'est pas intrinsèquement spécifique à OpenShift (par exemple, le client n'a pas besoin de connaître le point d'accès de l'API OpenShift, et les identifiants suffisants pour accéder au serveur de l'API docker/distribution suffisent pour accéder également aux signatures), et c'est la manière préférée d'implémenter le stockage des signatures dans les registres.</p>
+<p class="Pp">Voir <a href='https://github.com/openshift/openshift-docs/pull/3556'>https://github.com/openshift/openshift-docs/pull/3556</a> pour la documentation amont de l'API.</p>
+<p class="Pp">Pour lire la signature, tout utilisateur ayant accès à une image peut utiliser le chemin <b>/extensions/v2/&#x2026;/signatures/&#x2026;</b> pour lire un tableau de signatures. Utilisez uniquement les objets de signature dont la <b>version</b> est égale à <b>2</b>, le <b>type</b> est égal à <b>atomic</b>, et lisez la signature à partir du <b>content</b> ; ignorez les autres champs de l'objet de signature.</p>
+<p class="Pp">Pour ajouter une signature unique, effectuez un <b>PUT</b> d'un nouvel objet avec la <b>version</b> définie sur <b>2</b>, le <b>type</b> défini sur <b>atomic</b>, et le <b>content</b> défini sur la signature. Définissez également le <b>name</b> sur un nom unique de forme <i>digest</i><b>@</b><i>per-image-name</i>, où <i>digest</i> est une empreinte de manifeste d'image (également utilisée dans l'URL), et <i>per-image-name</i> est un identifiant unique.</p>
+<p class="Pp">Pour ajouter plusieurs signatures, ajoutez-les une par une. Cette API ne permet pas de supprimer des signatures.</p>
+<p class="Pp">Notez que comme les signatures sont stockées dans les objets d'image globaux du cluster, c'est-à-dire que différents espaces de noms ne peuvent pas associer différents ensembles de signatures à la même image, la mise à jour des signatures nécessite un accès global au cluster à la ressource <b>imagesignatures</b> (disponible par défaut pour le rôle <b>system:image-signer</b>).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OpenShift-embedded_registries'><a class='permalink' href='#OpenShift-embedded_registries'>Registres embarqués OpenShift</a></h1>
+<p class="Pp">Le registre embarqué d'OpenShift implémente l'API docker/distribution ordinaire, et il expose également les images via l'API REST d'OpenShift (accessible via les serveurs "API master").</p>
+<p class="Pp">Note : Les versions 1.5 et ultérieures d'OpenShift supportent l'extension de l'API docker/distribution décrite ci-dessus
+&#x27E8;#openshift-dockerdistribution-api-extension&#x27E9;, qui est plus facile à configurer et devrait généralement être préférée. Continuez à lire pour plus de détails sur l'utilisation des versions antérieures d'OpenShift.</p>
+<p class="Pp">Depuis <a href='https://github.com/openshift/origin/pull/9181'>https://github.com/openshift/origin/pull/9181</a>, les signatures sont exposées via l'API d'OpenShift (c'est-à-dire que pour accéder à l'image complète, il est nécessaire d'utiliser à la fois l'API</p>
+</section>
+</section>
+
+                
+            </article>
+        </main>
+    </body>
+</html>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="generator" content="mandoc">
+        <title>signature-protocols(5)</title>
+        <link rel="stylesheet" href="/css/style.css">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                
+<section class="Sh">
+<h1 class="Sh" id="signature-protocols">signature-protocols</h1>
+<p class="Nd">5 | PROTOCOLS</p>
+</section>
+
+<section class="Sh">
+<h1 class="Sh" id="NAME">NAME</h1>
+<p class="Ip">signature-protocols - Signing and verification of container images</p>
+</section>
+
+<section class="Sh">
+<h1 class="Sh" id="SYNOPSIS">SYNOPSIS</h1>
+<p class="Pp">The Image and ImageStreamImage resources have a <b>Signatures</b>
+    array. The ImageSignature object contains a <b>Type</b> field and a <b>Content</b>
+    field. The <b>Type</b> is a string which represents the signature type. The
+    <b>Content</b> is a string representing the signature.</p>
+<p class="Pp">The ImageSignature object includes a <b>Content</b> field which
+    can be used to store signature content. The <b>Type</b> field identifies the
+    type of the signature.</p>
+<p class="Pp">The <b>atomic</b> signature type is used to store signatures
+    generated by Atomic Host or by the <b>atomic</b> command.</p>
+<p class="Pp">To view the signature, use the <b>ImageStreamImage</b> resource.
+    For example, to get the signature for a specific image from a specific
+    registry, use the following command:</p>
+<p class="Pp"><pre>&#x20;   $ oc get imagestreamimages &#x3C;image-name&#x3E;:&#x3C;tag&#x3E; -n &#x3C;namespace&#x3E; -o jsonpath='{.status.import.imagestatus.signatures}'</pre></p>
+<p class="Pp">This command retrieves the signatures associated with an image
+    stream tag. The signatures are stored in the <b>status.import.imagestatus.signatures</b>
+    field.</p>
+<p class="Pp">To add or remove signatures, use the <b>ImageSignature</b>
+    resource. For example, to add a signature to an image:</p>
+<p class="Pp"><pre>&#x20;   $ oc create -f - &#x3C;&#x3C;EOF
+&#x20;   apiVersion: "atomic.openshift.io/v1"
+&#x20;   kind: ImageSignature
+&#x20;   metadata:
+&#x20;     name: &#x3C;digest&#x3E;@&#x3C;per-image-name&#x3E;
+&#x20;   spec:
+&#x20;     type: "atomic"
+&#x20;     content: &#x3C;signature-content&#x3E;
+&#x20;   EOF</pre></p>
+<p class="Pp">This command creates a new ImageSignature resource. The
+    <b>metadata.name</b> field must be in the format <i>digest</i><b>@</b><i>per-image-name</i>.
+    The <b>spec.type</b> field must be set to <b>atomic</b>, and the
+    <b>spec.content</b> field should contain the signature content.</p>
+<p class="Pp">To remove a signature, delete the corresponding
+    <b>ImageSignature</b> resource:</p>
+<p class="Pp"><pre>&#x20;   $ oc delete imagesignature &#x3C;digest&#x3E;@&#x3C;per-image-name&#x3E; -n &#x3C;namespace&#x3E;</pre></p>
+<p class="Pp">Note that deleting a signature removes it for all namespaces
+    that contain the same image. This is because signatures are stored with the
+    cluster-wide image object, not within individual namespaces.</p>
+<p class="Pp">Updating signatures requires cluster-wide access to the
+    <b>ImageSignature</b> resource, which is typically granted to the
+    <b>system:image-signer</b> role.</p>
+</section>
+
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION">DESCRIPTION</h1>
+<p class="Pp">This document describes the protocol for signing and verifying
+    container images using OpenShift. It covers the use of the
+    <b>ImageStreamImage</b> and <b>ImageSignature</b> resources for managing
+    image signatures.</p>
+<p class="Pp">The signature protocol allows users to verify the integrity and
+    authenticity of container images. Signatures are stored as part of the image
+    metadata within OpenShift.</p>
+<p class="Pp">Key components of the signature protocol include:</p>
+<ul class="Bl-item">
+    <li><b>ImageStreamImage resource</b>: Used to retrieve signatures associated
+        with an image. It allows users to inspect the signatures applied to an
+        image.</li>
+    <li><b>ImageSignature resource</b>: Used to manage (add or remove)
+        signatures. Signatures are associated with a specific image digest and
+        an optional per-image name.</li>
+    <li><b>Signature Type (atomic)</b>: Specifies the type of signature. The
+        <b>atomic</b> type is used for signatures generated by Atomic Host or
+        the <b>atomic</b> command.</li>
+    <li><b>Signature Content</b>: The actual signature data, stored as a
+        string.</li>
+</ul>
+<p class="Pp">When retrieving signatures using <b>ImageStreamImage</b>, users
+    should focus on signatures of <b>Type</b> <b>atomic</b> and read the
+    signature from the <b>Content</b> field. Other fields within the
+    <b>ImageSignature</b> object should be ignored for signature verification
+    purposes.</p>
+<p class="Pp">Adding or removing signatures requires using the cluster-wide
+    (non-namespaced) <b>ImageSignature</b> resource. The signature name must
+    follow the format <i>digest</i><b>@</b><i>per-image-name</i>, where
+    <i>digest</i> is the image manifest digest and <i>per-image-name</i> is a
+    unique identifier.</p>
+<p class="Pp">It is important to note that signatures are stored at the
+    cluster level. This means that a signature applied to an image is available
+    globally, regardless of the namespace. Consequently, updating signatures
+    requires cluster-wide permissions (typically granted to the
+    <b>system:image-signer</b> role), and deleting signatures is strongly
+    discouraged as it affects all namespaces containing that image.</p>
+<p class="Pp">For detailed information on interacting with the OpenShift API,
+    refer to the OpenShift API documentation. Specifically, understanding the
+    URLs for both the docker/distribution and the OpenShift API master endpoints
+    is crucial.</p>
+<p class="Pp">To read the signature, any user with access to an image can use
+    the <b>imagestreamimages</b> namespaced resource to read an <b>Image</b>
+    object and its <b>Signatures</b> array. Use only the <b>ImageSignature</b>
+    objects which have <b>Type</b> equal to <b>atomic</b>, and read the
+    signature from <b>Content</b>; ignore the other fields of the
+    <b>ImageSignature</b> object.</p>
+<p class="Pp">To add or remove signatures, use the cluster-wide (non-namespaced)
+    <b>imagesignatures</b> resource, with <b>Type</b> set to <b>atomic</b> and
+    <b>Content</b> set to the signature. Signature names must have the form
+    <i>digest</i><b>@</b><i>per-image-name</i>, where <i>digest</i> is an image
+    manifest digest (OpenShift &#x201C;image name&#x201D;), and
+    <i>per-image-name</i> is any unique identifier.</p>
+<p class="Pp">Note that because signatures are stored within the cluster-wide
+    image objects, i.e. different namespaces can not associate different sets of
+    signatures to the same image, updating signatures requires a cluster-wide
+    access to the <b>imagesignatures</b> resource (by default available to the
+    <b>system:image-signer</b> role), and deleting signatures is strongly
+    discouraged (it deletes the signature from all namespaces which contain the
+    same image).</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">protocols</td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/containers-common/">extra/containers-common</a></dd>
+        <dt>Version:</dt>
+        <dd>1:0.66.0-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://github.com/containers/container-libs">https://github.com/containers/container-libs</a></dd>
+        <dt>Licenses:</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/containers-common/">/listing/extra/containers-common/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#docker/distribution_registries&amp;#x2014;separate_storage">docker/distribution registries—separate storage</a></li>
+        
+            <li><a href="#(OpenShift)_docker/distribution_API_extension">(OpenShift) docker/distribution API extension</a></li>
+        
+            <li><a href="#OpenShift-embedded_registries">OpenShift-embedded registries</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/signature-protocols.1.en.txt">txt</a>, 
+        
+            <a href="/man/signature-protocols.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

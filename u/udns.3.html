@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>udns(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">udns(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/udns/">udns</a></p>
+<p class="lic">Licences: LGPL-2.1-ou-plus tard</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">udns(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">udns(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">udns - bibliothèque de résolution DNS stub</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre>#include &lt;udns.h&gt;
+struct <b>dns_ctx</b>;
+struct <b>dns_query</b>;
+extern struct dns_ctx <b>dns_defctx</b>;
+struct dns_ctx *<i>ctx</i>;
+typedef void <b>dns_query_fn</b>(<i>ctx</i>, void *<i>result</i>, void *<i>data</i>);
+typedef int
+<b>dns_parse_fn</b>(const unsigned char *<i>qnd</i>,
+       const unsigned char *<i>pkt</i>,
+       const unsigned char *<i>cur</i>,
+       const unsigned char *<i>end</i>,
+       void **<i>resultp</i>);
+<b>cc</b> ... -l<b>udns</b></pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">La bibliothèque DNS, <b>udns</b>, implémente des fonctionnalités de résolution DNS stub thread-safe, qui peuvent être utilisées de manière traditionnelle et synchrone, ainsi qu'asynchrone, avec une boucle d'événements fournie par l'application.</p>
+<p class="Pp">Bien que DNS fonctionne avec TCP et UDP, en effectuant d'abord une requête UDP et si le résultat ne rentre pas dans le tampon UDP (512 octets maximum pour le protocole DNS original), en répétant la requête sur TCP, la bibliothèque n'utilise que UDP, mais utilise les extensions EDNS0 (RFC2671) qui permettent des tampons UDP plus grands.</p>
+<p class="Pp">La bibliothèque utilise un seul socket UDP pour effectuer toutes les opérations, même lors de la consultation de plusieurs serveurs DNS. De cette manière, il est très simple d'utiliser la bibliothèque dans des applications à boucle d'événements asynchrone : une application ne devrait ajouter qu'un seul socket à l'ensemble des descripteurs de fichiers qu'elle surveille pour les E/S.</p>
+<p class="Pp">La bibliothèque utilise deux objets principaux, le *contexte du résolveur* de type <b>struct&#x00A0;dns_ctx</b>, et la *structure de requête* de type <b>struct&#x00A0;dns_query</b>, tous deux opaques pour une application. Le contexte du résolveur contient des informations globales sur le résolveur, telles que la liste des serveurs DNS à utiliser, la liste des requêtes actives, etc. Les objets de requête contiennent des informations sur une seule requête DNS en cours et sont alloués/traités/libérés par la bibliothèque. Un pointeur vers la structure de requête peut être traité comme un identifiant d'une requête en cours et peut être utilisé pour annuler la requête asynchrone ou attendre qu'elle se termine.</p>
+<p class="Pp">L'interface asynchrone fonctionne comme suit. Une application initialise un contexte de résolveur, soumet un nombre quelconque de requêtes pour celui-ci en utilisant l'une des routines <b>dns_submit_</b><i>XXX</i>() fournies (chacune renvoyant l'identifiant de la requête sous forme de pointeur vers la structure de requête), attend des entrées sur le socket UDP utilisé par la bibliothèque, et donne un certain contrôle à la bibliothèque en appelant les routines <b>dns_ioevent</b>() et <b>dns_timeouts</b>() le cas échéant. La bibliothèque effectue tous les traitements nécessaires et exécute la routine de rappel fournie par l'application lorsqu'une requête est terminée (succès ou échec), en lui donnant le résultat le cas échéant, un pointeur vers le contexte du résolveur (à partir duquel le statut d'achèvement peut être obtenu) et le pointeur de données fourni par une application lors de la soumission de la requête. Lors de la soumission d'une requête, une application demande comment traiter la réponse -- soit renvoyer le paquet de réponse DNS brut pour son propre traitement de bas niveau, soit fournir l'adresse d'une *routine d'analyse* de type <b>dns_parse_fn</b> pour effectuer la conversion du format réseau en une structure de données facile à utiliser (la bibliothèque fournit des routines d'analyse pour plusieurs types d'enregistrements de ressources couramment utilisés, ainsi qu'une interface de haut niveau type-safe qui demande l'analyse automatiquement). La surveillance des E/S et la gestion des délais d'attente peuvent être basées sur select() ou poll() traditionnels, ou toute technique basée sur des rappels peut être utilisée.</p>
+<p class="Pp">De plus, la bibliothèque fournit une interface synchrone traditionnelle, qui peut être mélangée avec des appels asynchrones (pendant le traitement des requêtes synchrones, d'autres requêtes asynchrones pour le même contexte de résolveur continuent d'être traitées normalement). Une application utilise l'une des nombreuses routines <b>dns_resolve_</b><i>XXX</i>() fournies par la bibliothèque pour effectuer une requête. Comme avec l'interface asynchrone, une application peut demander à renvoyer le paquet DNS brut ou une structure de données spécifique au type en fournissant la routine d'analyse pour traiter la réponse. Chaque routine de la série <b>dns_resolve_</b><i>XXX</i>() renvoie un pointeur vers le résultat ou NULL en cas d'erreur. Le statut d'achèvement de la requête (ou la longueur du paquet DNS brut) est disponible à partir du contexte du résolveur en utilisant la routine <b>dns_status</b>(), de la même manière que pour l'interface asynchrone.</p>
+<p class="Pp">En interne, la bibliothèque utilise le format réseau des noms de domaine, appelé *format DN* dans cette page de manuel. Il s'agit d'une série de *libellés* de domaine précédés d'un octet de longueur, se terminant par un libellé de longueur nulle qui fait partie intégrante du format DN. Plusieurs routines sont fournies pour convertir des chaînes asciiz traditionnelles en DN et vice versa. L'interface de requête de haut niveau spécifique au type masque le format DN à l'application.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEFINITIONS_COMMUNES'><a class='permalink' href='#DEFINITIONS_COMMUNES'>DÉFINITIONS COMMUNES</a></h1>
+<p class="Pp">Chaque enregistrement de ressource (RR) DNS a un *type* et une *classe*. La bibliothèque définit plusieurs constantes entières, <b>DNS_C_</b><i>XXX</i> et <b>DNS_T_</b><i>XXX</i>, pour servir de noms symboliques aux classes et types de RR, tels que <b>DNS_C_IN</b> pour la classe Internet, <b>DNS_T_A</b> pour le type d'enregistrement d'adresse IPv4, etc. Voir le fichier d'en-tête udns.h pour la liste complète de toutes ces constantes.</p>
+<p class="Pp">Les constantes suivantes sont définies dans le fichier d'en-tête udns.h :</p>
+<dl class="Bl-tag">
+  <dt id="DNS_MAXDN"><a class="permalink" href="#DNS_MAXDN"><b>DNS_MAXDN</b>
+    (255 octets)</a></dt>
+  <dd>Longueur maximale d'un nom de domaine dans le format interne (réseau) DN.</dd>
+  <dt id="DNS_MAXLABEL"><a class="permalink" href="#DNS_MAXLABEL"><b>DNS_MAXLABEL</b>
+    (63 octets)</a></dt>
+  <dd>Longueur maximale d'un seul libellé au format DN.</dd>
+  <dt id="DNS_MAXNAME"><a class="permalink" href="#DNS_MAXNAME"><b>DNS_MAXNAME</b>
+    (1024 octets)</a></dt>
+  <dd>Longueur maximale d'un nom de domaine au format asciiz.</dd>
+  <dt id="DNS_HSIZE"><a class="permalink" href="#DNS_HSIZE"><b>DNS_HSIZE</b> (12
+    octets)</a></dt>
+  <dd>Taille de l'en-tête dans un paquet DNS.</dd>
+  <dt id="DNS_PORT"><a class="permalink" href="#DNS_PORT"><b>DNS_PORT</b>
+    (53)</a></dt>
+  <dd>Port par défaut à utiliser lors de la contactation d'un serveur DNS.</dd>
+  <dt id="DNS_MAXSERV"><a class="permalink" href="#DNS_MAXSERV"><b>DNS_MAXSERV</b>
+    (6 serveurs)</a></dt>
+  <dd>Nombre maximum de serveurs DNS à utiliser.</dd>
+  <dt id="DNS_MAXPACKET"><a class="permalink" href="#DNS_MAXPACKET"><b>DNS_MAXPACKET</b>
+    (512 octets)</a></dt>
+  <dd>Longueur maximale d'un paquet DNS UDP telle que spécifiée par le protocole
+    DNS original.</dd>
+  <dt id="DNS_EDNS0PACKET"><a class="permalink" href="#DNS_EDNS0PACKET"><b>DNS_EDNS0PACKET</b>
+    (4096 octets)</a></dt>
+  <dd>Longueur par défaut d'un paquet DNS UDP (avec extensions EDNS0) que la
+      bibliothèque utilise. Notez que les serveurs DNS récursifs résident généralement
+      près du client qui leur demande de résoudre des noms, par exemple sur le même
+      segment LAN ou même sur la même machine, de sorte que la fragmentation des
+      paquets UDP n'est pas un problème dans la plupart des cas. Notez également que
+      la taille des paquets réels sera de la taille de la réponse réelle requise, ce
+      qui est plus petit que cette valeur dans presque tous les cas.
+      </dd>
+</dl>
+<p class="Pp">De plus, plusieurs constantes sont définies pour simplifier le travail avec les paquets DNS bruts, telles que les codes de réponse DNS (<b>DNS_R_</b><i>XXX</i>), la disposition de l'en-tête DNS (<b>DNS_H_</b><i>XXX</i>) et d'autres. Encore une fois, voir udns.h pour la liste complète. Les codes d'erreur de la bibliothèque (<b>DNS_E_</b><i>XXX</i>) sont décrits plus loin dans cette page de manuel.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONTEXTE_DU_RESOLVEUR'><a class='permalink' href='#CONTEXTE_DU_RESOLVEUR'>CONTEXTE DU RÉSOLVEUR</a></h1>
+<p class="Pp">Le contexte du résolveur, de type <b>struct&#x00A0;dns_ctx</b>, est un objet opaque pour une application. Plusieurs routines fournies par la bibliothèque permettent d'initialiser, de copier et de libérer les contextes de résolveur. La plupart des autres routines de haut niveau de cette bibliothèque attendent un pointeur vers un contexte de résolveur, *ctx*, comme premier argument. Il existe un contexte de résolveur par défaut, nommé <b>dns_defctx</b>. Lorsque le pointeur de contexte *ctx* passé à une routine est NULL, <b>dns_defctx</b> est utilisé. Plusieurs contextes de résolveur peuvent être actifs en même temps, par exemple, lorsqu'une application est multithreadée et que chaque thread utilise le résolveur.</p>
+<p class="Pp">Pour utiliser la bibliothèque, une application doit initialiser et ouvrir un ou plusieurs objets de contexte de résolveur. Ce sont deux actions distinctes, effectuées par <b>dns_init</b>() (ou <b>dns_reset</b>()), et <b>dns_open</b>(). Entre ces deux appels, une application est libre d'effectuer une initialisation supplémentaire, telle que la définition de serveurs DNS personnalisés, d'options ou de listes de recherche de domaines. Optionnellement, si aucune initialisation personnalisée supplémentaire n'est requise, <b>dns_init</b>() peut ouvrir le contexte si l'argument *do_open* (voir ci-dessous) est non nul.</p>
+<p class="Pp">Lors de l'initialisation du contexte du résolveur, la bibliothèque utilise les informations du fichier système /etc/resolv.conf (voir <a href='/man/resolv.conf.5.fr'>resolv.conf(5)</a>), consulte les variables d'environnement <b>$LOCALDOMAIN</b>, <b>$NSCACHEIP</b>, <b>$NAMESERVERS</b> et <b>$RES_OPTIONS</b>, ainsi que le nom d'hôte local pour obtenir la liste des serveurs DNS locaux, la liste de recherche de domaines et diverses options de résolveur.</p>
+<p class="Pp">Les routines suivantes pour initialiser le contexte du résolveur sont disponibles</p>
+</section>
+</div>
+</section>
+            </article>
+            
+        </main>
+        <footer>
+            <p>Compilé le: 2024-05-10</p>
+        </footer>
+    </body>
+</html>
+ailable:</p>
+<pre>void <b>dns_reset</b>(<i>ctx</i>)
+int <b>dns_init</b>(<i>ctx</i>, int <i>do_open</i>)</pre>
+<div class="Bd-indent"><b>dns_reset</b>() réinitialise un contexte de résolution donné à
+  des valeurs par défaut, le préparant à être ouvert par <b>dns_open</b>(). Il est possible d'appeler cette routine sur un contexte ouvert et actif - toutes les requêtes actives seront
+  abandonnées, les sockets seront fermés, etc. Cette routine n'initialise aucun paramètre à partir des fichiers de configuration système, utilisez <b>dns_init</b>() pour
+  cela. Il n'y a pas de retour d'erreur - l'opération réussit toujours. <b>dns_init</b>()
+  fait tout ce que <b>dns_reset</b>() fait, plus initialise divers paramètres
+  du contexte conformément à la configuration système et aux variables d'environnement du processus. Si <i>do_open</i> est différent de zéro, <b>dns_init</b>() appelle
+  <i>dns_open</i>(), de sorte que toute l'initialisation de la bibliothèque soit effectuée en
+  une seule étape.</div>
+<pre>struct dns_ctx *<b>dns_new</b>(struct dns_ctx *<i>copy</i>)
+void <b>dns_free</b>(<i>ctx</i>)</pre>
+<div class="Bd-indent"><b>dns_new</b>() alloue un nouveau contexte de résolution et
+  copie tous les paramètres d'un contexte de résolution donné <i>copy</i>, ou le contexte par défaut si
+  <i>copy</i> est NULL, et renvoie un pointeur vers le contexte nouvellement alloué. Le contexte copié doit être initialisé. <b>dns_new</b>() peut échouer s'il n'y a pas de mémoire disponible pour copier <i>copy</i>, dans
+  ce cas, la routine renverra un pointeur NULL. <b>dns_free</b>() est utilisé pour fermer le socket associé et libérer les ressources du contexte de résolution et annuler
+  (abandonner) toutes les requêtes actives associées. C'est une erreur de libérer
+  <b>dns_defctx</b>, seuls les contextes alloués dynamiquement renvoyés par
+  <b>dns_new</b>() peuvent être libérés par <b>dns_free</b>().</div>
+<pre>int <b>dns_add_serv</b>(<i>ctx</i>, const char *<i>servaddr</i>)
+int <b>dns_add_serv_s</b>(<i>ctx</i>, const struct sockaddr *<i>sa</i>)
+int <b>dns_add_srch</b>(<i>ctx</i>, const char *<i>srch</i>)</pre>
+<div class="Bd-indent">Ajoute un élément à la liste des serveurs de noms
+  (<b>dns_add_serv</b>(), sous forme de chaîne asciiz <i>servaddr</i> avec une adresse IP
+  du serveur de noms, et <b>dns_add_serv_s</b>(), sous forme d'adresse socket initialisée
+  <i>sa</i>), ou à la liste de recherche (<b>dns_add_srch</b>(), sous forme de pointeur vers un nom de domaine) pour le contexte donné <i>ctx</i>. Si le dernier argument est un pointeur NULL,
+  la liste correspondante (de recherche ou de serveur de noms) est réinitialisée à la place. En cas de succès, chaque routine renvoie le nouveau nombre d'éléments dans la
+  liste en question. En cas d'erreur, une valeur négative est renvoyée et la variable globale
+  <b>errno</b> est définie de manière appropriée. Il est erroné d'appeler l'une de ces fonctions si le contexte est ouvert (après <b>dns_open</b>() ou
+  <b>dns_init</b>() avec un argument différent de zéro).</div>
+<pre>int <b>dns_set_opts</b>(<i>ctx</i>, const char *<i>opts</i>)</pre>
+<div class="Bd-indent">Définit les options du contexte de résolution à partir de la chaîne <i>opts</i>, de la même manière que le traitement de l'instruction
+  <b>options</b> dans resolv.conf et la variable d'environnement <b>$RES_OPTIONS</b>. Renvoie le nombre
+  d'options non reconnues/invalides trouvées (toutes les options reconnues et valides sont traitées).</div>
+<pre>void <b>dns_set_opt</b>(<i>ctx</i>, int <i>opt</i>, <i>val</i>)</pre>
+<div class="Bd-indent"><b>TODO</b> L'argument <i>flags</i> est un masque de bits avec les
+  bits suivants définis :
+<dl class="Bl-tag">
+  <dt id="DNS_NOSRCH"><a class="permalink" href="#DNS_NOSRCH"><b>DNS_NOSRCH</b></a></dt>
+  <dd>ne pas effectuer de recherche de nom de domaine dans la liste de recherche.</dd>
+  <dt id="DNS_NORD"><a class="permalink" href="#DNS_NORD"><b>DNS_NORD</b></a></dt>
+  <dd>ne pas demander de récursion lors de l'exécution des requêtes (c'est-à-dire ne pas définir le drapeau RD
+      dans les requêtes).</dd>
+  <dt id="DNS_AAONLY"><a class="permalink" href="#DNS_AAONLY"><b>DNS_AAONLY</b></a></dt>
+  <dd>demander uniquement des réponses faisant autorité (c'est-à-dire définir le drapeau AA dans les requêtes).</dd>
+</dl>
+</div>
+<pre>int <b>dns_open</b>(<i>ctx</i>)
+int <b>dns_sock</b>(const <i>ctx</i>)
+void <b>dns_close</b>(<i>ctx</i>)</pre>
+<div class="Bd-indent"><b>dns_open</b>() ouvre le socket UDP utilisé pour les requêtes
+  s'il n'est pas déjà ouvert, et renvoie le descripteur de fichier associé (ou une valeur négative en cas d'erreur). Avant que toute requête puisse être soumise, le contexte doit être ouvert
+  en utilisant cette routine. Et avant l'ouverture, le contexte doit être
+  initialisé. <b>dns_sock</b>() renvoie le socket UDP s'il est ouvert, ou -1 sinon.
+  <b>dns_close</b>() ferme le socket UDP s'il était ouvert, et abandonne toutes les requêtes actives s'il y en a.</div>
+<pre>int <b>dns_active</b>(const <i>ctx</i>)</pre>
+<div class="Bd-indent">Renvoie le nombre de requêtes actives mises en file d'attente pour le contexte donné
+  <i>ctx</i>, ou zéro s'il n'y en a pas.</div>
+<pre>int <b>dns_status</b>(const <i>ctx</i>)</pre>
+<div class="Bd-indent">Renvoie le code d'état de la dernière opération. Lors de l'utilisation de l'interface synchrone, il s'agit de l'état d'achèvement de la dernière requête.
+  Avec l'interface asynchrone, depuis la routine de rappel, il s'agit de l'état d'achèvement de la requête pour laquelle le rappel est appelé.
+  Lorsqu'une soumission de requête échoue, il s'agit du code d'erreur indiquant la raison de l'échec.
+  Tous les codes d'erreur sont négatifs et sont représentés par les constantes <b>DNS_E_</b><i>XXX</i> décrites ci-dessous.</div>
+<pre>void <b>dns_ioevent</b>(<i>ctx</i>, time_t <i>now</i>)</pre>
+<div class="Bd-indent">Cette routine peut être appelée par une application pour traiter les événements d'E/S sur le socket UDP utilisé par la bibliothèque, tel que retourné par
+  <b>dns_sock</b>(). La routine tente de recevoir les datagrammes UDP entrants du
+  socket et de les traiter. Le socket est configuré pour être non bloquant, il est donc sûr d'appeler la routine même s'il n'y a pas de données à lire. La routine traitera autant de datagrammes que ceux mis en file d'attente pour le socket, il est donc sûr de l'utiliser avec un modèle de surveillance d'E/S déclenché par niveau ou déclenché par front. L'argument <i>now</i> est soit l'heure actuelle telle que retournée par <b>time</b>(), soit 0, dans
+  lequel cas la routine obtiendra l'heure actuelle par elle-même.</div>
+<pre>int <b>dns_timeouts</b>(<i>ctx</i>, int <i>maxwait</i>, time_t <i>now</i>)</pre>
+<div class="Bd-indent">Traite tous les timeouts en attente et renvoie le nombre de secondes depuis l'heure actuelle (<i>now</i> s'il n'est pas 0) jusqu'à l'heure à laquelle
+  la bibliothèque souhaite que l'application lui cède le contrôle pour traiter davantage de requêtes en file d'attente. Dans le cas où il n'y a pas de requêtes en attente, cette heure est -1. La
+  routine ne demandera pas une durée supérieure à <i>maxwait</i> secondes si elle est supérieure ou égale à zéro. Si <i>now</i> est 0, la routine obtiendra l'heure actuelle par elle-même ; lorsqu'il n'est pas 0, il doit contenir l'heure actuelle telle que retournée par
+  <b>time</b>().</div>
+<pre>typedef void <b>dns_utm_fn</b>(<i>ctx</i>, int <i>timeout</i>, void *<i>data</i>)
+void <b>dns_set_tmcbck</b>(<i>ctx</i>, dns_utm_fn *<i>utmfn</i>, void *<i>data</i>)</pre>
+<div class="Bd-indent">Une application peut utiliser un mécanisme de multiplexage d'E/S basé sur des rappels personnalisés. Généralement, un tel mécanisme a le concept d'un
+  <i>timer</i>, et la capacité d'enregistrer un événement de timer sous la forme d'une routine de rappel qui sera exécutée après un certain temps. Pour utiliser un tel mécanisme d'événement, udns offre la possibilité d'enregistrer et de désenregistrer des événements de timer nécessaires au traitement interne à l'aide du mécanisme d'événement que l'application utilise. Pour que cela fonctionne, il est possible d'associer un pointeur vers une routine qui effectuera le travail nécessaire pour (dés)enregistrer les événements de timer
+  avec un contexte de résolution donné, et udns appellera cette routine aux moments appropriés. Le prototype d'une telle routine est montré par le typedef <b>dns_utm_fn</b> ci-dessus. Libudns associe un seul timer au contexte de résolution. La routine <i>utmfn</i> fournie par l'utilisateur sera appelée par la bibliothèque avec les arguments suivants :
+<dl class="Bl-tag">
+  <dt id="ctx"><a class="permalink" href="#ctx"><i>ctx</i> == NULL</a></dt>
+  <dd>supprimer le timer utilisateur, lors de la libération du contexte ou lorsqu'une application change
+      la routine de demande de timer utilisateur en utilisant <b>dns_set_tmcbck</b>();</dd>
+  <dt id="ctx~2"><a class="permalink" href="#ctx~2"><i>ctx</i> != NULL,
+    <i>timeout</i> &lt; 0</a></dt>
+  <dd>ne plus déclencher le timer, lorsqu'il n'y a pas de requêtes actives;</dd>
+  <dt id="ctx~3"><a class="permalink" href="#ctx~3"><i>ctx</i> != NULL,
+    <i>timeout</i> == 0</a></dt>
+  <dd>déclencher le timer à la prochaine possibilité, mais pas immédiatement;</dd>
+  <dt id="ctx~4"><a class="permalink" href="#ctx~4"><i>ctx</i> != NULL,
+    <i>timeout</i> &gt; 0</a></dt>
+  <dd>déclencher le timer après <i>timeout</i> secondes à partir de maintenant.</dd>
+</dl>
+<p class="Pp">L'argument <i>data</i> passé à la routine sera le même que celui passé à
+  <b>dns_set_tmcbck</b>().</p>
+<p class="Pp">Lorsqu'un timer expire, une application doit appeler
+  la routine <b>dns_timeouts</b>() (voir ci-dessous). L'utilisation de timers non basés sur des rappels est également fournie.</p>
+</div>
+<p class="Pp"><b>XXXX TODO: quelques autres routines de contexte de résolution, comme
+    dns_set_dbgfn() etc.</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='QUERY_INTERFACE'><a class='permalink' href='#QUERY_INTERFACE'>INTERFACE DE REQUÊTE</a></h1>
+<p class="Pp">Il existe deux façons d'effectuer des requêtes DNS : la manière synchrone traditionnelle, où udns effectue tout le traitement nécessaire et ne rend le contrôle à l'application que lorsque la requête est terminée, et la manière asynchrone, où une application soumet une ou plusieurs requêtes à la bibliothèque à l'aide d'un contexte de résolution donné et attend la fin du traitement en surveillant le descripteur de fichier utilisé par la bibliothèque et en appelant les routines de la bibliothèque pour traiter les entrées sur ce
+    descripteur de fichier. Le mode asynchrone fonctionne avec des routines de rappel : une
+    application fournit l'adresse d'une routine à exécuter lorsque la requête est terminée, et un pointeur de données, qui est passé à la routine de rappel.</p>
+<p class="Pp">Les requêtes sont soumises à la bibliothèque sous la forme de
+  <b>struct&#x00A0;dns_query</b>. Pour effectuer une requête asynchrone, une
+  application appelle l'une des routines <b>dns_submit_</b><i>XXX</i>() et
+  fournit les informations nécessaires pour un rappel, ainsi que tous les paramètres de la requête. Lorsque la requête est terminée, la bibliothèque appellera la routine de rappel fournie par l'application, en lui donnant le contexte de résolution (qui détient l'état d'achèvement de la requête), le résultat alloué dynamiquement (qui sera soit un paquet DNS brut, soit, si l'application a demandé l'analyse du résultat en spécifiant une routine d'analyse non NULL, une structure prête à l'emploi spécifique au type), et un pointeur de données fourni par une application lorsqu'elle a soumis la requête. C'est à l'application qu'incombe la responsabilité de libérer la mémoire du résultat.</p>
+<p class="Pp">Une routine de rappel de requête générique ressemble à ceci :</p>
+<pre>typedef void
+<b>dns_query_fn</b>(<i>ctx</i>, void *<i>result</i>, void *<i>data</i>)</pre> Le type de routine de rappel pour l'interface de requête spécifique à un type attend une forme similaire, la seule différence étant le type de l'argument <b>result</b>, qui sera un pointeur vers une structure de données spécifique (réponse décodée) au lieu de ce pointeur void vers les données brutes du paquet DNS.
+<p class="Pp">Une routine d'analyse de résultat ressemble à ceci :</p>
+<pre>typedef int
+<b>dns_parse_fn</b>(const unsigned char *<i>qdn</i>,
+      const unsigned char *<i>pkt</i>,
+      const unsigned char *<i>cur</i>,
+      const unsigned char *<i>end</i>,
+      void **<i>resultp</i>);</pre> Lorsqu'elle est appelée par la bibliothèque, les arguments sont les suivants : <i>pkt</i> pointe vers le début du paquet reçu ; <i>end</i> pointe après la fin du paquet reçu ; <i>cur</i> pointe après le DN de requête dans la section de requête du paquet ; <i>qdn</i> pointe vers le DN de requête d'origine. La routine doit allouer un seul tampon pour contenir le résultat, analyser la réponse en remplissant le tampon et renvoyer le tampon via l'argument <i>resultp</i>. Elle renvoie 0 en cas d'erreur, ou un code d'erreur udns (constantes <b>DNS_E_</b><i>XXX</i>) en cas d'erreur. Notez qu'au moment où la routine d'analyse est appelée par la bibliothèque, le paquet a déjà été vérifié comme étant une réponse à la requête d'origine, en faisant correspondre le DN de requête, la classe de requête et le type de requête.
+<p class="Pp">L'interface de requête spécifique à un type fournit automatiquement les routines d'analyse nécessaires.</p>
+<p class="Pp">Dans le cas</p>
+de l'erreur, l'état d'achèvement de la requête tel que retourné par
+    <b>dns_status</b>(<i>ctx</i>), contiendra l'une des valeurs suivantes :</p>
+<dl class="Bl-tag">
+  <dt id="positive"><a class="permalink" href="#positive">valeur
+    positive</a></dt>
+  <dd>longueur du paquet DNS brut si l'analyse n'est pas demandée.</dd>
+  <dt>0</dt>
+  <dd>la requête a réussi et <i>reply</i> pointe vers une structure de données spécifique au type.</dd>
+  <dt id="DNS_E_TEMPFAIL"><a class="permalink" href="#DNS_E_TEMPFAIL"><b>DNS_E_TEMPFAIL</b></a></dt>
+  <dd>erreur temporaire, le serveur de noms résolveur n'a pas pu traiter notre requête
+      ou a expiré.</dd>
+  <dt id="DNS_E_PROTOCOL"><a class="permalink" href="#DNS_E_PROTOCOL"><b>DNS_E_PROTOCOL</b></a></dt>
+  <dd>erreur de protocole, un serveur de noms a renvoyé une réponse malformée.</dd>
+  <dt id="DNS_E_NXDOMAIN"><a class="permalink" href="#DNS_E_NXDOMAIN"><b>DNS_E_NXDOMAIN</b></a></dt>
+  <dd>le nom de domaine n'existe pas.</dd>
+  <dt id="DNS_E_NODATA"><a class="permalink" href="#DNS_E_NODATA"><b>DNS_E_NODATA</b></a></dt>
+  <dd>aucune donnée du type demandé n'a été trouvée.</dd>
+  <dt id="DNS_E_NOMEM"><a class="permalink" href="#DNS_E_NOMEM"><b>DNS_E_NOMEM</b></a></dt>
+  <dd>mémoire insuffisante lors du traitement de la requête.</dd>
+  <dt id="DNS_E_BADQUERY"><a class="permalink" href="#DNS_E_BADQUERY"><b>DNS_E_BADQUERY</b></a></dt>
+  <dd>un aspect de la requête (le plus souvent le nom de domaine concerné) est
+      invalide, et la bibliothèque ne peut même pas démarrer une requête.
+      </dd>
+</dl>
+<p class="Pp">La bibliothèque fournit deux séries de routines qui utilisent une interface similaire -- une pour les requêtes asynchrones et une autre pour les requêtes synchrones. Il existe deux routines générales de bas niveau dans chaque série pour soumettre (interface asynchrone) et résoudre (interface synchrone) les requêtes, ainsi que plusieurs routines spécifiques au type avec des interfaces plus faciles à utiliser. Pour soumettre une requête asynchrone, utilisez l'une des routines <b>dns_submit_</b><i>XXX</i>(), chacune acceptant les paramètres de requête, des pointeurs vers la routine de rappel et vers les données de rappel, et un indice de temps actuel optionnel. Notez que les routines <b>dns_submit_</b><i>XXX</i>() spécifiques au type attendent également un type spécifique de routine de rappel, qui accepte la réponse comme un pointeur vers la structure correspondante, et non comme un pointeur void). Chaque routine <b>dns_submit_</b><i>XXX</i>() retourne un pointeur vers la structure de requête interne de type struct&#x00A0;dns_query, utilisée comme identifiant de la requête donnée.</p>
+<p class="Pp">Pour résoudre une requête de manière synchrone, utilisez l'une des routines <b>dns_resolve_</b><i>XXX</i>(), qui accepte les mêmes paramètres de requête (mais pas les pointeurs de rappel) que les routines <b>dns_submit_</b><i>XXX</i>() correspondantes, et retourne le résultat de la requête, qui est le même que celui passé à la routine de rappel dans le cas de l'interface asynchrone.</p>
+<p class="Pp">Dans les deux cas, la mémoire du résultat (si la requête s'est terminée avec succès) est allouée dynamiquement et doit être libérée par une application. Si la requête a échoué pour une raison quelconque, le résultat sera NULL, et l'état d'erreur sera disponible à partir de la routine <b>dns_status</b>(<i>ctx</i>) comme montré ci-dessus.</p>
+<pre>struct dns_query *
+<b>dns_submit_dn</b>(<i>ctx</i>,
+     const unsigned char *<i>dn</i>, <i>qcls</i>, <i>qtyp</i>, <i>flags</i>,
+     <i>parse</i>, <i>cbck</i>, <i>data</i>)
+struct dns_query *
+<b>dns_submit_p</b>(<i>ctx</i>,
+     const char *<i>name</i>, <i>qcls</i>, <i>qtyp</i>, <i>flags</i>,
+     <i>parse</i>, <i>cbck</i>, <i>data</i>)
+   enum dns_class <i>qcls</i>;
+   enum dns_type <i>qtyp</i>;
+   int <i>flags</i>;
+   dns_parse_fn *<i>parse</i>;
+   dns_query_fn *<i>cbck</i>;
+   void *<i>data</i>;</pre>
+<div class="Bd-indent">soumet une requête pour traitement pour le contexte du résolveur donné <i>ctx</i>. Les deux routines diffèrent uniquement par leur 3ème argument, qui est le nom de domaine au format DN (<i>dn</i>) ou une chaîne asciiz (<i>name</i>). La requête sera effectuée pour le nom de domaine donné, avec le type <i>qtyp</i> dans la classe <i>qcls</i>, en utilisant les bits d'options dans <i>flags</i>, en utilisant la routine d'analyse RR pointée par <i>parse</i> si non NULL, et à la fin, la fonction <i>cbck</i> sera appelée avec l'argument <i>data</i>. En cas de succès de la soumission de la requête, la routine retourne un pointeur vers la structure de requête interne qui peut être traitée comme un identifiant de la requête tel qu'utilisé par la bibliothèque, et peut être utilisée comme argument pour la routine <b>dns_cancel</b>(). En cas d'erreur, NULL sera retourné, et l'état d'erreur du contexte (disponible via la routine <i>dns_status</i>()) sera défini sur le code d'erreur correspondant, qui dans ce cas peut être DNS_E_BADQUERY si le <i>name</i> de <i>dn</i> est invalide, DNS_E_NOMEM s'il n'y a pas assez de mémoire pour allouer la structure de requête, ou DNS_E_TEMPFAIL si une erreur interne s'est produite.</div>
+<pre>void *<b>dns_resolve_dn</b>(<i>ctx</i>,
+     const unsigned char *<i>dn</i>, <i>qcls</i>, <i>qtyp</i>, <i>flags</i>, <i>parse</i>);
+void *<b>dns_resolve_p</b>(<i>ctx</i>,
+     const char *<i>name</i>, <i>qcls</i>, <i>qtyp</i>, <i>flags</i>, <i>parse</i>)
+   enum dns_class <i>qcls</i>;
+   enum dns_type <i>qtyp</i>;
+   int <i>flags</i>;
+   dns_parse_fn *<i>parse</i>;  </pre>
+<div class="Bd-indent">interface synchrone. Les routines effectuent toutes les étapes nécessaires pour résoudre la requête donnée et retournent le résultat. S'il n'y a pas de résultat positif pour une raison quelconque, toutes les routines retournent NULL, et définissent l'état d'erreur du contexte (disponible via la routine <b>dns_status</b>()) pour indiquer le code d'erreur. Si la requête a réussi, le code d'état du contexte contiendra soit la longueur du paquet DNS brut si l'argument <i>parse</i> était NULL (auquel cas la valeur de retour est un pointeur vers le paquet DNS de réponse), soit 0 (auquel cas la valeur de retour est le résultat de la routine <i>parse</i>). Si la requête a réussi (la valeur de retour n'est pas NULL), la mémoire retournée a été allouée dynamiquement par la bibliothèque et doit être libérée par l'application après utilisation.</div>
+<pre>void *<b>dns_resolve</b>(<i>ctx</i>, struct dns_query *<i>q</i>)</pre>
+<div class="Bd-indent">attend que la requête donnée <i>q</i>, telle que retournée par l'une des routines <b>dns_submit_</b><i>XXX</i>(), soit terminée, et retourne le résultat. La routine de rappel ne sera pas appelée pour cette requête. Après achèvement, l'identifiant de requête <i>q</i> n'est plus valide. Les deux routines <b>dns_resolve_dn</b>() et <b>dns_resolve_p</b>() ne sont que des wrappers autour des routines de soumission correspondantes et de cette routine <b>dns_resolve</b>().</div>
+<pre>void <b>dns_cancel</b>(<i>ctx</i>, struct dns_query *<i>q</i>)</pre>
+<div class="Bd-indent">annule une requête active <i>q</i>, sans appeler de routine de rappel. Après achèvement, l'identifiant de requête <i>q</i> n'est plus valide.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='QUERIES_SPECIFIQUES_AU_TYPE'><a class='permalink' href='#QUERIES_SPECIFIQUES_AU_TYPE'>REQUÊTES   SPÉCIFIQUES AU TYPE</a></h1>
+<p class="Pp">En plus de l'interface de requête générique de bas niveau, la bibliothèque fournit un ensemble de routines pour effectuer des requêtes spécifiques de manière type-safe, ainsi que des analyseurs pour plusieurs types d'enregistrements de ressources bien connus. La bibliothèque implémente une interface de haut niveau pour les enregistrements A, AAAA, PTR, MX et TXT, ainsi que pour les fonctionnalités DNSBL et RHSBL. Ces routines retournent des types spécifiques comme résultat d'une requête, au lieu de paquets DNS bruts. Les types et routines suivants sont disponibles.</p>
+<pre>struct <b>dns_rr_null</b> {
+  char *<b>dnsn_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnsn_cname</b>;     /* nom canonique */
+  unsigned <b>dnsn_ttl</b>;    /* valeur de durée de vie (TTL) */
+  int <b>dnsn_nrr</b>;         /* nombre d'enregistrements dans l'ensemble */
+};</pre>
+<p class="Pp">Ensemble d'enregistrements NULL, utilisé comme base pour toutes les autres structures de type d'enregistrement. Chaque structure d'enregistrement telle qu'utilisée par la bibliothèque possède quatre champs standard comme dans la struct&#x00A0;<b>dns_rr_null</b>.</p>
+<section class="Ss">
+<h2 class="Ss" id='Requêtes_IN_A'><a class='permalink' href='#Requêtes_IN_A'>Requêtes   IN A</a></h2>
+<pre>struct <b>dns_rr_a4</b> {       /* Ensemble d'enregistrements IN A */
+  char *<b>dnsa4_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnsa4_cname</b>;     /* nom canonique */
+  unsigned <b>dnsa4_ttl</b>;    /* valeur de durée de vie (TTL) */
+  int <b>dnsa4_nrr</b>;         /* nombre d'adresses dans l'ensemble */
+  struct in_addr <b>dnsa4_addr</b>[]; /* tableau d'adresses */
+};
+typedef void
+  <b>dns_query_a4_fn</b>(<i>ctx</i>, struct dns_rr_a4 *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_a4</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_a4</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>,
+   dns_query_a4_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_a4 *
+<b>dns_resolve_a4</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_a4</b> contient le résultat d'une requête <b>IN A</b>, qui est un tableau d'adresses IPv4. La routine de rappel pour les requêtes IN A est attendue comme étant de type <b>dns_query_a4_fn</b>, qui attend un pointeur vers la structure <b>dns_rr_a4</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction <b>dns_parse_a4</b>() est utilisée pour convertir un paquet DNS de réponse brut en structure <b>dns_rr_a4</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines <b>dns_submit_a4</b>() et <b>dns_resolve_a4</b>() sont utilisées pour effectuer des requêtes A IN de manière type-safe. Le paramètre <i>name</i> est le nom de domaine concerné, et <i>flags</i> est un masque de bits d'options de requête, avec un seul bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, le drapeau DNS_NOSRCH sera automatiquement défini).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Requêtes_IN_AAAA'><a class='permalink' href='#Requêtes_IN_AAAA'>Requêtes   IN AAAA</a></h2>
+<pre>struct <b>dns_rr_a6</b> {       /* Ensemble d'enregistrements IN AAAA */
+  char *<b>dnsa6_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnsa6_cname</b>;     /* nom canonique */
+  unsigned <b>dnsa6_ttl</b>;    /* valeur de durée de vie (TTL) */
+  int <b>dnsa6_nrr</b>;         /* nombre d'adresses dans l'ensemble */
+  struct in6_addr <b>dnsa6_addr</b>[]; /* tableau d'adresses */
+};
+typedef void
+  <b>dns_query_a6_fn</b>(<i>ctx</i>, struct dns_rr_a6 *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_a6</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_a6</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>,
+   dns_query_a6_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_a6 *
+<b>dns_resolve_a6</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_a6</b> contient le résultat d'une requête <b>IN AAAA</b>, qui est un tableau d'adresses IPv6. La routine de rappel pour les requêtes IN AAAA est attendue comme étant de type <b>dns_query_a6_fn</b>, qui attend un pointeur vers la structure <b>dns_rr_a6</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction <b>dns_parse_a6</b>() est utilisée pour convertir un paquet DNS de réponse brut en structure <b>dns_rr_a6</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines <b>dns_submit_a6</b>() et <b>dns_resolve_a6</b>() sont utilisées pour effectuer des requêtes AAAA IN de manière type-safe. Le paramètre <i>name</i> est le nom de domaine concerné, et <i>flags</i> est un masque de bits d'options de requête, avec un seul bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, le drapeau DNS_NOSRCH sera automatiquement défini).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Requêtes_IN_PTR'><a class='permalink' href='#Requêtes_IN_PTR'>Requêtes   IN PTR</a></h2>
+<pre>struct <b>dns_rr_ptr</b> {       /* Ensemble d'enregistrements IN PTR */
+  char *<b>dnsptr_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnsptr_cname</b>;     /* nom canonique */
+  unsigned <b>dnsptr_ttl</b>;    /* valeur de durée de vie (TTL) */
+  int <b>dnsptr_nrr</b>;         /* nombre de pointeurs de nom de domaine */
+  char *<b>dnsptr_ptr</b>[];     /* tableau de pointeurs de nom de domaine */
+};
+typedef void
+  <b>dns_query_ptr_fn</b>(<i>ctx</i>, struct dns_rr_ptr *<i>result</i>, <a class="anchor" id="data"></a>);i>données</i>)
+dns_parse_fn <b>dns_parse_ptr</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_a4ptr</b><b>(</b><i>ctx</i>, const struct in_addr *<b>addr</b>,
+   dns_query_ptr_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_ptr *
+<b>dns_resolve_a4ptr</b><b>(</b><i>ctx</i>, const struct in_addr *<b>addr</b>);
+struct dns_query *
+<b>dns_submit_a6ptr</b><b>(</b><i>ctx</i>, const struct in6_addr *<b>addr</b>,
+   dns_query_ptr_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_ptr *
+<b>dns_resolve_a6ptr</b><b>(</b><i>ctx</i>, const struct in6_addr *<b>addr</b>);</pre>
+<p class="Pp">La structure <b>dns_rr_ptr</b> contient le résultat d'une requête IN PTR,
+    qui est un tableau de pointeurs de noms de domaine pour une adresse IPv4 ou IPv6 donnée. La routine de rappel pour les requêtes IN PTR doit être de type
+    <b>dns_query_ptr_fn</b>, qui attend un pointeur vers la structure <b>dns_rr_ptr</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction
+    <b>dns_parse_ptr</b>() est utilisée pour convertir un paquet de réponse DNS brut en une structure <b>dns_rr_ptr</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines
+    <b>dns_submit_a4ptr</b>() et <b>dns_resolve_a4ptr</b>() sont utilisées pour effectuer des requêtes IN PTR pour les adresses IPv4 de manière type-safe. Les routines
+    <b>dns_submit_a6ptr</b>() et <b>dns_resolve_a6ptr</b>() sont utilisées pour effectuer des requêtes IN PTR pour les adresses IPv6.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='IN_MX_Queries'><a class='permalink' href='#IN_MX_Queries'>Requêtes IN   MX</a></h2>
+<pre>struct <b>dns_mx</b> {          /* enregistrement MX unique */
+  int <b>priority</b>;          /* valeur de priorité de ce MX */
+  char *<b>name</b>;            /* nom de domaine de ce MX */
+};
+struct <b>dns_rr_mx</b> {       /* RRset IN MX */
+  char *<b>dnsmx_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnsmx_cname</b>;     /* nom canonique */
+  unsigned <b>dnsmx_ttl</b>;    /* valeur Time-To-Live (TTL) */
+  int <b>dnsmx_nrr</b>;         /* nombre d'échangeurs de courrier dans l'ensemble */
+  struct dns_mx <b>dnsmx_mx</b>[]; /* tableau d'échangeurs de courrier */
+};
+typedef void
+  <b>dns_query_mx_fn</b>(<i>ctx</i>, struct dns_rr_mx *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_mx</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_mx</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>,
+   dns_query_mx_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_mx *
+<b>dns_resolve_mx</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_mx</b> contient le résultat d'une requête IN MX,
+    qui est un tableau d'échangeurs de courrier pour un domaine donné. La routine de rappel pour les requêtes IN MX doit être de type <b>dns_query_mx_fn</b>, qui
+    attend un pointeur vers la structure <b>dns_rr_mx</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction
+    <b>dns_parse_mx</b>() est utilisée pour convertir un paquet de réponse DNS brut en une structure <b>dns_rr_mx</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines
+    <b>dns_submit_mx</b>() et <b>dns_resolve_mx</b>() sont utilisées pour effectuer des requêtes IN MX de manière type-safe. Le paramètre <i>name</i> est le nom de domaine en question, et <i>flags</i> est un masque de bits pour les indicateurs de requête, avec un bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, l'indicateur DNS_NOSRCH sera automatiquement défini).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='TXT_Queries'><a class='permalink' href='#TXT_Queries'>Requêtes TXT</a></h2>
+<pre>struct <b>dns_txt</b> {          /* enregistrement TXT unique */
+  int <b>len</b>;                /* longueur du texte */
+  unsigned char *<b>txt</b>;     /* pointeur vers le texte */
+};
+struct <b>dns_rr_txt</b> {       /* RRset TXT */
+  char *<b>dnstxt_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnstxt_cname</b>;     /* nom canonique */
+  unsigned <b>dnstxt_ttl</b>;    /* valeur Time-To-Live (TTL) */
+  int <b>dnstxt_nrr</b>;         /* nombre d'enregistrements texte dans l'ensemble */
+  struct dns_txt <b>dnstxt_txt</b>[]; /* tableau d'enregistrements TXT */
+};
+typedef void
+  <b>dns_query_txt_fn</b>(<i>ctx</i>, struct dns_rr_txt *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_txt</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_txt</b><b>(</b><i>ctx</i>, const char *<i>name</i>, enum dns_class <i>qcls</i>,
+   int <i>flags</i>, dns_query_txt_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_txt *
+<b>dns_resolve_txt</b><b>(</b><i>ctx</i>, const char *<i>name</i>,
+             enum dns_class <i>qcls</i>, int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_txt</b> contient le résultat d'une requête TXT,
+    qui est un tableau d'enregistrements texte pour un nom de domaine donné. La routine de rappel pour les requêtes TXT doit être de type <b>dns_query_txt_fn</b>, qui
+    attend un pointeur vers la structure <b>dns_rr_txt</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction
+    <b>dns_parse_txt</b>() est utilisée pour convertir un paquet de réponse DNS brut en une structure <b>dns_rr_txt</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines
+    <b>dns_submit_txt</b>() et <b>dns_resolve_txt</b>() sont utilisées pour effectuer des requêtes IN MX de manière type-safe. Le paramètre <i>name</i> est le nom de domaine en question, et <i>flags</i> est un masque de bits pour les indicateurs de requête, avec un bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, l'indicateur DNS_NOSRCH sera automatiquement défini). Notez que chaque chaîne TXT est représentée par <b>struct&#x00A0;dns_txt</b>, tandis que les chaînes sont terminées par null (et le champ len de la structure n'inclut pas le terminateur), elles peuvent contenir des caractères null incorporés -- le contenu des enregistrements TXT n'est en aucun cas interprété par la bibliothèque.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SRV_Queries'><a class='permalink' href='#SRV_Queries'>Requêtes SRV</a></h2>
+<pre>struct <b>dns_srv</b> {          /* enregistrement SRV unique */
+  int <b>priority</b>;           /* priorité de l'enregistrement */
+  int <b>weight</b>;             /* poids de l'enregistrement */
+  int <b>port</b>;               /* numéro de port de connexion */
+  char *<b>name</b>;             /* nom d'hôte cible */
+};
+struct <b>dns_rr_srv</b> {       /* RRset SRV */
+  char *<b>dnssrv_qname</b>;     /* nom de requête d'origine */
+  char *<b>dnssrv_cname</b>;     /* nom canonique */
+  unsigned <b>dnssrv_ttl</b>;    /* valeur Time-To-Live (TTL) */
+  int <b>dnssrv_nrr</b>;         /* nombre d'enregistrements texte dans l'ensemble */
+  struct dns_srv <b>dnssrv_srv</b>[]; /* tableau d'enregistrements SRV */
+};
+typedef void
+  <b>dns_query_srv_fn</b>(<i>ctx</i>, struct dns_rr_srv *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_srv</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_srv</b><b>(</b><i>ctx</i>, const char *<i>name</i>, const char *<i>service</i>, const char *<i>protocol</i>,
+   int <i>flags</i>, dns_query_txt_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_srv *
+<b>dns_resolve_srv</b><b>(</b><i>ctx</i>, const char *<i>name</i>, const char *<i>service</i>, const char *<i>protocol</i>,
+             int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_srv</b> contient le résultat d'une requête IN SRV
+    (rfc2782), qui est un tableau de serveurs (avec leurs numéros de port) qui effectuent des opérations pour un <i>service</i> donné en utilisant un <i>protocole</i> donné sur le domaine cible <i>name</i>. La routine de rappel pour les requêtes IN SRV doit être de type <b>dns_query_srv_fn</b>, qui attend un pointeur vers la structure <b>dns_rr_srv</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction
+    <b>dns_parse_srv</b>() est utilisée pour convertir un paquet de réponse DNS brut en une structure <b>dns_rr_srv</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines
+    <b>dns_submit_srv</b>() et <b>dns_resolve_srv</b>() sont utilisées pour effectuer des requêtes IN SRV de manière type-safe. Le paramètre <i>name</i> est le nom de domaine en question, <i>service</i> et <i>protocol</i> spécifient le service et le protocole en question (la bibliothèque construira le nom de domaine de requête selon les règles rfc2782) et peuvent être NULL (dans ce cas, la bibliothèque suppose que le paramètre <i>name</i> contient la requête SRV complète), et <i>flags</i> est un masque de bits pour les indicateurs de requête, avec un bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, l'indicateur DNS_NOSRCH sera automatiquement défini).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='NAPTR_Queries'><a class='permalink' href='#NAPTR_Queries'>Requêtes NAPTR</a></h2>
+<pre>struct <b>dns_naptr</b> {        /* enregistrement NAPTR unique */
+  int <b>order</b>;              /* ordre de l'enregistrement */
+  int <b>preference</b>;         /* préférence de cet enregistrement */
+  char *<b>flags</b>;            /* indicateurs spécifiques à l'application */
+  char *<b>service</b>;          /* paramètre de service */
+  char *<b>regexp</b>;           /* expression régulière de substitution */
+  char *<b>replacement</b>;      /* chaîne de remplacement */
+};
+struct <b>dns_rr_naptr</b> {     /* RRset NAPTR */
+  char *<b>dnsnaptr_qname</b>;   /* nom de requête d'origine */
+  char *<b>dnsnaptr_cname</b>;   /* nom canonique */
+  unsigned <b>dnsnaptr_ttl</b>;  /* valeur Time-To-Live (TTL) */
+  int <b>dnsnaptr_nrr</b>;       /* nombre d'enregistrements texte dans l'ensemble */
+  struct dns_naptr <b>dnsnaptr_naptr</b>[]; /* tableau d'enregistrements NAPTR */
+};
+typedef void
+  <b>dns_query_naptr_fn</b>(<i>ctx</i>, struct dns_rr_naptr *<i>result</i>, <i>data</i>)
+dns_parse_fn <b>dns_parse_naptr</b><b>;</b>
+<b>struct dns_query *</b>
+<b></b><b>dns_submit_naptr</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>,
+   dns_query_txt_fn *<i>cbck</i>, <i>data</i>);
+struct dns_rr_naptr *
+<b>dns_resolve_naptr</b><b>(</b><i>ctx</i>, const char *<i>name</i>, int <i>flags</i>);</pre>
+<p class="Pp">La structure <b>dns_rr_naptr</b> contient le résultat d'une requête IN NAPTR
+    (rfc3403). La routine de rappel pour les requêtes IN NAPTR doit être de type <b>dns_query_naptr_fn</b>, qui attend un pointeur vers la structure <b>dns_rr_naptr</b> comme résultat de requête au lieu d'un paquet DNS brut. La fonction
+    <b>dns_parse_naptr</b>() est utilisée pour convertir un paquet de réponse DNS brut en une structure <b>dns_rr_naptr</b> (elle est utilisée en interne et peut également être utilisée directement avec l'interface de requête générique). Les routines
+    <b>dns_submit_naptr</b>() et <b>dns_resolve_naptr</b>() sont utilisées pour effectuer des requêtes IN NAPTR de manière type-safe. Le paramètre <i>name</i> est le nom de domaine en question, et <i>flags</i> est un masque de bits pour les indicateurs de requête, avec un bit, DNS_NOSRCH, d'intérêt pratique (si le <i>name</i> est absolu, c'est-à-dire qu'il se termine par un point, l'indicateur DNS_NOSRCH sera automatiquement défini).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='DNSBL_Interface'><a class='permalink' href='#DNSBL_Interface'>Interface DNSBL</a></h2>
+<p class="Pp">Les listes de blocage basées sur DNS, ou DNSBL, sont largement utilisées de nos jours, notamment pour protéger les serveurs de messagerie des spammeurs. La bibliothèque fournit une interface DNSBL, un ensemble de routines pour effectuer des requêtes contre les DNSBL. Les routines acceptent une adresse IP (IPv4 et IPv6 sont toutes deux prises en charge) et une zone DNSBL de base comme paramètres de requête, et retournent soit une structure <b>dns_rr_a4</b>, soit une structure <b>dns_rr_txt</b>. Notez que l'interface IPv6 retourne un RRset IPv4.</p>
+<pre>struct dns_query *
+<b>dns_submit_a4dnsbl</b>(<i>ctx</i>,
+  const struct in_addr *<i>addr</i>, const char *<i>dnsbl</i>,
+  dns_query_a4_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_query *
+<b>dns_submit_a4dnsbl_txt</b>(<i>ctx</i>,
+  const struct in_addr *<i>addr</i>, const char *<i>dnsbl</i>,
+  dns_query_txt_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_query *
+<b>dns_submit_a6dnsbl</b>(<i>ctx</i>,
+  const struct in6_addr *<i>addr</i>, const char *<i>dnsbl</i>,
+  dns_query_a4_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_query *
+<b>dns_submit_a6dnsbl_txt</b>(<i>ctx</i>,
+  const struct in6_addr *<i>addr</i>, const char *<i>dnsbl</i>,
+  dns_query_txt_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_rr_a4 *<b>dns_resolve_a4dnsbl</b>(<i></pre>ctx</i>,
+  const struct in_addr *<i>addr</i>, const char *<i>dnsbl</i>)
+struct dns_rr_txt *<b>dns_resolve_a4dnsbl_txt</b>(<i>ctx</i>,
+  const struct in_addr *<i>addr</i>, const char *<i>dnsbl</i>)
+struct dns_rr_a4 *<b>dns_resolve_a6dnsbl</b>(<i>ctx</i>,
+  const struct in6_addr *<i>addr</i>, const char *<i>dnsbl</i>)
+struct dns_rr_txt *<b>dns_resolve_a6dnsbl_txt</b>(<i>ctx</i>,
+  const struct in6_addr *<i>addr</i>, const char *<i>dnsbl</i>)</pre>
+Effectuer (soumettre ou résoudre) une requête DNSBL pour le domaine
+  <i>dnsbl</i> et l'adresse IP <i>addr</i> donnés, en demandant des enregistrements A ou TXT.
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Interface_RHSBL'><a class='permalink' href='#Interface_RHSBL'>Interface   RHSBL</a></h2>
+<p class="Pp">RHSBL est similaire à DNSBL, mais au lieu d'une adresse IP, le
+    paramètre est un nom de domaine.</p>
+<pre>struct dns_query *
+<b>dns_submit_rhsbl</b>(<i>ctx</i>, const char *<i>name</i>, const char *<i>rhsbl</i>,
+  dns_query_a4_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_query *
+<b>dns_submit_rhsbl_txt</b>(<i>ctx</i>, const char *<i>name</i>, const char *<i>rhsbl</i>,
+  dns_query_txt_fn *<i>cbck</i>, void *<i>data</i>);
+struct dns_rr_a4 *
+<b>dns_resolve_rhsbl</b>(<i>ctx</i>, const char *<i>name</i>, const char *<i>rhsbl</i>);
+struct dns_rr_txt *
+<b>dns_resolve_rhsbl_txt</b>(<i>ctx</i>, const char *<i>name</i>, const char *<i>rhsbl</i>);</pre>
+Effectuer (soumettre ou résoudre) une requête RHSBL pour le domaine
+  <i>rhsbl</i> et le nom <i>name</i> donnés, en demandant des enregistrements A ou TXT.
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTERFACE_BAS_NIVEAU'><a class='permalink' href='#INTERFACE_BAS_NIVEAU'>INTERFACE   BAS-NIVEAU</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Noms_de_domaine_(DNs)'><a class='permalink' href='#Noms_de_domaine_(DNs)'>Noms   de domaine (DNs)</a></h2>
+<p class="Pp">Un DN est une série d'étiquettes de noms de domaine, chacune commençant
+    par un octet de longueur, suivie d'une étiquette vide (étiquette de longueur
+    nulle). Les routines suivantes pour travailler avec les DN sont fournies.</p>
+<pre>unsigned <b>dns_dnlen</b>(const unsigned char *<i>dn</i>)</pre>
+<div class="Bd-indent">renvoie la longueur du nom de domaine <i>dn</i>, y compris l'étiquette de terminaison.</div>
+<pre>unsigned <b>dns_dnlabels</b>(const unsigned char *<i>dn</i>)</pre>
+<div class="Bd-indent">renvoie le nombre d'étiquettes non nulles dans le nom de domaine
+  <i>dn</i>.</div>
+<pre>unsigned <b>dns_dnequal</b>(<i>dn1</i>, <i>dn2</i>)
+  const unsigned char *<i>dn1</i>, *<i>dn2</i>;</pre>
+<div class="Bd-indent">teste si les deux noms de domaine, <i>dn1</i> et <i>dn2</i>, sont
+  égaux (insensible à la casse). Renvoie la longueur du nom de domaine si égal
+  ou 0 si non.</div>
+<pre>unsigned <b>dns_dntodn</b>(<i>sdn</i>, <i>ddn</i>, <i>dnsiz</i>)
+  const unsigned char *<i>sdn</i>;
+  unsigned char *<i>ddn</i>;
+  unsigned <i>dnsiz</i>;</pre>
+<div class="Bd-indent">copie le nom de domaine source <i>sdn</i> dans le tampon de destination
+  <i>ddn</i> de taille <i>dnsiz</i>. Renvoie la longueur du nom de domaine ou 0 si
+  <i>ddn</i> est trop petit.</div>
+<pre>int <b>dns_ptodn</b>(<i>name</i>, <i>namelen</i>, <i>dn</i>, <i>dnsiz</i>, <i>isabs</i>)
+int <b>dns_sptodn</b>(<i>name</i>, <i>dn</i>, <i>dnsiz</i>)
+  const char *<i>name</i>; unsigned <i>namelen</i>;
+  unsigned char *<i>dn</i>; unsigned <i>dnsiz</i>;
+  int *<i>isabs</i>;</pre>
+<div class="Bd-indent">convertit le nom asciiz <i>name</i> de longueur <i>namelen</i>
+  en format DN, plaçant le résultat dans le tampon <i>dn</i> de taille <i>dnsiz</i>.
+  Renvoie la longueur du DN en cas de succès, 0 si le tampon <i>dn</i> fourni est
+  trop petit, ou une valeur négative si <i>name</i> est invalide. Si <i>isabs</i>
+  n'est pas NULL et que la conversion a réussi, *<i>isabs</i> sera défini sur 1 ou
+  0 selon que <i>name</i> était absolu (c'est-à-dire se terminant par un point) ou
+  non. La longueur du nom, <i>namelength</i>, peut être zéro, auquel cas
+  strlen(<i>name</i>) sera utilisée. La deuxième forme, <b>dns_sptodn</b>(), est
+  une forme simplifiée de <b>dns_ptodn</b>(), équivalente à
+<br/>
+<pre><b>dns_ptodn</b>(<i>name</i>, 0, <i>dn</i>, <i>dnlen</i>, 0).</pre>
+</div>
+<pre>extern const unsigned char <b>dns_inaddr_arpa_dn</b>[]
+int <b>dns_a4todn</b>(const struct in_addr *<i>addr</i>, const unsigned char *<i>tdn</i>,
+      unsigned char *<i>dn</i>, unsigned <i>dnsiz</i>)
+int <b>dns_a4ptodn</b>(const struct in_addr *<i>addr</i>, const char *<i>tname</i>,
+      unsigned char *<i>dn</i>, unsigned <i>dnsiz</i>)
+extern const unsigned char <b>dns_ip6_arpa_dn</b>[]
+int <b>dns_a6todn</b>(const struct in6_addr *<i>addr</i>, const unsigned char *<i>tdn</i>,
+      unsigned char *<i>dn</i>, unsigned <i>dnsiz</i>)
+int <b>dns_a6ptodn</b>(const struct in6_addr *<i>addr</i>, const char *<i>tname</i>,
+      unsigned char *<i>dn</i>, unsigned <i>dnsiz</i>)</pre>
+<div class="Bd-indent">plusieurs variantes de routines pour convertir l'adresse IPv4
+  et IPv6 <i>addr</i> en un nom de domaine de type reverseDNS au format DN, plaçant
+  le résultat dans <i>dn</i> de taille <i>dnsiz</i>. <i>tdn</i> (ou <i>tname</i>)
+  est le nom de la zone de base, comme in-addr.arpa pour IPv4 ou in6.arpa pour
+  IPv6. Si <i>tdn</i> (ou <i>tname</i>) est NULL, <b>dns_inaddr_arpa_dn</b> (ou
+  <b>dns_ip6_arpa_dn</b>) sera utilisé. Les routines peuvent être utilisées pour
+  construire un DN pour une recherche DNSBL par exemple. Toutes les routines
+  renvoient la longueur du DN résultant en cas de succès, -1 si le DN résultant
+  est invalide, ou 0 si le tampon <i>dn</i> (<i>dnsiz</i>) est trop petit. Pour
+  contenir un DN rDNS standard, un tampon de taille <b>DNS_A4RSIZE</b> (30 octets)
+  pour une adresse IPv4, ou <b>DNS_A6RSIZE</b> (74 octets) pour une adresse IPv6,
+  est suffisant.</div>
+<pre>int <b>dns_dntop</b>(<i>dn</i>, <i>name</i>, <i>namesiz</i>)
+   const unsigned char *<i>dn</i>;
+   const char *<i>name</i>; unsigned <i>namesiz</i>;</pre>
+<div class="Bd-indent">convertit le nom de domaine <i>dn</i> au format DN en une chaîne
+  asciiz, plaçant le résultat dans le tampon <i>name</i> de taille <i>namesiz</i>.
+  La longueur maximale de la représentation asciiz d'un nom de domaine est de
+  <b>DNS_MAXNAME</b> (1024) octets. Le domaine racine est représenté par une chaîne
+  vide. Renvoie la longueur du nom résultant (y compris le caractère de terminaison,
+  c'est-à-dire strlen(name)+1) en cas de succès, 0 si le tampon <i>name</i> est trop
+  petit, ou une valeur négative si <i>dn</i> est invalide (ce dernier cas ne devrait
+  jamais se produire car toutes les routines de cette bibliothèque qui produisent
+  des noms de domaine garantissent que les DN générés sont valides).</div>
+<pre>const char *<b>dns_dntosp</b>(const unsigned char *<i>dn</i>)</pre>
+<div class="Bd-indent">convertit le nom de domaine <i>dn</i> au format DN en une chaîne
+  asciiz en utilisant un tampon statique. Renvoie la chaîne asciiz résultante en
+  cas de succès ou NULL en cas d'échec. Notez que puisque cette routine utilise un
+  tampon statique, elle n'est pas thread-safe.</div>
+<pre>unsigned <b>dns_dntop_size</b>(const unsigned char *<i>dn</i>)</pre>
+<div class="Bd-indent">renvoie la taille du tampon nécessaire pour convertir le nom de domaine
+  <i>dn</i> au format DN en une chaîne asciiz, pour <b>dns_dntop</b>(). La routine
+  renvoie soit la taille du tampon requise, y compris l'octet nul final, soit 0 si
+  <i>dn</i> est invalide.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Travail_avec_les_paquets_DNS'><a class='permalink' href='#Travail_avec_les_paquets_DNS'>Travail   avec les paquets DNS</a></h2>
+<p class="Pp">Les routines suivantes sont fournies pour encoder et décoder les paquets
+    DNS sur le réseau. C'est une interface bas niveau.</p>
+<p class="Pp">Les codes de réponse DNS (renvoyés par la routine <b>dns_rcode</b>())
+    sont définis comme des constantes préfixées par <b>DNS_R_</b>. Voir le fichier
+    d'en-tête udns.h pour la liste complète. En particulier, les constantes
+    <b>DNS_R_NOERROR</b> (0), <b>DNS_R_SERVFAIL</b>, <b>DNS_R_NXDOMAIN</b>
+    peuvent intéresser une application.</p>
+<pre>unsigned <b>dns_get16</b>(const unsigned char *<i>p</i>)
+unsigned <b>dns_get32</b>(const unsigned char *<i>p</i>)</pre>
+<div class="Bd-indent">routines d'aide, convertissent un entier de 16 ou 32 bits au format
+  sur le réseau pointé par <i>p</i> en unsigned.</div>
+<pre>unsigned char *<b>dns_put16</b>(unsigned char *<i>d</i>, unsigned <i>n</i>)
+unsigned char *<b>dns_put32</b>(unsigned char *<i>d</i>, unsigned <i>n</i>)</pre>
+<div class="Bd-indent">routine d'aide, convertit un entier unsigned de 16 ou 32 bits <i>n</i>
+  au format sur le réseau dans le tampon pointé par <i>d</i>, renvoie <i>d</i>+2
+  ou <i>d</i>+4.</div>
+<pre><b>DNS_HSIZE</b> (12)</pre>
+<div class="Bd-indent">définit la taille de l'en-tête DNS. La section de données dans le paquet
+  DNS suit immédiatement l'en-tête. Dans l'en-tête, il y a l'identifiant de requête
+  (id), divers drapeaux et codes, et le nombre d'enregistrements de ressources dans
+  diverses sections de données. Voir le fichier d'en-tête udns.h pour la liste
+  complète des définitions d'en-tête DNS.</div>
+<pre>unsigned <b>dns_qid</b>(const unsigned char *<i>pkt</i>)
+int <b>dns_rd</b>(const unsigned char *<i>pkt</i>)
+int <b>dns_tc</b>(const unsigned char *<i>pkt</i>)
+int <b>dns_aa</b>(const unsigned char *<i>pkt</i>)
+int <b>dns_qr</b>(const unsigned char *<i>pkt</i>)
+int <b>dns_ra</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_opcode</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_rcode</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_numqd</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_numan</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_numns</b>(const unsigned char *<i>pkt</i>)
+unsigned <b>dns_numar</b>(const unsigned char *<i>pkt</i>)
+const unsigned char *<b>dns_payload</b>(const unsigned char *<i>pkt</i>)</pre>
+<div class="Bd-indent">renvoie diverses parties de l'en-tête du paquet DNS <i>pkt</i>:
+  identifiant de requête (qid), drapeau de désir de récursion (rd), drapeau d'écrasement
+  (tc), réponse faisant autorité (aa), drapeau de réponse de requête (qr), récursion
+  disponible (ra), code d'opération (opcode), code de résultat (rcode), nombre d'entrées
+  dans la section de question (numqd), nombre de réponses (numan), nombre d'enregistrements
+  d'autorité (numns), nombre d'enregistrements supplémentaires (numar), et pointeur
+  vers les données du paquet (payload).</div>
+<pre>int <b>dns_getdn</b>(<i>pkt</i>, <i>curp</i>, <i>pkte</i>, <i>dn</i>, <i>dnsiz</i>)
+const unsigned char *<b>dns_skipdn</b>(<i>cur</i>, <i>pkte</i>)
+   const unsigned char *<i>pkt</i>, *<i>pkte</i>, **<i>curp</i>, *<i>cur</i>;
+   unsigned char *<i>dn</i>; unsigned <i>dnsiz</i>;</pre>
+<div class="Bd-indent"><b>dns_getdn</b>() extrait un DN du paquet DNS <i>pkt</i> qui se termine
+  avant <i>pkte</i> à partir de la position *<i>curp</i> dans le tampon pointé par
+  <i>dn</i> de taille <i>dnsiz</i>. Après une exécution réussie, *<i>curp</i> pointera
+  vers le prochain octet dans le paquet après le nom de domaine extrait. Il renvoie
+  un nombre positif (longueur du DN si <i>dn</i>) en cas de succès, une valeur négative
+  en cas d'erreur (lorsque le paquet contient des données invalides), ou zéro si
+  <i>dnsiz</i> est trop petit (la longueur maximale d'un nom de domaine est
+  <b>DNS_MAXDN</b>). <b>dns_skipdn</b>() renvoie un pointeur vers le prochain octet
+  dans le paquet DNS qui se termine avant <i>pkte</i> après un nom de domaine qui
+  commence à l'octet <i>cur</i>, ou NULL si le paquet est invalide. <b>dns_skipdn</b>()
+  est plus ou moins équivalent à ce que fait <b>dns_getdn</b>(), sauf qu'il n'extrait
+  pas réellement le nom de domaine en question et utilise une interface plus simple.</div>
+<pre>struct <b>dns_rr</b> {
+  unsigned char <b>dnsrr_dn</b>[DNS_MAXDN]; /* le nom DN du RR */
+  enum dns_class <b>dnsrr_cls</b>;          /* la classe du RR */
+  enum dns_type  <b>dnsrr_typ</b>;          /* le type du RR */
+  unsigned <b>dnsrr_ttl</b>;                /* la valeur TTL */
+  unsigned <b>dnsrr_dsz</b>;                /* la taille des données en octets */
+  const unsigned char *<b>dnsrr_dptr</b>;   /* pointeur vers le premier octet de données */
+  const unsigned char *<b>dnsrr_dend</b>;   /* octet suivant le RR */
+};</pre>
+<div class="Bd-indent">La structure <b>dns_rr</b> est utilisée pour contenir des informations
+  sur un seul enregistrement de ressource DNS (RR) sous une forme facile à utiliser.</div>
+<pre>struct <b>dns_parse</b> {
+  const unsigned char *<b>dnsp_pkt</b>; /* pointeur vers le paquet en cours d'analyse */
+  const unsigned char *<b>dnsp_end</b>; /* pointeur de fin du paquet */
+  const unsigned char *<b>dnsp_cur</b>; /* position actuelle dans le paquet */
+  const unsigned char *<b>dnsp_ans</b>; /* pointeur vers la réponse
+</pre>
+<section class="Sh">
+<h1 class="Sh" id="SECTION">SECTION</h1>
+  <pre>int <b>dnsp_rrl</b>; /* nombre de RR restants */
+  int <b>dnsp_nrr</b>; /* nombre de RR pertinents vus jusqu'à présent */
+  unsigned <b>dnsp_ttl</b>; /* valeur TTL jusqu'à présent */
+  const unsigned char *<b>dnsp_qdn</b>; /* le domaine d'intérêt ou NULL */
+  enum dns_class <b>dnsp_qcls</b>; /* classe d'intérêt ou 0 pour toute */
+  enum dns_type  <b>dnsp_qtyp</b>; /* type d'intérêt ou 0 pour tout */
+  unsigned char <b>dnsp_dnbuf</b>[DNS_MAXDN]; /* tampon de nom de domaine */
+};</pre>
+<div class="Bd-indent">La structure <b>dns_parse</b> est utilisée pour analyser le paquet de réponse DNS. Elle contient des informations sur le paquet en cours d'analyse (champs dnsp_pkt, dnsp_end et dnsp_cur), le nombre de RR restants dans la section actuelle, et les informations sur le RR spécifique que nous recherchons (champs dnsp_qdn, dnsp_qcls et dnsp_qtyp).</div>
+<pre>int <b>dns_initparse</b>(struct dns_parse *<i>p</i>,
+  const unsigned char *<i>qdn</i>,
+  const unsigned char *<i>pkt</i>,
+  const unsigned char *<i>cur</i>,
+  const unsigned char *<i>end</i>)</pre>
+<div class="Bd-indent">initialise la structure d'analyse de RR <i>p</i>. Les arguments <i>pkt</i>, <i>cur</i> et <i>end</i> doivent décrire le paquet reçu : <i>pkt</i> est le début du paquet, <i>end</i> pointe vers l'octet suivant la fin du paquet, et <i>cur</i> pointe après le DN de la requête dans la section de requête (vers les informations de classe+type de la requête). Et <i>qdn</i> pointe vers le DN de la requête. Ce sont les arguments passés à la routine <b>dns_parse_fn</b>(). <b>dns_initparse</b>() initialise les champs <b>dnsp_pkt</b>, <b>dnsp_end</b> et <b>dnsp_qdn</b> aux arguments correspondants, extrait et initialise les champs <b>dnsp_qcls</b> et <b>dnsp_qtyp</b> aux valeurs trouvées au pointeur <i>cur</i>, initialise les champs <b>dnsp_cur</b> et <b>dnsp_ans</b> à <i>cur</i>+4 (au début de la section de réponse), et initialise le champ <b>dnsp_rrl</b> au nombre d'entrées dans la section de réponse. <b>dnsp_ttl</b> sera défini à la valeur TTL maximale, 0xffffffff, et <b>dnsp_nrr</b> à 0.</div>
+<pre>int <b>dns_nextrr</b>(struct dns_parse *<i>p</i>, struct dns_rr *<i>rr</i>);</pre>
+<div class="Bd-indent">recherche le prochain RR dans le paquet en fonction des critères fournis dans la structure <i>p</i>, en remplissant la structure <i>rr</i> et en avançant <i>p</i>-&gt;<b>dnsp_cur</b> vers le prochain RR dans le paquet. La sélection du RR est basée sur les champs dnsp_qdn, dnsp_qcls et dnsp_qtyp dans la structure dns_parse. N'importe lequel (ou tous) des 3 champs peut être 0, ce qui signifie que toute valeur réelle du paquet est acceptable. Dans le cas où le champ n'est pas 0 (ou NULL pour dnsp_qdn), seuls les RR ayant les caractéristiques correspondantes sont acceptables. De plus, lorsque dnsp_qdn n'est pas NULL, <b>dns_nextrr</b>() effectue une expansion automatique de CNAME. La routine renverra une valeur positive en cas de succès, 0 si elle a atteint la fin de la section actuelle dans le paquet (<i>p</i>-&gt;<b>dnsp_rrl</b> est zéro), ou une valeur négative si le prochain RR ne peut pas être décodé (le format du paquet est invalide). La routine met à jour <i>p</i>-&gt;<b>dnsp_qdn</b> automatiquement lorsque ce champ n'est pas NULL et qu'elle rencontre des RR CNAME appropriés (en sauvegardant la cible du CNAME dans <i>p</i>-&gt;<b>dnsp_dnbuf</b>), de sorte qu'après la fin du processus, <i>p</i>-&gt;<b>dnsp_qdn</b> pointera vers le nom canonique du domaine en question. La routine met à jour la valeur <i>p</i>-&gt;<b>dnsp_ttl</b> pour qu'elle soit le TTL minimum de tous les RR trouvés.</div>
+<pre>void <b>dns_rewind</b>(struct dns_parse *<i>p</i>, const unsigned char *<i>qdn</i>)</pre>
+<div class="Bd-indent">cette routine "rembobine" la structure d'état d'analyse du paquet pour qu'elle soit dans le même état qu'après un appel à <b>dns_initparse</b>(), c'est-à-dire repositionne la structure d'analyse <i>p</i> au début de la section de réponse et initialise <i>p</i>-&gt;<b>dnsp_rrl</b> au nombre d'entrées dans la section de réponse.</div>
+<pre>int <b>dns_stdrr_size</b>(const struct dns_parse *<i>p</i>);</pre>
+<div class="Bd-indent">renvoie la taille nécessaire pour contenir les informations de la structure RR standard, comme indiqué dans la structure <b>dns_rr_null</b> (pour les noms de requête et canoniques). Utilisé pour calculer la quantité de mémoire à allouer pour la partie commune des structures RR spécifiques au type dans les routines d'analyse.</div>
+<pre>void *<b>dns_stdrr_finish</b>(struct dns_rr_null *<i>ret</i>, char *<i>cp</i>,
+  const struct dns_parse *<i>p</i>);</pre>
+<div class="Bd-indent">initialise les champs RR standard dans la structure <i>ret</i> en utilisant le tampon pointé par <i>cp</i>, qui doit avoir au moins autant d'octets que <b>dns_stdrr_size</b>(<i>p</i>) l'a retourné. Utilisé pour finaliser la partie commune des structures RR spécifiques au type dans les routines d'analyse.</div>
+<p class="Pp">Voir le code source de la bibliothèque pour des exemples d'utilisation de toutes les routines de bas niveau ci-dessus, en particulier le code source des routines d'analyse.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Auxilary_Routines'><a class='permalink' href='#Auxilary_Routines'>Routines auxiliaires</a></h2>
+<pre>int <b>dns_pton</b>(int <i>af</i>, const char *<i>src</i>, void *<i>dst</i>);</pre>
+<div class="Bd-indent">fournit des fonctionnalités similaires à la routine standard <b>inet_pton</b>(), pour convertir la représentation imprimable d'une adresse IP de famille <i>af</i> (soit <b>AF_INET</b>, soit <b>AF_INET6</b>) pointée par <i>src</i> en forme binaire adaptée aux adresses de socket et à la transmission sur le réseau, dans le tampon pointé par <i>dst</i>. Le tampon de destination doit être de taille 4 pour la famille <b>AF_INET</b> ou 16 pour <b>AF_INET6</b>. La valeur de retour est positive en cas de succès, 0 si <i>src</i> n'est pas une représentation textuelle valide d'une adresse de famille <i>af</i>, ou négative si la famille d'adresses donnée n'est pas prise en charge.</div>
+<pre>const char *<b>dns_ntop</b>(int <i>af</i>, const void *<i>src</i>,
+    char *<i>dst</i>, int <i>dstsize</i>)</pre>
+<div class="Bd-indent">fournit des fonctionnalités similaires à la routine standard <b>inet_ntop</b>(), pour convertir la représentation binaire d'une adresse IP de famille <i>af</i> (soit <b>AF_INET</b>, soit <b>AF_INET6</b>) pointée par <i>src</i> (soit 4, soit 16 octets) en forme imprimable dans le tampon pointé par <i>dst</i> de taille <i>dstsize</i>. Le tampon de destination doit être d'au moins 16 octets pour la famille <b>AF_INET</b> ou 46 octets pour <b>AF_INET6</b>. La valeur de retour est soit <i>dst</i>, soit un pointeur NULL si <i>dstsize</i> est trop petit pour contenir cette adresse ou si la famille d'adresses donnée n'est pas prise en charge.</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">La bibliothèque <b>udns</b> a été écrite par Michael Tokarev,
+    mjt+udns@tls.msk.ru.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp">Cette page de manuel correspond à la version 0.6 de udns, publiée
+    en juillet 2024.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">Jan 2014</td>
+    <td class="foot-os">Fonctions de bibliothèque</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/udns/">extra/udns</a></dd>
+        <dt>Version :</dt>
+        <dd>0.6-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.corpit.ru/mjt/udns.html">https://www.corpit.ru/mjt/udns.html</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.1-ou-plus tard</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/udns/">/listing/extra/udns/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSYS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#COMMON_DEFINITIONS">DÉFINITIONS COMMUNES</a></li>
+        
+            <li><a href="#RESOLVER_CONTEXT">CONTEXTE DU RÉSOLVEUR</a></li>
+        
+            <li><a href="#QUERY_INTERFACE">INTERFACE DE REQUÊTE</a></li>
+        
+            <li><a href="#TYPE-SPECIFIC_QUERIES">REQUÊTES SPÉCIFIQUES AU TYPE</a></li>
+        
+            <li><a href="#LOW-LEVEL_INTERFACE">INTERFACE BAS-NIVEAU</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/udns.3.fr.txt">txt</a>, 
+        
+            <a href="/man/udns.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ndctl-load-keys(1) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ndctl-load-keys(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/ndctl/">ndctl</a></p>
+<p class="lic">Licences: LGPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">NDCTL-LOAD-KEYS(1)</td>
+    <td class="head-vol">Manuel ndctl</td>
+    <td class="head-rtitle">NDCTL-LOAD-KEYS(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">ndctl-load-keys - charge la clé kek et les phrases secrètes chiffrées dans le porte-clés</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNTAXE</a></h1>
+<pre><i>ndctl load-keys</i> [&lt;options&gt;]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">La commande <i>load-keys</i> charge la clé maîtresse (<i>kek</i>) et les phrases secrètes chiffrées de tous les NVDIMM dans le porte-clés utilisateur géré par le noyau. La commande est censée être appelée pendant l'initialisation et avant que le module du noyau libnvdimm ne soit chargé, typiquement depuis un initrd. Ceci est généralement configuré à l'aide d'une configuration modprobe qui appelle la commande avant le chargement du module.</p>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<p class="Pp">Tous les fichiers de clés sont attendus dans le format :
+    nvdimm_&lt;id&gt;_nom_hote
+  <br/>
+  Le caractère <span class="Li">'_</span>' est utilisé pour délimiter les différents
+    composants du nom de fichier. Au sein du nom d'hôte, le caractère
+    <span class="Li">'_</span>' est autorisé car c'est le dernier composant du nom de
+    fichier.</p>
+</div>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<p class="Pp">Cette commande n'est généralement jamais appelée directement par un utilisateur.</p>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">-p, --key-path=</p>
+<div class="Bd-indent">Chemin d'accès à l'emplacement des fichiers liés aux clés. Ce paramètre est
+  facultatif et l'emplacement par défaut est /etc/ndctl/keys.</div>
+<p class="Pp">-t, --tpm-handle=</p>
+<div class="Bd-indent">Fournir un identifiant TPM (devrait être une chaîne de caractères telle que
+  0x81000001). Si le chemin de la clé (/etc/ndctl/keys) contient un fichier appelé
+  tpm.handle qui contient la chaîne de l'identifiant, alors cette option peut être omise,
+  et l'identifiant TPM sera obtenu à partir du fichier. Si les deux sont présents, alors
+  cette option remplacera (mais n'écrasera pas) tout ce qui se trouve dans le
+  fichier.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THEORIE_DE_FONCTIONNEMENT'><a class='permalink' href='#THEORIE_DE_FONCTIONNEMENT'>THÉORIE DE FONCTIONNEMENT</a></h1>
+<p class="Pp">Les spécifications des méthodes spécifiques au périphérique Intel (DSM) v1.7 et
+    v1.8 [1] ont introduit les opérations de gestion de sécurité suivantes : activation de la phrase secrète, mise à jour de la phrase secrète, déverrouillage DIMM, désactivation de la sécurité, gel de la sécurité, effacement sécurisé (cryptographique), écrasement, activation de la phrase secrète maître, mise à jour de la phrase secrète maître, et effacement sécurisé de la phrase secrète maître.</p>
+<p class="Pp">La gestion de la sécurité pour les NVDIMM se compose de deux parties. Le front-end utilise le cadre de gestion des clés Linux (clés de confiance et chiffrées [2]) pour stocker les phrases secrètes chiffrées dans le porte-clés géré par le noyau. L'interface pour cela est l'utilitaire
+    <i>keyutils</i> qui utilise les API de gestion des clés dans le noyau Linux. Le back-end prend la charge utile déchiffrée (qui est la phrase secrète du DIMM) et la transmet au DIMM.</p>
+<p class="Pp">Contrairement aux autres DSM qui sont composés par libndctl et envoyés au noyau via un ioctl, les DSM de sécurité sont gérés via l'attribut
+    <i>security</i> de sysfs sous le périphérique
+    <i>dimm</i>. Un
+    <i>key-ID</i> est écrit dans l'attribut
+    <i>security</i> et le noyau récupère le matériel clé associé du porte-clés utilisateur maintenu par le noyau.</p>
+<p class="Pp">Le processus de sécurité commence par la génération d'une
+    <i>clé maîtresse</i> utilisée pour sceller (chiffrer) la phrase secrète du DIMM. Il peut y avoir une
+    <i>clé maîtresse</i> commune utilisée pour chiffrer la phrase secrète de chaque DIMM, ou une clé séparée peut être générée pour chaque DIMM. La
+    <i>clé maîtresse</i> est également appelée
+    <i>clé de chiffrement de clé</i>
+    (kek). La
+    <i>kek</i> peut être générée par le TPM (Trusted Platform Module) du système, ou alternativement, la
+    <i>clé Maître du Système</i>
+    peut également être utilisée comme
+    <i>kek</i></p>
+<p class="Pp">À des fins de test, une clé utilisateur avec une charge utile aléatoire peut également être utilisée comme
+    <i>kek</i>. Voir [2] pour plus de détails. Pour effectuer des opérations de sécurité, il est attendu que la
+    <i>kek</i> ait été ajoutée au porte-clés utilisateur du noyau comme montré dans l'exemple ci-dessous :</p>
+<div class="Bd-indent">
+<pre># keyctl show
+Session Keyring
+ 736023423 --alswrv      0     0  keyring: _ses
+ 675104189 --alswrv      0 65534   \_ keyring: _uid.0
+ 680187394 --alswrv      0     0       \_ trusted: nvdimm-master</pre>
+</div>
+<p class="Pp">Avant d'effectuer l'une des opérations de sécurité, toutes les régions associées au DIMM en question doivent être désactivées. Pour l'opération
+    <i>overwrite</i>, en plus des
+    <i>regions</i>, le
+    <i>dimm</i> doit également être désactivé.</p>
+<p class="Pp">[1] <i></i>
+    <a href='http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf'>http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf</a>
+  <br/>
+  [2] <i></i>
+    <a href='https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst'>https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst</a></p>
+<p class="Pp">Les sous-sections suivantes décrivent les spécificités de chaque fonctionnalité de sécurité.</p>
+<section class="Ss">
+<h2 class="Ss" id='DEVERROUILLER'><a class='permalink' href='#DEVERROUILLER'>DÉVERROUILLER</a></h2>
+<p class="Pp">Le déverrouillage est effectué par le noyau, cependant une étape de préparation doit avoir lieu avant que le DSM de déverrouillage ne puisse être émis par le noyau. Il est attendu que, depuis l'initramfs, une commande de configuration (ndctl
+    <i>load-keys</i>) soit exécutée avant que le module libnvdimm ne soit chargé par modprobe. Cette commande injectera la
+    <i>kek</i> et les phrases secrètes chiffrées dans le porte-clés utilisateur du noyau. Lors de la
+    <i>sondage</i> du pilote libnvdimm, il :</p>
+<div class="Bd-indent"> 1.Vérifiera l'état de sécurité du périphérique et verra si le
+  DIMM est verrouillé</div>
+<div class="Bd-indent"> 2.Demandera la phrase secrète chiffrée associée au porte-clés utilisateur du noyau</div>
+<div class="Bd-indent"> 3.Utilisera la
+    <i>kek</i> pour déchiffrer la phrase secrète</div>
+<div class="Bd-indent"> 4.Créera le DSM de déverrouillage, copiera la charge utile déchiffrée dans le
+    DSM</div>
+<div class="Bd-indent"> 5.Émettra le DSM pour déverrouiller le DIMM</div>
+<p class="Pp">Si le DIMM est déjà déverrouillé, le noyau tentera de revalider la phrase secrète. Si nous ne parvenons pas à revalider la phrase secrète, le noyau gèlera la sécurité et interdira toute autre modification de configuration de sécurité. Un paramètre de module du noyau est disponible pour outrepasser ce comportement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='CONFIGURER_PHRASE_SECRETE_UTILISATEUR'><a class='permalink' href='#CONFIGURER_PHRASE_SECRETE_UTILISATEUR'>CONFIGURER LA PHRASE SECRÈTE UTILISATEUR</a></h2>
+<p class="Pp">Pour configurer la phrase secrète d'un DIMM, il est attendu que la
+    <i>kek</i> à utiliser soit présente dans le porte-clés utilisateur du noyau. La
+    <i>kek</i> chiffre la phrase secrète du DIMM en utilisant le format de clé
+    <i>enc32</i>. La phrase secrète en clair n'est jamais fournie par l'utilisateur et ne lui est pas visible. Elle est générée aléatoirement par le noyau et l'espace utilisateur n'y a pas accès. Après chiffrement, un blob binaire de la phrase secrète est écrit dans le répertoire de stockage des blobs de phrases secrètes (/etc/ndctl/keys). L'utilisateur est responsable de sauvegarder les blobs de phrases secrètes dans un emplacement sécurisé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='METTRE_A_JOUR_PHRASE_SECRETE_UTILISATEUR'><a class='permalink' href='#METTRE_A_JOUR_PHRASE_SECRETE_UTILISATEUR'>METTRE À JOUR LA PHRASE SECRÈTE UTILISATEUR</a></h2>
+<p class="Pp">L'opération de mise à jour de la phrase secrète utilisateur utilise la même commande DSM que l'activation de la phrase secrète utilisateur. La majeure partie du travail est effectuée côté gestion des clés. L'utilisateur a la possibilité de fournir une nouvelle
+    <i>kek</i> pour la nouvelle phrase secrète, mais continuer à utiliser la
+    <i>kek</i> existante est également acceptable. Les opérations suivantes sont effectuées pour
+    <i>update-passphrase</i>:</p>
+<div class="Bd-indent"> 1.Supprimer la phrase secrète chiffrée du porte-clés utilisateur du noyau.</div>
+<div class="Bd-indent"> 2.Renommer le blob de la phrase secrète en old.</div>
+<div class="Bd-indent"> 3.Charger ce blob de phrase secrète ancien dans le porte-clés avec un nom
+    "old".</div>
+<div class="Bd-indent"> 4.Créer la nouvelle phrase secrète et la chiffrer avec la
+    <i>kek</i>.</div>
+<div class="Bd-indent"> 5.Envoyer le DSM avec les phrases secrètes anciennes et nouvelles déchiffrées.</div>
+<div class="Bd-indent"> 6.Supprimer la phrase secrète ancienne et le blob de phrase secrète du porte-clés.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SUPPRIMER_PHRASE_SECRETE_UTILISATEUR'><a class='permalink' href='#SUPPRIMER_PHRASE_SECRETE_UTILISATEUR'>SUPPRIMER LA PHRASE SECRÈTE UTILISATEUR</a></h2>
+<p class="Pp">Le
+    <i>key-ID</i> de la phrase secrète à supprimer est écrit dans sysfs. Le noyau envoie ensuite le DSM pour désactiver la sécurité, et la phrase secrète est supprimée du porte-clés, et le blob de phrase secrète associé est supprimé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='EFFACEMENT_CRYPTO_(SECURISE)'><a class='permalink' href='#EFFACEMENT_CRYPTO_(SECURISE)'>EFFACEMENT CRYPTO (SÉCURISÉ)</a></h2>
+<p class="Pp">Cette opération est similaire à la suppression de phrase secrète. Le noyau émet une instruction WBINVD avant et après l'opération pour garantir l'absence de corruption de données due à un cache CPU obsolète. Utilisez la commande sanitize-dimm de ndctl
+    avec l'option <span class="Li">--crypto-erase</span> pour effectuer cette opération.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='ECRASER'><a class='permalink' href='#ECRASER'>ÉCRASER</a></h2>
+<p class="Pp">Ceci est invoqué en utilisant l'option <span class="Li">--overwrite</span>
+    pour ndctl
+    <i>sanitize-dimm</i>. L'opération d'écrasement efface l'intégralité du NVDIMM. L'opération peut prendre beaucoup de temps. REMARQUE : Lorsque la commande retourne</p>
+</div>
+</section>
+
+                
+            </article>
+            
+        </main>
+    </body>
+</html>
+rns avec succès, cela signifie seulement que le remplacement a été
+    lancé avec succès, et non qu'il est terminé. Par la suite,
+    <i>ndctl wait-overwrite</i> peut être utilisé pour attendre les NVDIMM
+    qui effectuent le remplacement. Une fois le remplacement terminé avec succès,
+    l'instruction WBINVD est émise par le noyau. Si les deux options --crypto-erase
+    et --overwrite sont fournies, alors crypto-erase est effectué avant
+    overwrite.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SECURITY_FREEZE'><a class='permalink' href='#SECURITY_FREEZE'>SECURITY   FREEZE</a></h2>
+<p class="Pp">Cette opération ne nécessite pas de mot de passe. Elle bloquera toute
+    commande de sécurité, autre qu'une requête de statut, jusqu'au prochain démarrage.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='MASTER_PASSPHRASE_SETUP,_UPDATE,_and_CRYPTO_ERASE'><a class='permalink' href='#MASTER_PASSPHRASE_SETUP,_UPDATE,_and_CRYPTO_ERASE'>MASTER   PASSPHRASE SETUP, UPDATE, et CRYPTO ERASE</a></h2>
+<p class="Pp">Ces opérations sont similaires à l'activation et à la mise à jour du
+    mot de passe utilisateur. La seule différence est qu'un mot de passe différent est
+    utilisé. Le mot de passe maître n'a aucun lien avec la clé maître (<i>kek</i>)
+    qui est utilisée pour le chiffrement de n'importe quel mot de passe.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright &#x00A9; 2016 - 2022, Intel Corporation. License GPLv2 :
+    GNU GPL version 2 <i></i> <a href='http://gnu.org/licenses/gpl.html'>http://gnu.org/licenses/gpl.html</a>. Ceci est un
+    logiciel libre : vous êtes libre de le modifier et de le redistribuer. Il
+    n'y a AUCUNE GARANTIE, dans la mesure permise par la loi.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2024-07-18</td>
+    <td class="foot-os">ndctl</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/ndctl/">extra/ndctl</a></dd>
+        <dt>Version :</dt>
+        <dd>79-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/pmem/ndctl">https://github.com/pmem/ndctl</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/ndctl/">/listing/extra/ndctl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#THEORY_OF_OPERATION">THÉORIE DU FONCTIONNEMENT</a></li>
+        
+            <li><a href="#COPYRIGHT">DROIT D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ndctl-load-keys.1.en.txt">txt</a>, 
+        
+            <a href="/man/ndctl-load-keys.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               sauf pour le contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

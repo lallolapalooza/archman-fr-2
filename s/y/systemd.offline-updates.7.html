@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>systemd.offline-updates(7) — Pages man d'Arch</title>
+        
+        
+        
+        
+        
+    
+    
+        <link rel="alternate" href="/man/systemd.offline-updates.7.de" hreflang="de">
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">systemd.offline-updates(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/systemd/">systemd</a></p>
+<p class="lic">Licences: LGPL-2.1-or-later, CC0-1.0, GPL-2.0-or-later, MIT-0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SYSTEMD.OFFLINE-UPDATES(7)</td>
+    <td class="head-vol">systemd.offline-updates</td>
+    <td class="head-rtitle">SYSTEMD.OFFLINE-UPDATES(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">systemd.offline-updates - Implémentation des mises à jour hors
+    ligne dans systemd</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='IMPLÉMENTATION_DES_MISES_À_JOUR_SYSTÈME_HORS_LIGNE'><a class='permalink' href='#IMPLÉMENTATION_DES_MISES_À_JOUR_SYSTÈME_HORS_LIGNE'>IMPLÉMENTATION   DES MISES À JOUR SYSTÈME HORS LIGNE</a></h1>
+<p class="Pp">Cette page de manuel décrit comment implémenter les mises à jour
+    système &quot;hors ligne&quot; avec systemd. Par mises à jour OS &quot;hors
+    ligne&quot;, nous entendons les installations et mises à jour de paquets qui
+    s'exécutent avec le système démarré dans un mode spécial de mise à jour
+    système, afin d'éviter les problèmes liés aux conflits de bibliothèques et
+    services en cours d'exécution avec ceux présents sur le disque. Ce document
+    est inspiré par ce <b>tableau blanc de conception GNOME</b>[1].</p>
+<p class="Pp">La logique :</p>
+<div class="Bd-indent"> 1.Le gestionnaire de paquets prépare les mises à jour
+    système en téléchargeant tous les paquets (.rpm ou .deb ou autre) à mettre à
+    jour hors ligne dans un répertoire spécial /var/lib/system-update (ou un
+    autre répertoire choisi par le gestionnaire de paquets/mises à jour).</div>
+<div class="Bd-indent"> 2.Lorsque l'utilisateur a validé la mise à jour, le lien
+    symbolique /system-update ou /etc/system-update est créé, pointant vers
+    /var/lib/system-update (ou où que ce soit que se trouve le répertoire
+    contenant les fichiers de mise à niveau), et le système est redémarré. Ce
+    lien symbolique se trouve dans le répertoire racine, car nous devons le
+    vérifier très tôt au démarrage, à un moment où /var/ n'est pas encore
+    disponible.</div>
+<div class="Bd-indent"> 3.Très tôt dans le nouveau démarrage,
+    <a href='/man/systemd-system-update-generator.8.en'>systemd-system-update-generator(8)</a> vérifie si
+    /system-update ou /etc/system-update existe. Si c'est le cas, il redirige (
+    c'est-à-dire crée un lien symbolique) temporairement (et uniquement pour ce
+    démarrage) default.target vers system-update.target, une cible spéciale qui
+    amène le système de base (c'est-à-dire sysinit.target, afin que tous les
+    systèmes de fichiers soient montés, mais peu d'autres choses) et les unités
+    de mise à jour système.</div>
+<div class="Bd-indent"> 4.Le système continue alors à démarrer vers
+    default.target, et donc vers system-update.target. Cette cible amène toutes
+    les unités de mise à jour système. Un seul service devrait effectuer la mise
+    à jour (voir le point suivant), et tous les autres devraient se terminer
+    proprement avec un code de retour &quot;succès&quot; et sans rien faire. Les
+    services de mise à jour devraient être ordonnancés après sysinit.target afin
+    que la mise à jour commence après que tous les systèmes de fichiers aient été
+    montés.</div>
+<div class="Bd-indent"> 5.Comme première étape, un service de mise à jour devrait
+    vérifier si le lien symbolique /system-update ou /etc/system-update pointe
+    vers l'emplacement utilisé par ce service de mise à jour. S'il n'existe pas
+    ou pointe vers un emplacement différent, le service doit se terminer sans
+    erreur. Il est possible que plusieurs services de mise à jour soient
+    installés, et que plusieurs services de mise à jour soient lancés en
+    parallèle, et seul celui correspondant à l'outil qui <i>a créé</i> le lien
+    symbolique avant le redémarrage devrait effectuer des actions. Il est dangereux
+    d'exécuter plusieurs mises à jour en parallèle.</div>
+<div class="Bd-indent"> 6.Le service de mise à jour devrait alors faire son
+    travail. Si applicable et possible, il devrait créer un instantané du
+    système de fichiers, puis installer tous les paquets. Après l'achèvement
+    (qu'elle ait réussi ou échoué), la machine doit être redémarrée, par
+    exemple en appelant <b>systemctl reboot</b>. De plus, en cas d'échec, le
+    script devrait revenir à l'ancien instantané du système de fichiers (sans le
+    lien symbolique).</div>
+<div class="Bd-indent"> 7.Les scripts de mise à jour ne devraient se terminer
+    qu'après que la mise à jour soit terminée. Il est attendu que le service qui
+    effectue la mise à jour déclenche le redémarrage de la machine une fois
+    terminé. Si system-update.target est atteint avec succès, c'est-à-dire si tous
+    les services de mise à jour ont été exécutés et que le lien symbolique
+    /system-update ou /etc/system-update existe toujours, il sera supprimé et la
+    machine redémarrée par mesure de sécurité.</div>
+<div class="Bd-indent"> 8.Après un redémarrage, puisque le lien symbolique
+    /system-update et /etc/system-update a disparu, le générateur ne redirigera
+    plus default.target et le système redémarrera à nouveau vers la cible par
+    défaut.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RECOMMANDATIONS'><a class='permalink' href='#RECOMMANDATIONS'>RECOMMANDATIONS</a></h1>
+<div class="Bd-indent"> 1.Pour rendre les choses un peu plus robustes, nous
+    recommandons d'accrocher le script de mise à jour à system-update.target via
+    un lien symbolique .wants/ dans le paquet de distribution, plutôt que de
+    dépendre de <b>systemctl enable</b> dans les postinst scriptlets de votre
+    paquet. Plus spécifiquement, pour votre script de mise à jour, créez un
+    fichier .service, sans section [Install], puis ajoutez un lien symbolique
+    tel que /usr/lib/systemd/system/system-update.target.wants/foobar.service &#x2192;
+    ../foobar.service à votre paquet.</div>
+<div class="Bd-indent"> 2.Assurez-vous de supprimer les liens symboliques
+    /system-update et /etc/system-update le plus tôt possible dans le script de
+    mise à jour pour éviter les boucles de redémarrage en cas d'échec de la mise
+    à jour.</div>
+<div class="Bd-indent"> 3.Utilisez <i>FailureAction=reboot</i> dans le fichier
+    service pour votre script de mise à jour afin de garantir qu'un redémarrage
+    soit automatiquement déclenché si la mise à jour échoue. <i>FailureAction=</i>
+    garantit que l'unité spécifiée est activée si votre script se termine de
+    manière non propre (par un code d'erreur non nul, ou un signal/coredump).
+    Si votre script réussit, vous devriez déclencher le redémarrage dans votre
+    propre code, par exemple en appelant l'appel <b>Reboot()</b> de logind ou en
+    appelant <b>systemctl reboot</b>. Voir <a href='/man/org.freedesktop.login1.5.en'>org.freedesktop.login1(5)</a> pour
+    les détails sur l'API D-Bus de logind.</div>
+<div class="Bd-indent"> 4.Le service de mise à jour devrait déclarer
+    <i>DefaultDependencies=no</i>, <i>Requires=sysinit.target</i>,
+    <i>After=sysinit.target</i>, <i>After=system-update-pre.target</i>,
+    <i>Before=system-update.target</i> et amener explicitement tout autre
+    service dont il a besoin.</div>
+<div class="Bd-indent"> 5.Il peut être souhaitable d'exécuter toujours une
+    unité auxiliaire lors du démarrage en mode offline-updates, qui n'installe
+    pas elle-même les mises à jour. Pour ce faire, créez un fichier .service avec
+    <i>Wants=system-update-pre.target</i> et <i>Before=system-update-pre.target</i>
+    et ajoutez un lien symbolique vers ce fichier sous
+    /usr/lib/systemd/system-update.target.wants .</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR   AUSSI</a></h1>
+<p class="Pp"><a href='/man/systemd.1.en'>systemd(1)</a>, <a href='/man/systemd.generator.7.en'>systemd.generator(7)</a>,
+    <a href='/man/systemd-system-update-generator.8.en'>systemd-system-update-generator(8)</a>,
+    <a href='/man/dnf.plugin.system-upgrade.8.en'>dnf.plugin.system-upgrade(8)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>Tableau blanc de conception GNOME</dd>
+</dl>
+<div class="Bd-indent"><a href='https://wiki.gnome.org/Design/OS/SoftwareUpdates'>https://wiki.gnome.org/Design/OS/SoftwareUpdates</a></div>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os">systemd 258.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/systemd/">core/systemd</a></dd>
+        <dt>Version :</dt>
+        <dd>258.2-2</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.github.com/systemd/systemd">https://www.github.com/systemd/systemd</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.1-or-later, CC0-1.0, GPL-2.0-or-later, MIT-0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/systemd/">/listing/core/systemd/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#IMPLÉMENTATION_DES_MISES_À_JOUR_SYSTÈME_HORS_LIGNE">IMPLÉMENTATION DES MISES À JOUR SYSTÈME HORS LIGNE</a></li>
+        
+            <li><a href="#RECOMMANDATIONS">RECOMMANDATIONS</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+<nav class="other-languages">
+    <p>Dans d'autres langues :</p>
+    <ul>
+    
+        <li><a href="/man/systemd.offline-updates.7.de">de</a></li>
+    
+    </ul>
+</nav>
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/systemd.offline-updates.7.en.txt">txt</a>, 
+        
+            <a href="/man/systemd.offline-updates.7.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

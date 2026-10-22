@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>tracefs_find_cid_pid(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">tracefs_find_cid_pid(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libtracefs/">libtracefs</a></p>
+<p class="lic">Licences: GPL-2.0-only, LGPL-2.1-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBTRACEFS(3)</td>
+    <td class="head-vol">Manuel libtracefs</td>
+    <td class="head-rtitle">LIBTRACEFS(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">tracefs_find_cid_pid, tracefs_instance_find_cid_pid,
+    tracefs_time_conversion - fonctions utilitaires pour gérer le traçage des invités</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><b>#include &lt;tracefs.h&gt;</b>
+char *<b>tracefs_find_cid_pid</b>(int <i>cid</i>);
+char *<b>tracefs_instance_find_cid_pid</b>(struct tracefs_instance *<i>instance</i>, int <i>cid</i>);
+int <b>tracefs_time_conversion</b>(int <i>cpu</i>, int *<i>shift</i>, int *<i>multi</i>, long long *offset);</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">La fonction <b>tracefs_find_cid_pid</b>() utilise le traçage pour suivre
+    les réveils de la connexion au <i>cid</i> donné afin de trouver le pid du thread
+    invité qui appartient au cid vsocket. Elle lira ensuite le système de fichiers
+    proc pour trouver le leader du thread, et retournera le pid du leader du thread.</p>
+<p class="Pp">La fonction <b>tracefs_instance_find_cid_pid</b>() est identique à
+    <b>tracefs_find_cid_pid</b>() mais définit l'instance à utiliser pour effectuer
+    le traçage. Si NULL, elle utilisera le tampon de niveau supérieur pour effectuer
+    le traçage.</p>
+<p class="Pp">La fonction <b>tracefs_time_conversion</b>() retournera les valeurs
+    utilisées par le noyau pour convertir le compteur d'horodatage brut en nanosecondes
+    pour le <i>cpu</i> donné. Les pointeurs pour <i>shift</i>, <i>multi</i> et
+    <i>offset</i> peuvent être NULL pour être ignorés, sinon ils sont définis avec
+    le décalage, le multiplicateur et l'offset respectivement.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VALEUR_DE_RETOUR'><a class='permalink' href='#VALEUR_DE_RETOUR'>VALEUR DE RETOUR</a></h1>
+<p class="Pp">Les fonctions <b>tracefs_find_cid_pid</b>() et
+    <b>tracefs_instance_find_cid_pid</b>() retourneront le pid du thread principal
+    invité appartenant au <i>cid</i>, ou -1 en cas d'erreur (ou si non trouvé).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE'><a class='permalink' href='#EXEMPLE'>EXEMPLE</a></h1>
+<div class="Bd-indent">
+<pre>#include &lt;stdlib.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;tracefs.h&gt;
+#define MAX_CID         256
+static void find_cid(struct tracefs_instance *instance, int cid)
+{
+        int pid;
+        pid = tracefs_instance_find_cid_pid(instance, cid);
+        if (pid &gt;= 0)
+                printf(&quot;%d\t%d\n&quot;, cid, pid);
+}
+static int find_cids(void)
+{
+        struct tracefs_instance *instance;
+        char *name;
+        int cid;
+        int ret;
+        ret = asprintf(&amp;name, &quot;vsock_find-%d\n&quot;, getpid());
+        if (ret &lt; 0)
+                return ret;
+        instance = tracefs_instance_create(name);
+        free(name);
+        if (!instance)
+                return -1;
+        for (cid = 0; cid &lt; MAX_CID; cid++)
+                find_cid(instance, cid);
+        tracefs_event_disable(instance, NULL, NULL);
+        tracefs_instance_destroy(instance);
+        tracefs_instance_free(instance);
+        return 0;
+}
+struct time_info {
+        int             shift;
+        int             multi;
+};
+static void show_time_conversion(void)
+{
+        struct time_info *tinfo;
+        int cpus;
+        int cpu;
+        int ret;
+        cpus = sysconf(_SC_NPROCESSORS_CONF);
+        tinfo = calloc(cpus, sizeof(*tinfo));
+        if (!tinfo)
+                exit(-1);
+        for (cpu = 0; cpu &lt; cpus; cpu++) {
+                ret  = tracefs_time_conversion(cpu,
+                                                &amp;tinfo[cpu].shift,
+                                                &amp;tinfo[cpu].multi,
+                                                NULL);
+                if (ret)
+                        break;
+        }
+        if (cpu != cpus) {
+                if (!cpu) {
+                        perror(&quot;tracefs_time_conversion&quot;);
+                        exit(-1);
+                }
+                printf(&quot;Only read %d of %d CPUs&quot;, cpu, cpus);
+                cpus = cpu + 1;
+        }
+        /* Check if all the shift and mult values are the same */
+        for (cpu = 1; cpu &lt; cpus; cpu++) {
+                if (tinfo[cpu - 1].shift != tinfo[cpu].shift)
+                        break;
+                if (tinfo[cpu - 1].multi != tinfo[cpu].multi)
+                        break;
+        }
+        if (cpu == cpus) {
+                printf(&quot;All cpus have:\n&quot;);
+                printf(&quot; shift:  %d\n&quot;, tinfo[0].shift);
+                printf(&quot; multi:  %d\n&quot;, tinfo[0].multi);
+                printf(&quot;\n&quot;);
+                return;
+        }
+        for (cpu = 0; cpu &lt; cpus; cpu++) {
+                printf(&quot;CPU: %d\n&quot;, cpu);
+                printf(&quot; shift:  %d\n&quot;, tinfo[cpu].shift);
+                printf(&quot; multi:  %d\n&quot;, tinfo[cpu].multi);
+                printf(&quot;\n&quot;);
+        }
+}
+int main(int argc, char *argv[])
+{
+        show_time_conversion();
+        find_cids();
+        exit(0);
+}</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FICHIERS'><a class='permalink' href='#FICHIERS'>FICHIERS</a></h1>
+<div class="Bd-indent">
+<pre><b>tracefs.h</b>
+        Fichier d'en-tête pour inclure afin d'avoir accès aux API de la bibliothèque.
+<b>-ltracefs</b>
+        Commutateur d'éditeur de liens à ajouter lors de la compilation d'un programme utilisant la bibliothèque.</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/libtracefs.3.en'>libtracefs(3)</a>, <a href='/man/libtraceevent.3.en'>libtraceevent(3)</a>,
+  <a href='/man/trace-cmd.1.en'>trace-cmd(1)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<div class="Bd-indent">
+<pre><b>Steven Rostedt</b> &lt;<b>rostedt@goodmis.org</b>[1]&gt;
+<b>Tzvetomir Stoyanov</b> &lt;<b>tz.stoyanov@gmail.com</b>[2]&gt;</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIGNALER_LES_BOGUES'><a class='permalink' href='#SIGNALER_LES_BOGUES'>SIGNALER LES BOGUES</a></h1>
+<p class="Pp">Signaler les bogues à
+  &lt;<b>linux-trace-devel@vger.kernel.org</b>[3]&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENCE'><a class='permalink' href='#LICENCE'>LICENCE</a></h1>
+<p class="Pp">libtracefs est un logiciel libre distribué sous licence GNU LGPL 2.1</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RESSOURCES'><a class='permalink' href='#RESSOURCES'>RESSOURCES</a></h1>
+<p class="Pp"><a href='https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/'>https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (C) 2020 VMware, Inc. L'utilisation de ce logiciel est
+    accordée gratuitement selon les termes de la licence GNU Public License (GPL).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<dl class="Bl-tag">
+  <dt> 1.</dt>
+  <dd>rostedt@goodmis.org</dd>
+</dl>
+<div class="Bd-indent">mailto:rostedt@goodmis.org</div>
+<dl class="Bl-tag">
+  <dt> 2.</dt>
+  <dd>tz.stoyanov@gmail.com</dd>
+</dl>
+<div class="Bd-indent">mailto:tz.stoyanov@gmail.com</div>
+<dl class="Bl-tag">
+  <dt> 3.</dt>
+  <dd>linux-trace-devel@vger.kernel.org</dd>
+</dl>
+<div class="Bd-indent">mailto:linux-trace-devel@vger.kernel.org</div>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">08/24/2025</td>
+    <td class="foot-os">libtracefs 1.8.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libtracefs/">extra/libtracefs</a></dd>
+        <dt>Version :</dt>
+        <dd>1.8.2-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/about/">https://git.kernel.org/pub/scm/libs/libtrace/libtracefs.git/about/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only, LGPL-2.1-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libtracefs/">/listing/extra/libtracefs/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#VALEUR_DE_RETOUR">VALEUR DE RETOUR</a></li>
+        
+            <li><a href="#EXEMPLE">EXEMPLE</a></li>
+        
+            <li><a href="#FICHIERS">FICHIERS</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#SIGNALER_LES_BOGUES">SIGNALER LES BOGUES</a></li>
+        
+            <li><a href="#LICENCE">LICENCE</a></li>
+        
+            <li><a href="#RESSOURCES">RESSOURCES</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/tracefs_find_cid_pid.3.en.txt">txt</a>, 
+        
+            
+    </p>
+</nav>
+
+            </aside>
+        </main>
+    </body>
+</html>
+<a href="/man/tracefs_find_cid_pid.3.fr.raw">brut</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

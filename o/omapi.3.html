@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>omapi(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">omapi(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/dhcp/">dhcp</a></p>
+<p class="lic">Licences: personnalisé:isc-dhcp</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">omapi(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">omapi(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">OMAPI - Interface de programmation d'application de gestion d'objets</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">OMAPI est une couche de programmation conçue pour contrôler des applications distantes et pour les interroger sur leur état. Elle est actuellement utilisée par le serveur DHCP ISC et ce document aborde les parties d'OMAPI pertinentes pour les clients du serveur DHCP. Il le fait en décrivant également l'utilisation d'une API fine superposée à OMAPI appelée « dhcpctl ».</p>
+<p class="Pp">OMAPI utilise TCP/IP comme transport pour la communication serveur, et la sécurité peut être imposée en faisant signer cryptographiquement les messages par le client et le serveur à l'aide d'un secret partagé.</p>
+<p class="Pp">dhcpctl fonctionne en présentant au client des identifiants (handles) pour des objets qui servent de substituts aux objets réels du serveur. Par exemple, un client créera un identifiant pour un objet de bail et demandera au serveur de remplir l'état de cet identifiant de bail. L'application cliente peut alors extraire des détails tels que l'heure d'expiration du bail à partir de l'identifiant de bail.</p>
+<p class="Pp">Des modifications peuvent être apportées à l'état du serveur en créant des identifiants pour de nouveaux objets, ou en modifiant les attributs des identifiants d'objets existants, puis en demandant au serveur de se mettre à jour en fonction des modifications apportées.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION'><a class='permalink' href='#UTILISATION'>UTILISATION</a></h1>
+<p class="Pp">L'application cliente doit toujours appeler dhcpctl_initialize() avant d'effectuer des appels à d'autres fonctions dhcpctl. Cela initialise diverses structures de données internes.</p>
+<p class="Pp">Pour établir la connexion au serveur, le client doit utiliser la fonction dhcpctl_connect(). En plus d'établir la connexion physique, elle configurera également les structures de données de connexion pour l'authentification de chaque message, si nécessaire.</p>
+<p class="Pp">Toutes les fonctions dhcpctl retournent une valeur entière de type isc_result_t. Un appel réussi renverra un résultat de ISC_R_SUCCESS. Si l'appel échoue pour une raison locale au client (par exemple, mémoire locale insuffisante ou arguments invalides pour l'appel), la valeur de retour de la fonction dhcpctl l'indiquera. Si l'appel réussit mais que le serveur n'a pas pu traiter la requête, la valeur d'erreur du serveur est renvoyée par un autre moyen, montré ci-dessous.</p>
+<p class="Pp">La manière la plus simple de comprendre dhcpctl est de le voir en action. Le programme suivant est entièrement fonctionnel, mais presque tout le contrôle d'erreurs a été supprimé pour le rendre plus court et plus facile à comprendre. Ce programme interrogera le serveur en cours d'exécution sur localhost pour obtenir les détails du bail de l'adresse IP 10.0.0.101. Il affichera ensuite l'heure d'expiration du bail.</p>
+<pre>#include &lt;stdarg.h&gt;
+#include &lt;sys/time.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;netinet/in.h&gt;
+#include &lt;isc/result.h&gt;
+#include &lt;dhcpctl/dhcpctl.h&gt;
+int main (int argc, char **argv) {
+	dhcpctl_data_string ipaddrstring = NULL;
+	dhcpctl_data_string value = NULL;</pre>
+<p class="Pp">Toutes les modifications des identifiants et tous les accès aux données des identifiants se font via des objets dhcpctl_data_string.</p>
+<pre>dhcpctl_handle connection = NULL;
+dhcpctl_handle lease = NULL;
+isc_result_t waitstatus;
+struct in_addr convaddr;
+time_t thetime;
+dhcpctl_initialize ();</pre>
+<p class="Pp">Première étape requise.</p>
+<pre>dhcpctl_connect (&amp;connection, &quot;127.0.0.1&quot;,
+		 7911, 0);</pre>
+<p class="Pp">Configure la connexion au serveur. Le serveur écoute normalement sur le port 7911 sauf configuration contraire.</p>
+<pre>dhcpctl_new_object (&amp;lease, connection,
+		    &quot;lease&quot;);</pre>
+<p class="Pp">Ici, nous créons un identifiant pour un bail. Cet appel configure simplement une structure de données locale. Le serveur n'a pas encore établi de lien entre la structure de données du client et un bail.</p>
+<pre>memset (&amp;ipaddrstring, 0, sizeof
+	ipaddrstring);
+inet_pton(AF_INET, &quot;10.0.0.101&quot;,
+	  &amp;convaddr);
+omapi_data_string_new (&amp;ipaddrstring,
+		       4, MDL);</pre>
+<p class="Pp">Crée une nouvelle chaîne de données à stocker dans l'identifiant.</p>
+<pre>memcpy(ipaddrstring-&gt;value, &amp;convaddr.s_addr, 4);
+dhcpctl_set_value (lease, ipaddrstring,
+		   &quot;ip-address&quot;);</pre>
+<p class="Pp">Nous définissons l'attribut ip-address de l'identifiant de bail à l'adresse donnée. Nous n'avons défini aucun autre attribut, donc lorsque le serveur établira l'association, l'adresse IP sera le seul élément utilisé pour rechercher le bail dans ses tables.</p>
+<pre>dhcpctl_open_object (lease, connection, 0);</pre>
+<p class="Pp">Ici, nous amorçons la connexion avec la requête pour rechercher le bail dans le serveur et remplir l'identifiant local avec les attributs que le serveur renverra dans sa réponse.</p>
+<pre>dhcpctl_wait_for_completion (lease,
+			     &amp;waitstatus);</pre>
+<p class="Pp">Cet appel provoque l'envoi du message au serveur (le message pour rechercher le bail et renvoyer les valeurs d'attribut dans la réponse). La valeur de la variable waitstatus lors du retour de la fonction sera le résultat du serveur. Si le message n'a pas pu être traité correctement par le serveur, l'erreur sera reflétée ici.</p>
+<pre>if (waitstatus != ISC_R_SUCCESS) {
+	/* server not authoritative */
+	exit (0);
+}
+dhcpctl_data_string_dereference(&amp;ipaddrstring,
+				MDL);</pre>
+<p class="Pp">Nettoie la mémoire qui n'est plus nécessaire.</p>
+<pre>dhcpctl_get_value (&amp;value, lease, &quot;ends&quot;);</pre>
+<p class="Pp">Obtient l'attribut nommé « ends » de l'identifiant de bail. Il s'agit d'un entier de 4 octets représentant l'heure (en secondes depuis l'époque Unix) à laquelle le bail expirera.</p>
+<pre>	memcpy(&amp;thetime, value-&gt;value, value-&gt;len);
+	dhcpctl_data_string_dereference(&amp;value, MDL);
+	fprintf (stdout, &quot;ending time is %s&quot;,
+		 ctime(&amp;thetime));
+}</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHENTIFICATION'><a class='permalink' href='#AUTHENTIFICATION'>AUTHENTIFICATION</a></h1>
+<p class="Pp">Si le serveur exige des connexions authentifiées, l'utilisateur doit appeler dhcpctl_new_authenticator avant d'ouvrir la connexion.</p>
+<pre>		dhcpctl_handle authenticator = NULL;
+		const char *keyname = &quot;un-nom-de-clé&quot;;
+		const char *algorithm = &quot;hmac-md5&quot;;
+		const char *secret = &quot;un-secret-partagé&quot;;
+		dhcpctl_new_authenticator (&amp;authenticator,
+                                           keyname,
+                                           algorithm,
+                                           secret,
+					   strlen(secret) + 1);</pre>
+<p class="Pp">Le nom de clé (keyname), l'algorithme (algorithm) et tout ce qui est spécifié dans le fichier dhcpd.conf du serveur doivent correspondre, à la seule différence que le secret doit apparaître sous forme brute (« raw »), et non en base64 comme ce serait le cas dans dhcpd.conf :</p>
+<pre>key &quot;un-nom-de-clé&quot; {
+	algorithm hmac-md5;
+	secret &quot;un-secret-partagé&quot;;
+};
+# Définir la valeur omapi-key à utiliser
+# pour les connexions authentifiées
+omapi-key un-nom-de-clé;</pre>
+<p class="Pp">L'identifiant d'authentification créé par l'appel à dhcpctl_new_authenticator doit être passé comme dernier argument (le 4ème) à l'appel de dhcpctl_connect(). Tous les messages seront alors signés avec la chaîne secrète donnée en utilisant l'algorithme spécifié.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp">dhcpctl(3), omshell(1), dhcpd(8), dhclient(8), dhcpd.conf(5),
+    dhclient.conf(5).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp"><b>omapi</b> est maintenu par ISC. Pour en savoir plus sur Internet
+    Systems Consortium, voir <a href='https://www.isc.org'>https://www.isc.org</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/dhcp/">extra/dhcp</a></dd>
+        <dt>Version :</dt>
+        <dd>4.4.3.P1-4</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.isc.org/dhcp/">https://www.isc.org/dhcp/</a></dd>
+        <dt>Licences :</dt>
+        <dd>personnalisé:isc-dhcp</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/dhcp/">/listing/extra/dhcp/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#UTILISATION">UTILISATION</a></li>
+        
+            <li><a href="#AUTHENTIFICATION">AUTHENTIFICATION</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/omapi.3.fr.txt">txt</a>, 
+        
+            <a href="/man/omapi.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>
+                Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+                à l'exception du contenu des pages de manuel, qui ont leur propre licence
+                spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

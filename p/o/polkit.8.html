@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>polkit(8) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">polkit(8)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">POLKIT(8)</td>
+    <td class="head-vol">polkit</td>
+    <td class="head-rtitle">POLKIT(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">polkit — Gestionnaire d'autorisation</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='APERÇU'><a class='permalink' href='#APERÇU'>APERÇU</a></h1>
+<p class="Pp">polkit fournit une API d'autorisation destinée à être utilisée par
+    des programmes privilégiés (« MÉCANISMES ») offrant des services à des
+    programmes non privilégiés (« SUJETS ») souvent via un mécanisme de
+    communication inter-processus. Dans ce scénario, le mécanisme traite
+    généralement le sujet comme non fiable. Pour chaque requête d'un sujet, le
+    mécanisme doit déterminer si la requête est autorisée ou s'il doit refuser
+    de servir le sujet. En utilisant les API de polkit, un mécanisme peut déléguer
+    cette décision à une partie fiable : l'autorité polkit.</p>
+<p class="Pp">L'autorité polkit est implémentée sous forme de démon système,
+    <a href='/man/polkitd.8.en'>polkitd(8)</a>, qui lui-même a peu de privilèges car il
+    s'exécute en tant qu'utilisateur système <i>polkitd</i>. Les mécanismes, les sujets
+    et les agents d'authentification communiquent avec l'autorité via le bus de
+    messages système.</p>
+<p class="Pp">En plus de servir d'autorité, polkit permet aux utilisateurs
+    d'obtenir une autorisation temporaire en authentifiant soit un utilisateur
+    administrateur, soit le propriétaire de la session à laquelle le client
+    appartient. Ceci est utile pour les scénarios où un mécanisme a besoin de
+    vérifier que l'opérateur du système est bien l'utilisateur ou un utilisateur
+    administrateur.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ARCHITECTURE_SYSTÈME'><a class='permalink' href='#ARCHITECTURE_SYSTÈME'>ARCHITECTURE SYSTÈME</a></h1>
+<p class="Pp">L'architecture système de polkit comprend l'<i>Autorité</i>
+    (implémentée comme un service sur le bus de messages système) et un
+    <i>Agent d'Authentification</i> par session utilisateur (fourni et démarré par
+    l'environnement graphique de l'utilisateur). Les <i>Actions</i> sont définies par
+    les applications. Les fournisseurs, les sites et les administrateurs système
+    peuvent contrôler la politique d'autorisation via des <i>Règles
+    d'Autorisation</i>.</p>
+<div class="Bd-indent">[IMAGE][1]
+<div class="Bd-indent">
+<pre> +-------------------+
+ |   Authentification|
+ |       Agent       |
+ +-------------------+
+ | libpolkit-agent-1 |
+ +-------------------+
+        ^                                  +---------+
+        |                                  | Sujet   |
+        +--------------+                   +---------+
+                       |                        ^
+                       |                        |
+Session Utilisateur    |                        |
+=======================|========================|=============
+Contexte Système       |                        |
+                       |                        |
+                       |                    +---+
+                       V                    |
+                     /------------\         |
+                     | Bus Système|         |
+                     \------------/         |
+                       ^        ^           V
+                       |        |      +---------------------+
+        +--------------+        |      |      Mécanisme      |
+        |                       |      +---------------------+
+        V                       +----&gt; | libpolkit-gobject-1 |
++------------------+                   +---------------------+
+|    polkitd(8)    |
++------------------+
+| org.freedesktop. |
+|    PolicyKit1    |&lt;---------+
++------------------+          |
+          ^                   |
+          |            +--------------------------------------------+
+          |            | /etc/polkit-1/actions/*.policy             |
+          |            | /run/polkit-1/actions/*.policy             |
+          |            | /usr/local/share/polkit-1/actions/*.policy |
+          |            | /usr/share/polkit-1/actions/*.policy       |
+          |            +--------------------------------------------+
+          |
+   +--------------------------------------------+
+   | /etc/polkit-1/rules.d/*.rules              |
+   | /run/polkit-1/rules.d/*.rules              |
+   | /usr/local/share/polkit-1/rules.d/*.rules  |
+   | /usr/share/polkit-1/rules.d/*.rules        |
+   +--------------------------------------------+</pre>
+</div>
+</div>
+<p class="Pp">Pour plus de commodité, la bibliothèque libpolkit-gobject-1
+    encapsule l'API D-Bus de polkit et est utilisable depuis n'importe quel
+    programme C/C++ ainsi que depuis des langages de plus haut niveau prenant
+    en charge <b>GObjectIntrospection</b>[2] comme JavaScript et Python. Un
+    mécanisme peut également utiliser l'API D-Bus ou la commande <a href='/man/pkcheck.1.en'>pkcheck(1)</a>
+    pour vérifier les autorisations. La bibliothèque libpolkit-agent-1 fournit
+    une abstraction du système d'authentification natif, par exemple <a href='/man/pam.8.en'>pam(8)</a>,
+    ainsi que des facilités d'enregistrement et de communication avec le
+    service D-Bus de polkit.</p>
+<p class="Pp">Consultez la <b>documentation pour les développeurs</b>[3] pour
+    plus d'informations sur l'écriture d'applications polkit.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AGENTS_D_AUTHENTIFICATION'><a class='permalink' href='#AGENTS_D_AUTHENTIFICATION'>AGENTS D'AUTHENTIFICATION</a></h1>
+<p class="Pp">Un agent d'authentification est utilisé pour faire prouver à
+    l'utilisateur d'une session qu'il est bien cet utilisateur (en s'authentifiant
+    comme l'utilisateur) ou un utilisateur administrateur (en s'authentifiant
+    comme un administrateur). Afin de bien s'intégrer au reste de la session
+    utilisateur (par exemple, pour correspondre au style visuel), les agents
+    d'authentification sont censés être fournis par la session utilisateur utilisée.
+    Par exemple, un agent d'authentification peut ressembler à ceci :</p>
+<div class="Bd-indent">[IMAGE][4]
+<div class="Bd-indent">
+<pre>+----------------------------------------------------------+
+|                                                          |
+|  [Icône]  Authentification requise                     |
+|                                                          |
+|          Une authentification est requise pour formater  |
+|          le SSD INTEL DSA2MH080G1GC (/dev/sda)           |
+|                                                          |
+|          Administrateur                                  |
+|                                                          |
+|          Mot de passe : [________________________________]  |
+|                                                          |
+| [Annuler]                                 [Authentifier] |
++----------------------------------------------------------+</pre>
+</div>
+</div>
+<p class="Pp">Si le système est configuré sans compte <i>root</i>, il peut
+    demander un utilisateur spécifique désigné comme utilisateur
+    administrateur :</p>
+<div class="Bd-indent">[IMAGE][5]
+<div class="Bd-indent">
+<pre>+----------------------------------------------------------+
+|                                                          |
+|  [Icône]  Authentification requise                     |
+|                                                          |
+|          Une authentification est requise pour formater  |
+|          le SSD INTEL DSA2MH080G1GC (/dev/sda)           |
+|                                                          |
+|          [Icône] David Zeuthen                           |
+|                                                          |
+|          Mot de passe : [________________________________]  |
+|                                                          |
+| [Annuler]                                 [Authentifier] |
++----------------------------------------------------------+</pre>
+</div>
+</div>
+<p class="Pp">Les applications qui ne s'exécutent pas sous un environnement de
+    bureau (par exemple, si elles sont lancées depuis une connexion <a href='/man/ssh.1.en'>ssh(1)</a>)
+    peuvent ne pas avoir d'agent d'authentification associé. Ces applications
+    peuvent utiliser le type PolkitAgentTextListener ou l'aide <a href='/man/pkttyagent.1.en'>pkttyagent(1)</a>
+    pour que l'utilisateur puisse s'authentifier via une interface textuelle.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DÉCLARATION_DES_ACTIONS'><a class='permalink' href='#DÉCLARATION_DES_ACTIONS'>DÉCLARATION DES ACTIONS</a></h1>
+<p class="Pp">Un mécanisme doit déclarer un ensemble d'<i>actions</i> pour
+    pouvoir utiliser polkit. Les actions correspondent aux opérations que les
+    clients peuvent demander au mécanisme d'exécuter et sont définies dans des
+    fichiers XML que le mécanisme installe dans le répertoire
+    /usr/share/polkit-1/actions.</p>
+<p class="Pp">Les actions polkit sont dans des espaces de noms et ne peuvent
+    contenir que les caractères « [A-Z][a-z][0-9].- », c'est-à-dire des
+    caractères ASCII, des chiffres, des points et des traits d'union. Chaque
+    fichier XML peut contenir plus d'une action, mais toutes les actions doivent
+    être dans le même espace de noms et le fichier doit être nommé d'après
+    l'espace de noms et avoir l'extension .policy.</p>
+<p class="Pp">Le fichier XML doit avoir la déclaration doctype suivante</p>
+<div class="Bd-indent">
+<pre>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;!DOCTYPE policyconfig PUBLIC &quot;-//freedesktop//DTD polkit Policy Configuration 1.0//EN&quot;
+&quot;http://www.freedesktop.org/software/polkit/policyconfig-1.dtd&quot;&gt;</pre>
+</div>
+<p class="Pp">L'élément <i>policyconfig</i> doit être présent exactement une
+    fois. Les éléments qui peuvent être utilisés à l'intérieur de
+    <i>policyconfig</i> incluent :</p>
+<p class="Pp"><i>vendor</i></p>
+<div class="Bd-indent">Le nom du projet ou du fournisseur qui fournit les
+  actions dans le document XML. Facultatif.</div>
+<p class="Pp"><i>vendor_url</i></p>
+<div class="Bd-indent">Une URL vers le projet ou le fournisseur qui fournit les
+  actions dans le document XML. Facultatif.</div>
+<p class="Pp"><i>icon_name</i></p>
+<div class="Bd-indent">Une icône représentant le projet ou le fournisseur qui
+  fournit les actions dans le document XML. Le nom de l'icône doit respecter la
+  <b>Spécification de nommage des icônes Freedesktop.org</b>[6]. Facultatif.</div>
+<p class="Pp"><i>action</i></p>
+<div class="Bd-indent">Il s'agit de l'élément principal pour déclarer une action.
+  Il doit avoir un attribut <i>id</i> qui est le nom unique de l'action dans
+  l'espace de noms (par exemple, org.freedesktop.udisks2.filesystem-mount).
+  Les actions peuvent avoir les enfants suivants :</div>
+<p class="Pp"><i>alias</i></p>
+<div class="Bd-indent">Permet de spécifier des noms alternatifs pour une action.
+  Peut avoir un attribut <i>name</i>. Peut être présent plusieurs fois.</div>
+<p class="Pp"><i>group</i></p>
+<div class="Bd-indent">Un groupe d'actions apparentées. Peut avoir les enfants
+  suivants :</div>
+<p class="Pp"><i>action_id</i></p>
+<div class="Bd-indent">Fait référence à un <i>action</i> déclaré dans ce fichier
+  ou un autre fichier de politique. Doit avoir un attribut <i>member</i>.</div>
+<p class="Pp"><i>description</i></p>
+<div class="Bd-indent">Description de l'action. Peut avoir un attribut
+  <i>xml:lang</i> pour spécifier la langue.</div>
+<p class="Pp"><i>message</i></p>
+<div class="Bd-indent">Message affiché à l'utilisateur. Peut avoir un attribut
+  <i>xml:lang</i> pour spécifier la langue.</div>
+<p class="Pp"><i>defaults</i></p>
+<div class="Bd-indent">Définit les autorisations par défaut pour l'action. Doit
+  avoir un attribut <i>online</i> (déterminé si l'action doit être effectuée en
+  ligne ou hors ligne). Doit avoir un attribut <i>type</i> qui peut être
+  &quot;<i>allow</i>&quot; (autoriser), &quot;<i>deny</i>&quot; (refuser) ou
+  &quot;<i>auth_admin</i>&quot; (authentification administrateur requise). Doit
+  avoir un attribut <i>service</i> (nom du service). Les autorisations par défaut
+  peuvent être surchargées par les règles.</div>
+<p class="Pp"><i>allow_active</i></p>
+<div class="Bd-indent">Spécifie si l'action est autorisée lorsqu'elle est
+  effectuée dans le contexte d'un utilisateur qui est actuellement actif dans une
+  session graphique. Peut avoir un attribut <i>reason</i> (raison).</div>
+<p class="Pp"><i>annotate</i></p>
+<div class="Bd-indent">Permet de joindre des informations supplémentaires à
+  l'action. Peut avoir un attribut <i>key</i>.</div>
+<p class="Pp"><i>result_any</i></p>
+<div class="Bd-indent">Définit le résultat attendu pour n'importe quel utilisateur.
+  Peut avoir un attribut <i>reason</i>.</div>
+<p class="Pp"><i>result_user</i></p>
+<div class="Bd-indent">Définit le résultat attendu pour l'utilisateur exécutant
+  l'action. Peut avoir un attribut <i>reason</i>.</div>
+<p class="Pp"><i>result_admin</i></p>
+<div class="Bd-indent">Définit le résultat attendu pour un utilisateur
+  administrateur. Peut avoir un attribut <i>reason</i>.</div>
+<p class="Pp">Voici un exemple de fichier de politique :</p>
+<div class="Bd-indent">
+<pre>&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;!DOCTYPE policyconfig PUBLIC &quot;-//freedesktop//DTD polkit Policy Configuration 1.0//EN&quot;
+&quot;http://www.freedesktop.org/software/polkit/policyconfig-1.dtd&quot;&gt;
+&lt;policyconfig&gt;
+  &lt;vendor&gt;Example Project&lt;/vendor&gt;
+  &lt;vendor_url&gt;http://www.example.com&lt;/vendor_url&gt;
+  &lt;icon_name&gt;preferences-system&lt;/icon_name&gt;
+
+  &lt;action id=&quot;org.freedesktop.policykit.example.run-command&quot;&gt;
+    &lt;description&gt;Run a command as root&lt;/description&gt;
+    &lt;message&gt;Authentication is required to run a command as administrator.&lt;/message&gt;
+    &lt;defaults&gt;
+      &lt;allow_any&gt;auth_admin&lt;/allow_any&gt;
+      &lt;allow_inactive&gt;auth_admin&lt;/allow_inactive&gt;
+    &lt;/defaults&gt;
+    &lt;annotate key=&quot;org.freedesktop.policykit.execpath&quot;&gt;/usr/bin/widely-used-command&lt;/annotate&gt;
+  &lt;/action&gt;
+&lt;/policyconfig&gt;</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RÈGLES_D_AUTORISATION'><a class='permalink' href='#RÈGLES_D_AUTORISATION'>RÈGLES D'AUTORISATION</a></h1>
+<p class="Pp">Les règles d'autorisation permettent aux administrateurs système
+    de modifier le comportement de polkit sans avoir à modifier les fichiers
+    d'actions. Les règles d'autorisation sont écrites en JavaScript et sont
+    placées dans le répertoire /etc/polkit-1/rules.d/ ou
+    /usr/share/polkit-1/rules.d/. Les règles dans /etc/polkit-1/rules.d/
+    s'exécutent avant celles dans /usr/share/polkit-1/rules.d/. Les règles
+    sont traitées par ordre alphabétique de leur nom de fichier.</p>
+<p class="Pp">Une règle est un objet JavaScript qui a une méthode
+    <i>handle_action</i>. Cette méthode est appelée lorsque polkit traite une
+    action. Elle prend deux arguments :</p>
+<ul class="Bul">
+    <li class="Li"><i>action</i> : un objet représentant l'action demandée.</li>
+    <li class="Li"><i>details</i> : un objet contenant des informations
+      supplémentaires sur la demande, comme le sujet, l'objet et les paramètres.</li>
+</ul>
+<p class="Pp">La méthode <i>handle_action</i> doit retourner l'une des valeurs
+    suivantes :</p>
+<ul class="Bul">
+    <li class="Li"><i>polkit.Result.YES</i> : Autoriser l'action.</li>
+    <li class="Li"><i>polkit.Result.NO</i> : Refuser l'action.</li>
+    <li class="Li"><i>polkit.Result.AUTH_ADMIN</i> : Demander l'authentification
+      d'un administrateur.</li>
+    <li class="Li"><i>polkit.Result.AUTH_SELF</i> : Demander l'authentification
+      de l'utilisateur lui-même.</li>
+</ul>
+<p class="Pp">Voici un exemple de règle d'autorisation qui autorise toujours
+    l'action 'org.freedesktop.policykit.example.run-command' :</p>
+<div class="Bd-indent">
+<pre>polkit.addRule(function(action, details) {
+    if (action.id == &quot;org.freedesktop.policykit.example.run-command&quot;) {
+        return polkit.Result.YES;
+    }
+});</pre>
+</div>
+<p class="Pp">Voici un exemple de règle qui demande l'authentification
+    administrateur pour l'action 'org.freedesktop.policykit.example.run-command'
+    uniquement si le sujet est l'utilisateur 'alice' :</p>
+<div class="Bd-indent">
+<pre>polkit.addRule(function(action, details) {
+    if (action.id == &quot;org.freedesktop.policykit.example.run-command&quot; &amp;&amp;
+        details.user == &quot;alice&quot;) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+});</pre>
+</div>
+<p class="Pp">Les règles peuvent inspecter divers aspects de la demande, tels
+    que le sujet (utilisateur, groupe, session), l'objet (le périphérique ou le
+    service visé) et les paramètres passés à l'action.</p>
+<p class="Pp">Pour plus de détails sur l'écriture des règles d'autorisation,
+    consultez la documentation de polkit.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION'><a class='permalink' href='#UTILISATION'>UTILISATION</a></h1>
+<p class="Pp">polkit est généralement utilisé par des applications et des
+    services système pour contrôler l'accès aux ressources privilégiées. Les
+    utilisateurs interagissent rarement directement avec polkit, sauf pour
+    répondre aux demandes d'authentification faites par les agents
+    d'authentification.</p>
+<p class="Pp">Les commandes utiles liées à polkit incluent :</p>
+<ul class="Bul">
+    <li class="Li"><a href='/man/pkcheck.1.en'>pkcheck(1)</a> : Vérifie si un utilisateur
+      a l'autorisation d'effectuer une action.</li>
+    <li class="Li"><a href='/man/pkttyagent.1.en'>pkttyagent(1)</a> : Un agent
+      d'authentification en ligne de commande.</li>
+    <li class="Li"><a href='/man/polkitd.8.en'>polkitd(8)</a> : Le démon de polkit.</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/pkcheck.1.en'>pkcheck(1)</a>, <a href='/man/pkttyagent.1.en'>pkttyagent(1)</a>, <a href='/man/polkitd.8.en'>polkitd(8)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<div class="Bd-indent">
+<p class="Pp">[1] Architecture Diagram: <a href="https://www.freedesktop.org/wiki/Specifications/PolicyKit/Architecture/">https://www.freedesktop.org/wiki/Specifications/PolicyKit/Architecture/</a></p>
+<p class="Pp">[2] GObject Introspection: <a href="https://wiki.gnome.org/Projects/GObjectIntrospection">https://wiki.gnome.org/Projects/GObjectIntrospection</a></p>
+<p class="Pp">[3] Developer Documentation: <a href="https://www.freedesktop.org/wiki/Software/PolicyKit/doc/">https://www.freedesktop.org/wiki/Software/PolicyKit/doc/</a></p>
+<p class="Pp">[4] Screenshot of a graphical authentication agent.</p>
+<p class="Pp">[5] Screenshot of a graphical authentication agent prompting for a specific user.</p>
+<p class="Pp">[6] Freedesktop.org Icon Naming Specification: <a href="https://www.freedesktop.org/wiki/Specifications/icon-naming-spec/">https://www.freedesktop.org/wiki/Specifications/icon-naming-spec/</a></p>
+</div>
+</div>
+
+</section>
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+="Pp"><i>action</i></p>
+<div class="Bd-indent">Déclare une action. Le nom de l'action est spécifié à l'aide de
+  l'attribut id et ne peut contenir que les caractères « [A-Z][a-z][0-9].- » , par exemple, ASCII, chiffres, point et tiret.</div>
+<p class="Pp">Les éléments qui peuvent être utilisés à l'intérieur de
+  <i>action</i> incluent :</p>
+<p class="Pp"><i>description</i></p>
+<div class="Bd-indent">Une description de l'action lisible par l'homme, par exemple « Installer un logiciel non signé ».</div>
+<p class="Pp"><i>message</i></p>
+<div class="Bd-indent">Un message lisible par l'homme affiché à l'utilisateur lors de la demande d'informations d'identification lorsqu'une authentification est nécessaire, par exemple « L'installation d'un logiciel non signé nécessite une authentification ».</div>
+<p class="Pp"><i>defaults</i></p>
+<div class="Bd-indent">Cet élément est utilisé pour spécifier des autorisations implicites pour les clients. Les éléments qui peuvent être utilisés à l'intérieur de <i>defaults</i> incluent :
+<p class="Pp"><i>allow_any</i></p>
+<div class="Bd-indent">Autorisations implicites qui s'appliquent à n'importe quel client. Facultatif.</div>
+<p class="Pp"><i>allow_inactive</i></p>
+<div class="Bd-indent">Autorisations implicites qui s'appliquent aux clients dans des sessions inactives sur les consoles locales. Facultatif.</div>
+<p class="Pp"><i>allow_active</i></p>
+<div class="Bd-indent">Autorisations implicites qui s'appliquent aux clients dans des sessions actives sur les consoles locales. Facultatif.</div>
+<p class="Pp">Chacun des éléments <i>allow_any</i>, <i>allow_inactive</i> et <i>allow_active</i> peut contenir les valeurs suivantes :</p>
+<p class="Pp">no</p>
+<div class="Bd-indent">Non autorisé.</div>
+<p class="Pp">yes</p>
+<div class="Bd-indent">Autorisé.</div>
+<p class="Pp">auth_self</p>
+<div class="Bd-indent">L'authentification par le propriétaire de la session dont provient le client est requise. Notez que ce n'est pas assez restrictif pour la plupart des utilisations sur des systèmes multi-utilisateurs ; auth_admin* est généralement recommandé.</div>
+<p class="Pp">auth_admin</p>
+<div class="Bd-indent">L'authentification par un utilisateur administrateur est requise.</div>
+<p class="Pp">auth_self_keep</p>
+<div class="Bd-indent">Comme auth_self, mais l'autorisation est conservée pendant une courte période (par exemple, cinq minutes). L'avertissement concernant auth_self ci-dessus s'applique de la même manière.</div>
+<p class="Pp">auth_admin_keep</p>
+<div class="Bd-indent">Comme auth_admin, mais l'autorisation est conservée pendant une courte période (par exemple, cinq minutes).</div>
+</div>
+<p class="Pp"><i>annotate</i></p>
+<div class="Bd-indent">Utilisé pour annoter une action avec une paire clé/valeur. La clé est spécifiée à l'aide de l'attribut key et la valeur est spécifiée à l'aide de l'attribut value. Cet élément peut apparaître zéro ou plusieurs fois. Voir ci-dessous pour les annotations connues.</div>
+<p class="Pp"><i>vendor</i></p>
+<div class="Bd-indent">Utilisé pour remplacer le fournisseur sur une base par action. Facultatif.</div>
+<p class="Pp"><i>vendor_url</i></p>
+<div class="Bd-indent">Utilisé pour remplacer l'URL du fournisseur sur une base par action. Facultatif.</div>
+<p class="Pp"><i>icon_name</i></p>
+<div class="Bd-indent">Utilisé pour remplacer le nom de l'icône sur une base par action. Facultatif.</div>
+<p class="Pp">Pour la localisation, les éléments <i>description</i> et <i>message</i> peuvent apparaître plusieurs fois avec différents attributs xml:lang.</p>
+<p class="Pp">Pour lister les actions polkit installées, utilisez la commande <a href='/man/pkaction.1.en'>pkaction(1)</a>.</p>
+<section class="Ss">
+<h2 class="Ss" id='Known_annotations'><a class='permalink' href='#Known_annotations'>Annotations connues</a></h2>
+<p class="Pp">L'annotation org.freedesktop.policykit.exec.path est utilisée par le programme <b>pkexec</b> fourni avec polkit - voir la page de manuel <a href='/man/pkexec.1.en'>pkexec(1)</a> pour plus de détails.</p>
+<p class="Pp">L'annotation org.freedesktop.policykit.imply (sa valeur est une chaîne contenant une liste d'identifiants d'action séparés par des espaces) peut être utilisée pour définir des <i>méta-actions</i>. La façon dont cela fonctionne est que si un sujet est autorisé pour une action avec cette annotation, alors il est également autorisé pour toute action spécifiée par l'annotation. Une utilisation typique de cette annotation est lors de la définition d'un shell d'interface utilisateur avec un seul bouton de verrouillage qui devrait déverrouiller plusieurs actions de mécanismes distincts.</p>
+<p class="Pp">L'annotation org.freedesktop.policykit.owner peut être utilisée pour définir un ensemble d'utilisateurs qui peuvent interroger si un client est autorisé à effectuer cette action. Si cette annotation n'est pas spécifiée, alors seul root peut interroger si un client exécuté par un autre utilisateur est autorisé pour une action. La valeur de cette annotation est une chaîne contenant une liste d'entrées PolkitIdentity séparées par des espaces, par exemple « unix-user:42 unix-user:colord ». Une utilisation typique de cette annotation est pour un processus démon qui s'exécute en tant qu'utilisateur système plutôt qu'en tant que root.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORIZATION_RULES'><a class='permalink' href='#AUTHORIZATION_RULES'>RÈGLES D'AUTORISATION</a></h1>
+<p class="Pp"><b>polkitd</b> lit les fichiers .rules des répertoires suivants dans cet ordre :</p>
+<div class="Bd-indent">&#x2022;/etc/polkit-1/rules.d</div>
+<div class="Bd-indent">&#x2022;/run/polkit-1/rules.d</div>
+<div class="Bd-indent">&#x2022;/usr/local/share/polkit-1/rules.d</div>
+<div class="Bd-indent">&#x2022;/usr/share/polkit-1/rules.d</div>
+<p class="Pp">Ces répertoires sont traités dans l'ordre lexical basé sur le nom de base de chaque fichier. En cas d'égalité, les fichiers des répertoires situés plus tôt dans la liste sont traités en premier. Par exemple, pour les quatre fichiers suivants, l'ordre est le suivant :</p>
+<div class="Bd-indent">&#x2022;/etc/polkit-1/rules.d/10-auth.rules</div>
+<div class="Bd-indent">&#x2022;/run/polkit-1/rules.d/10-auth.rules</div>
+<div class="Bd-indent">&#x2022;/usr/local/share/polkit-1/rules.d/10-auth.rules</div>
+<div class="Bd-indent">&#x2022;/usr/share/polkit-1/rules.d/10-auth.rules</div>
+<p class="Pp">Tous ces répertoires sont surveillés, donc si un fichier de règles est modifié, ajouté ou supprimé, les règles existantes sont purgées et tous les fichiers sont lus et traités à nouveau. Les fichiers de règles sont écrits dans le langage de programmation <b>JavaScript</b>[7] et interagissent avec <b>polkitd</b> via l'objet global polkit (de type <b>Polkit</b>).</p>
+<p class="Pp">Bien que l'interpréteur JavaScript utilisé dans certaines versions de polkit puisse prendre en charge des fonctionnalités non standard (telles que le mot-clé <i>let</i>), les règles d'autorisation doivent être conformes à <b>ECMA-262 édition 5</b>[8] (en d'autres termes, l'interpréteur JavaScript utilisé peut changer dans les futures versions de polkit).</p>
+<p class="Pp">Les règles d'autorisation sont destinées à deux publics spécifiques :</p>
+<div class="Bd-indent">&#x2022;Administrateurs système</div>
+<div class="Bd-indent">&#x2022;Systèmes d'exploitation / Environnements à usage spécial</div>
+<p class="Pp">et à ces publics uniquement. En particulier, les applications, les mécanismes et les systèmes d'exploitation à usage général ne doivent jamais inclure de règles d'autorisation.</p>
+<section class="Ss">
+<h2 class="Ss" id='The_Polkit_type'><a class='permalink' href='#The_Polkit_type'>Le type Polkit</a></h2>
+<p class="Pp">Les méthodes suivantes sont disponibles sur l'objet polkit :</p>
+<p class="Pp HP"><b>void
+    addRule(polkit.Result&#x00A0;function(</b><i>action</i><b>,&#x00A0;</b><i>subject</i><b>)&#x00A0;{...});</b></p>
+<p class="Pp HP"><b>void
+    addAdminRule(string[]&#x00A0;function(</b><i>action</i><b>,&#x00A0;</b><i>subject</i><b>)&#x00A0;{...});</b></p>
+<p class="Pp HP"><b>void log(string&#x00A0;</b><i>message</i><b>);</b></p>
+<p class="Pp HP"><b>string spawn(string[]&#x00A0;</b><i>argv</i><b>);</b></p>
+<p class="Pp">La méthode <b>addRule()</b> est utilisée pour ajouter une fonction qui peut être appelée chaque fois qu'une vérification d'autorisation pour <i>action</i> et <i>subject</i> est effectuée. Les fonctions sont appelées dans l'ordre où elles ont été ajoutées jusqu'à ce que l'une des fonctions renvoie une valeur. Par conséquent, pour ajouter une règle d'autorisation qui est traitée avant les autres règles, placez-la dans un fichier dans /etc/polkit-1/rules.d avec un nom qui se classe avant les autres fichiers de règles, par exemple 00-early-checks.rules. Chaque fonction doit renvoyer une valeur de polkit.Result</p>
+<div class="Bd-indent">
+<pre>polkit.Result = {
+    NO              : &quot;no&quot;,
+    YES             : &quot;yes&quot;,
+    AUTH_SELF       : &quot;auth_self&quot;,
+    AUTH_SELF_KEEP  : &quot;auth_self_keep&quot;,
+    AUTH_ADMIN      : &quot;auth_admin&quot;,
+    AUTH_ADMIN_KEEP : &quot;auth_admin_keep&quot;,
+    NOT_HANDLED     : null
+};</pre>
+</div>
+<p class="Pp">correspondant aux valeurs qui peuvent être utilisées par défaut. Si la fonction renvoie <b>polkit.Result.NOT_HANDLED</b>, <b>null</b>, <b>undefined</b> ou ne renvoie aucune valeur, la fonction utilisateur suivante est essayée.</p>
+<p class="Pp">Gardez à l'esprit que si <b>polkit.Result.AUTH_SELF_KEEP</b> ou <b>polkit.Result.AUTH_ADMIN_KEEP</b> est renvoyé, les vérifications d'autorisation pour le même identifiant d'action et le même sujet réussiront (c'est-à-dire renverront <b>polkit.Result.YES</b>) pendant une courte période (par exemple, cinq minutes) *même* si les variables transmises avec la vérification sont différentes. Par conséquent, si le résultat d'une règle d'autorisation dépend de telles variables, il ne doit pas utiliser les constantes <b>« *_KEEP »</b> (si une fonctionnalité similaire est requise, la règle d'autorisation peut facilement implémenter des autorisations temporaires en utilisant le type <b></b><b>Date</b>[9] pour les horodatages).</p>
+<p class="Pp">La méthode <b>addAdminRule()</b> est utilisée pour ajouter une fonction qui peut être appelée chaque fois que l'authentification administrateur est requise. La fonction est utilisée pour spécifier quelles identités peuvent être utilisées pour l'authentification administrateur pour la vérification d'autorisation identifiée par <i>action</i> et <i>subject</i>. Les fonctions ajoutées sont appelées dans l'ordre où elles ont été ajoutées jusqu'à ce qu'une des fonctions renvoie une valeur. Chaque fonction doit renvoyer un tableau de chaînes où chaque chaîne est de la forme « unix-group:&lt;group&gt; », « unix-netgroup:&lt;netgroup&gt; » ou « unix-user:&lt;user&gt; ». Si la fonction renvoie <b>null</b>, <b>undefined</b> ou ne renvoie aucune valeur, la fonction suivante est essayée.</p>
+<p class="Pp">Il n'y a aucune garantie qu'une fonction enregistrée avec <b>addRule()</b> ou <b>addAdminRule()</b> soit jamais appelée - par exemple, un fichier de règles précoce pourrait enregistrer une fonction qui renvoie toujours une valeur, garantissant ainsi que les fonctions ajoutées plus tard ne sont jamais appelées.</p>
+<p class="Pp">Si le code fourni par l'utilisateur prend trop de temps à s'exécuter, aucune exception ne sera levée et le script sera tué immédiatement (la limite actuelle est de 15 secondes). Ceci est utilisé pour attraper les scripts qui s'emballent.</p>
+<p class="Pp">La méthode <b>spawn()</b> lance un programme d'aide externe identifié par le vecteur d'arguments <i>argv</i> et attend qu'il se termine. Si une erreur se produit ou si le programme d'aide ne se termine pas normalement avec le code de sortie 0, une exception est levée. Si le programme d'aide ne se termine pas dans les 10 secondes, il est tué. Sinon, la <i>sortie standard</i> du programme est renvoyée sous forme de chaîne. La méthode <b>spawn()</b> doit être utilisée avec parcimonie car les programmes d'aide peuvent prendre un temps très long ou indéterminé pour se terminer et aucune autre vérification d'autorisation ne peut être traitée pendant que le programme d'aide s'exécute. Notez que les programmes lancés s'exécuteront en tant qu'utilisateur système <i>polkitd</i> sans privilèges.</p>
+<p class="Pp">La méthode <b>log()</b> écrit le <i>message</i> donné dans le journal système, précédé du nom de fichier et du numéro de ligne du fichier JavaScript. Les entrées de journal sont émises à l'aide du drapeau <b>LOG_AUTHPRIV</b>, ce qui signifie que les entrées de journal finissent généralement dans le fichier /var/log/secure. La méthode <b>log()</b> est généralement utilisée uniquement lors du débogage des règles. Les types <b>Action</b> et <b>Subject</b> ont des méthodes <b>toString()</b> appropriées définies pour faciliter la journalisation, par exemple,</p>
+<div class="Bd-indent">
+<pre>polkit.addRule(function(action, subject) {
+    if (action.id == &quot;org.freedesktop.policykit.exec&quot;) {</pre>
+</div>
+</section>
+</section>
+{
+    "polkit.log(\"action=\" + action);": "polkit.log(\"action=\" + action);",
+    "polkit.log(\"subject=\" + subject);": "polkit.log(\"subject=\" + subject);",
+    "} });": "} });",
+    "will produce the following when the user runs 'pkexec -u bateman\nbash -i' from a shell:": "produira le résultat suivant lorsque l'utilisateur exécute 'pkexec -u bateman\nbash -i' à partir d'un shell :",
+    "May 24 14:28:50 thinkpad polkitd[32217]: /etc/polkit-1/rules.d/10-test.rules:3: action=[Action id='org.freedesktop.policykit.exec' command_line='/usr/bin/bash -i' program='/usr/bin/bash' user='bateman' user.gecos='Patrick Bateman' user.display='Patrick Bateman (bateman)']": "May 24 14:28:50 thinkpad polkitd[32217]: /etc/polkit-1/rules.d/10-test.rules:3: action=[Action id='org.freedesktop.policykit.exec' command_line='/usr/bin/bash -i' program='/usr/bin/bash' user='bateman' user.gecos='Patrick Bateman' user.display='Patrick Bateman (bateman)']",
+    "May 24 14:28:50 thinkpad polkitd[32217]: /etc/polkit-1/rules.d/10-test.rules:4: subject=[Subject pid=1352 user='davidz' groups=davidz,wheel, seat='seat0' session='1' local=true active=true]": "May 24 14:28:50 thinkpad polkitd[32217]: /etc/polkit-1/rules.d/10-test.rules:4: subject=[Subject pid=1352 user='davidz' groups=davidz,wheel, seat='seat0' session='1' local=true active=true]",
+    "The Action type": "Le type Action",
+    "The action parameter passed to user functions is an object\n    with information about the action being checked. It is of type **Action**\n    and has the following attribute:": "Le paramètre <i>action</i> passé aux fonctions utilisateur est un objet\n    contenant des informations sur l'action en cours de vérification. Il est de type **Action**\n    et possède l'attribut suivant :",
+    "string id": "string id",
+    "The action identifier, for example\n  <i>org.freedesktop.policykit.exec</i>.": "L'identifiant de l'action, par exemple\n  <i>org.freedesktop.policykit.exec</i>.",
+    "The following methods are available on the **Action** type:": "Les méthodes suivantes sont disponibles pour le type **Action** :",
+    "string lookup(string\u00A0;": "string lookup(string\u00A0;",
+    "The lookup() method is used to lookup the polkit variables\n    passed from the mechanism. For example, the pkexec(1) mechanism sets\n    the variable <i>program</i> which can be obtained in JavaScript using the\n    expression action.lookup(\"program\"). If there is no value for the\n    given <i>key</i>, then <b>undefined</b> is returned.": "La méthode <b>lookup()</b> est utilisée pour rechercher les variables polkit\n    transmises par le mécanisme. Par exemple, le mécanisme <a href='/man/pkexec.1.en'>pkexec(1)</a> définit\n    la variable <i>program</i> qui peut être obtenue en JavaScript en utilisant l'expression action.lookup(\"program\"). Si aucune valeur n'existe pour la\n    <i>key</i> donnée, alors <b>undefined</b> est retourné.",
+    "Consult the documentation for each mechanism for what variables\n    are available for each action.": "Consultez la documentation de chaque mécanisme pour connaître les variables\n    disponibles pour chaque action.",
+    "The Subject type": "Le type Subject",
+    "The subject parameter passed to user functions is an object\n    with information about the process being checked. It is of type\n    **Subject** and has the following attributes": "Le paramètre <i>subject</i> passé aux fonctions utilisateur est un objet\n    contenant des informations sur le processus en cours de vérification. Il est de type\n    **Subject** et possède les attributs suivants",
+    "int pid": "int pid",
+    "The process id.": "L'identifiant du processus.",
+    "string user": "string user",
+    "The user name.": "Le nom d'utilisateur.",
+    "string[] groups": "string[] groups",
+    "Array of groups that <i>user</i> user belongs to.": "Tableau des groupes auxquels l'utilisateur <i>user</i> appartient.",
+    "string seat": "string seat",
+    "The seat that the subject is associated with - blank if\n  not on a local seat.": "Le siège auquel le sujet est associé - vide s'il\n  n'est pas sur un siège local.",
+    "string session": "string session",
+    "The session that the subject is associated with.": "La session à laquelle le sujet est associé.",
+    "string system_unit": "string system_unit",
+    "The systemd unit that the subject's process is part of\n  (if any). Note that this can only match on system units, as user units can be\n  created with any name without privileges (unlike system units which require\n  root to create). A process running in a user unit will return the user session\n  unit in this attribute (e.g.: user-1000.service).": "L'unité systemd dont fait partie le processus du sujet\n  (le cas échéant). Notez que cela ne peut correspondre qu'aux unités système, car les unités utilisateur peuvent être\n  créées avec n'importe quel nom sans privilèges (contrairement aux unités système qui nécessitent\n  root pour être créées). Un processus s'exécutant dans une unité utilisateur retournera l'unité de session utilisateur\n  dans cet attribut (par exemple : user-1000.service).",
+    "boolean local": "boolean local",
+    "Set to <b>true</b> only if seat is local.": "Défini sur <b>true</b> uniquement si le siège est local.",
+    "boolean no_new_privileges": "boolean no_new_privileges",
+    "Set only if <i>system_unit</i> is not empty, and set to\n  <b>true</b> only if the referenced systemd service unit has the\n  <i>NoNewPrivileges=</i> setting enabled. This ensures that the process cannot\n  gain any new privileges via executing setuid binaries.": "Défini uniquement si <i>system_unit</i> n'est pas vide, et défini sur\n  <b>true</b> uniquement si l'unité de service systemd référencée a le\n  paramètre <i>NoNewPrivileges=</i> activé. Ceci garantit que le processus ne peut pas\n  acquérir de nouveaux privilèges en exécutant des binaires setuid.",
+    "boolean active": "boolean active",
+    "Set to <b>true</b> only if the session is active.": "Défini sur <b>true</b> uniquement si la session est active.",
+    "The following methods are available on the **Subject**\n  type:": "Les méthodes suivantes sont disponibles pour le type **Subject** :",
+    "boolean\n    isInGroup(string\u00A0;": "boolean\n    isInGroup(string\u00A0;",
+    "boolean\n    isInNetGroup(string\u00A0;": "boolean\n    isInNetGroup(string\u00A0;",
+    "The isInGroup() method can be used to check if the subject\n    is in a given group and isInNetGroup() can be used to check if the\n    subject is in a given netgroup.": "La méthode <b>isInGroup()</b> peut être utilisée pour vérifier si le sujet\n    appartient à un groupe donné et <b>isInNetGroup()</b> peut être utilisée pour vérifier si le\n    sujet appartient à un netgroup donné.",
+    "Authorization Rules Examples": "Exemples de règles d'autorisation",
+    "Allow all users in the admin group to perform user administration\n    without changing policy for other users:": "Autoriser tous les utilisateurs du groupe admin à effectuer l'administration utilisateur\n    sans modifier la politique pour les autres utilisateurs :",
+    "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.accounts.user-administration\" &&\n        subject.isInGroup(\"admin\")) {\n        return polkit.Result.YES;\n    }\n});": "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.accounts.user-administration\" &&\n        subject.isInGroup(\"admin\")) {\n        return polkit.Result.YES;\n    }\n});",
+    "Define administrative users to be the users in the wheel\n  group:": "Définir les utilisateurs administratifs comme étant les utilisateurs du groupe wheel :",
+    "polkit.addAdminRule(function(action, subject) {\n    return [\"unix-group:wheel\"];\n});": "polkit.addAdminRule(function(action, subject) {\n    return [\"unix-group:wheel\"];\n});",
+    "Forbid users in group children to change hostname configuration\n    (that is, any action with an identifier starting with\n    org.freedesktop.hostname1.) and allow anyone else to do it after\n    authenticating as themselves:": "Interdire aux utilisateurs du groupe children de modifier la configuration du nom d'hôte\n    (c'est-à-dire toute action dont l'identifiant commence par\n    org.freedesktop.hostname1.) et autoriser tous les autres à le faire après\n    s'être authentifiés en tant qu'eux-mêmes :",
+    "polkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.hostname1.\") == 0) {\n        if (subject.isInGroup(\"children\")) {\n            return polkit.Result.NO;\n        } else {\n            return polkit.Result.AUTH_SELF_KEEP;\n        }\n    }\n});": "polkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.hostname1.\") == 0) {\n        if (subject.isInGroup(\"children\")) {\n            return polkit.Result.NO;\n        } else {\n            return polkit.Result.AUTH_SELF_KEEP;\n        }\n    }\n});",
+    "Run an external helper to determine if the current user may reboot\n    the system:": "Exécuter un utilitaire externe pour déterminer si l'utilisateur actuel peut redémarrer\n    le système :",
+    "polkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.login1.reboot\") == 0) {\n        try {\n            // user-may-reboot exits with success (exit code 0)\n            // only if the passed username is authorized\n            polkit.spawn([\"/opt/company/bin/user-may-reboot\",\n                          subject.user]);\n            return polkit.Result.YES;\n        } catch (error) {\n            // Nope, but do allow admin authentication\n            return polkit.Result.AUTH_ADMIN;\n        }\n    }\n});": "polkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.login1.reboot\") == 0) {\n        try {\n            // user-may-reboot se termine avec succès (code de sortie 0)\n            // uniquement si le nom d'utilisateur passé est autorisé\n            polkit.spawn([\"/opt/company/bin/user-may-reboot\",\n                          subject.user]);\n            return polkit.Result.YES;\n        } catch (error) {\n            // Non, mais autoriser l'authentification admin\n            return polkit.Result.AUTH_ADMIN;\n        }\n    }\n});",
+    "The following example shows how the authorization decision can\n    depend on variables passed by the pkexec(1) mechanism:": "L'exemple suivant montre comment la décision d'autorisation peut\n    dépendre des variables transmises par le mécanisme pkexec(1) :",
+    "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.policykit.exec\" &&\n        action.lookup(\"program\") == \"/usr/bin/cat\") {\n        return polkit.Result.AUTH_ADMIN;\n    }\n});": "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.policykit.exec\" &&\n        action.lookup(\"program\") == \"/usr/bin/cat\") {\n        return polkit.Result.AUTH_ADMIN;\n    }\n});",
+    "The following example shows another use of variables passed from\n    the mechanism. In this case, the mechanism is UDisks[10] which\n    defines a set of actions and variables[11]\n    that is used to match\n  on:": "L'exemple suivant montre une autre utilisation des variables transmises par\n    le mécanisme. Dans ce cas, le mécanisme est UDisks[10] qui\n    définit un ensemble d'actions et de variables[11]\n    qui est utilisé pour la correspondance :",
+    "// Allow users in group 'engineers' to perform any operation on\n// some drives without having to authenticate\n//\npolkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.udisks2.\") == 0 &&\n        action.lookup(\"drive.vendor\") == \"SEAGATE\" &&\n        action.lookup(\"drive.model\") == \"ST3300657SS\" &&\n        subject.isInGroup(\"engineers\")) {\n            return polkit.Result.YES;\n        }\n    }\n});": "// Autoriser les utilisateurs du groupe 'engineers' à effectuer toute opération sur\n// certains disques sans avoir à s'authentifier\n//\npolkit.addRule(function(action, subject) {\n    if (action.id.indexOf(\"org.freedesktop.udisks2.\") == 0 &&\n        action.lookup(\"drive.vendor\") == \"SEAGATE\" &&\n        action.lookup(\"drive.model\") == \"ST3300657SS\" &&\n        subject.isInGroup(\"engineers\")) {\n            return polkit.Result.YES;\n        }\n    }\n});",
+    "Allow all processes running as part of the admin.service systemd\n    system unit to perform user administration, as long as they cannot gain new\n    privileges:": "Autoriser tous les processus s'exécutant dans le cadre de l'unité système systemd admin.service à\n    effectuer l'administration utilisateur, tant qu'ils ne peuvent pas acquérir de nouveaux\n    privilèges :",
+    "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.accounts.user-administration\" &&\n        subject.system_unit == \"admin.service\" &&\n        subject.no_new_privileges) {\n        return polkit.Result.YES;\n    }\n});": "polkit.addRule(function(action, subject) {\n    if (action.id == \"org.freedesktop.accounts.user-administration\" &&\n        subject.system_unit == \"admin.service\" &&\n        subject.no_new_privileges) {\n        return polkit.Result.YES;\n    }\n});",
+    "AUTHOR": "AUTEUR",
+    "Written by David Zeuthen <davidz@redhat.com> with a lot of\n    help from many others.": "Écrit par David Zeuthen &lt;davidz@redhat.com&gt; avec beaucoup d'aide\n    de nombreuses autres personnes.",
+    "BUGS": "BOGUES",
+    "Please send bug reports to either the distribution or the\n    polkit-devel mailing list, see the link\n    https://gitlab.freedesktop.org/polkit/polkit/-/issues/\n    on how to subscribe.": "Veuillez envoyer les rapports de bogues soit à la distribution, soit à la\n    liste de diffusion polkit-devel, voir le lien\n    https://gitlab.freedesktop.org/polkit/polkit/-/issues/\n    pour savoir comment vous abonner.",
+    "SEE ALSO": "VOIR AUSSI",
+    "polkitd(8), pkaction(1), pkcheck(1),\npkexec(1), pkttyagent(1)": "polkitd(8), pkaction(1), pkcheck(1),\npkexec(1), pkttyagent(1)",
+    "NOTES": "NOTES",
+    "1.": "1.",
+    "/usr/share/gtk-doc/html/polkit-1/polkit-architecture.png": "/usr/share/gtk-doc/html/polkit-1/polkit-architecture.png",
+    "2.": "2.",
+    "GObjectIntrospection": "GObjectIntrospection",
+    "https://live.gnome.org/GObjectIntrospection": "https://live.gnome.org/GObjectIntrospection",
+    "3.": "3.",
+    "developer documentation": "documentation développeur",
+    "http://www.freedesktop.org/software/polkit/docs/latest/": "http://www.freedesktop.org/software/polkit/docs/latest/",
+    "4.": "4.",
+    "/usr/share/gtk-doc/html/polkit-1/polkit-authentication-agent-example.png": "/usr/share/gtk-doc/html/polkit-1/polkit-authentication-agent-example.png",
+    "5.": "5.",
+    "/usr/share/gtk-doc/html/polkit-1/polkit-authentication-agent-example-wheel.png": "/usr/share/gtk-doc/html/polkit-1/polkit-authentication-agent-example-wheel.png",
+    "6.": "6.",
+    "Freedesktop.org Icon Naming Specification": "Spécification de nommage d'icônes Freedesktop.org",
+    "http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html": "http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html",
+    "7.": "7.",
+    "JavaScript": "JavaScript",
+    "http://en.wikipedia.org/wiki/JavaScript": "http://en.wikipedia.org/wiki/JavaScript",
+    "8.": "8.",
+    "ECMA-262 edition 5": "ECMA-262 édition 5",
+    "http://en.wikipedia.org/wiki/ECMAScript#ECMAScript.2C_5th_Edition": "http://en.wikipedia.org/wiki/ECMAScript#ECMAScript.2C_5th_Edition",
+    "9.": "9.",
+    "Date": "Date",
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date",
+    "10.": "10.",
+    "UDisks": "UDisks",
+    "http://udisks.freedesktop.org/docs/latest/udisks.8.html": "http://udisks.freedesktop.org/docs/latest/udisks.8.html",
+    "11.": "11.",
+    "actions and variables": "actions et variables",
+    "http://udisks.freedesktop.org/docs/latest/udisks-polkit-actions.html": "http://udisks.freedesktop.org/docs/latest/udisks-polkit-actions.html",
+    "February 2021": "Février 2021",
+    "polkit": "polkit",
+    "Package information:": "Informations sur le paquet :",
+    "Package name:": "Nom du paquet :",
+    "extra/polkit": "extra/polkit"
+}
+></dd>
+        <dt>Version :</dt>
+        <dd>126-2</dd>
+        <dt>Amont en amont :</dt>
+        <dd><a href="https://github.com/polkit-org/polkit">https://github.com/polkit-org/polkit</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.0-ou-plus récent</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/polkit/">/listing/extra/polkit/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#APERÇU">APERÇU</a></li>
+        
+            <li><a href="#ARCHITECTURE_SYSTÈME">ARCHITECTURE SYSTÈME</a></li>
+        
+            <li><a href="#AGENTS_D_AUTHENTIFICATION">AGENTS D'AUTHENTIFICATION</a></li>
+        
+            <li><a href="#DÉCLARATION_DES_ACTIONS">DÉCLARATION DES ACTIONS</a></li>
+        
+            <li><a href="#RÈGLES_D_AUTORISATION">RÈGLES D'AUTORISATION</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#BOGUES">BOGUES</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/polkit.8.en.txt">txt</a>, 
+        
+            <a href="/man/polkit.8.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

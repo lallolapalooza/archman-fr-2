@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pt-online-schema-change(1p) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pt-online-schema-change(1p)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/percona-toolkit/">percona-toolkit</a></p>
+<p class="lic">Licences: GPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PT-ONLINE-SCHEMA-CHANGE(1)</td>
+    <td class="head-vol">Documentation Perl fournie par l'utilisateur</td>
+    <td class="head-rtitle">PT-ONLINE-SCHEMA-CHANGE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pt-online-schema-change - ALTER des tables sans les verrouiller.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp">Utilisation : pt-online-schema-change [OPTIONS] DSN</p>
+<p class="Pp">pt-online-schema-change modifie la structure d'une table sans
+    bloquer les lectures ou écritures. Spécifiez la base de données et la table
+    dans le DSN. N'utilisez pas cet outil avant d'avoir lu sa documentation et
+    vérifié attentivement vos sauvegardes.</p>
+<p class="Pp">Ajouter une colonne à sakila.actor :</p>
+<pre>pt-online-schema-change --alter "ADD COLUMN c1 INT" D=sakila,t=actor</pre>
+<p class="Pp">Changer sakila.actor en InnoDB, effectuant effectivement
+    OPTIMIZE TABLE de manière non bloquante car il s'agit déjà d'une table
+    InnoDB :</p>
+<pre>pt-online-schema-change --alter "ENGINE=InnoDB" D=sakila,t=actor</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RISQUES'><a class='permalink' href='#RISQUES'>RISQUES</a></h1>
+<p class="Pp">Percona Toolkit est mature, éprouvé dans le monde réel et bien testé,
+    mais tous les outils de base de données peuvent présenter un risque pour le
+    système et le serveur de base de données. Avant d'utiliser cet outil,
+    veuillez :</p>
+<ul class="Bl-bullet">
+  <li>Lire la documentation de l'outil</li>
+  <li>Consulter les &quot;BUGS&quot; connus de l'outil</li>
+  <li>Tester l'outil sur un serveur non-production</li>
+  <li>Sauvegarder votre serveur de production et vérifier les sauvegardes</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pt-online-schema-change émule la manière dont MySQL modifie les
+    tables en interne, mais il fonctionne sur une copie de la table que vous
+    souhaitez modifier. Cela signifie que la table d'origine n'est pas verrouillée,
+    et les clients peuvent continuer à lire et modifier les données qu'elle
+    contient.</p>
+<p class="Pp">pt-online-schema-change fonctionne en créant une copie vide de la
+    table à modifier, en la modifiant comme souhaité, puis en copiant les lignes
+    de la table d'origine dans la nouvelle table. Une fois la copie terminée, il
+    déplace la table d'origine et la remplace par la nouvelle. Par défaut, il
+    supprime également la table d'origine.</p>
+<p class="Pp">Le processus de copie des données est effectué par petits morceaux
+    de données, qui sont variés pour tenter de les exécuter dans un délai
+    spécifique (voir &quot;--chunk-time&quot;). Ce processus est très similaire à
+    la manière dont fonctionnent d'autres outils, tels que pt-table-checksum.
+    Toutes les modifications apportées aux données dans les tables d'origine
+    pendant la copie seront reflétées dans la nouvelle table, car l'outil crée
+    des déclencheurs sur la table d'origine pour mettre à jour les lignes
+    correspondantes dans la nouvelle table. L'utilisation de déclencheurs signifie
+    que l'outil ne fonctionnera pas si des déclencheurs sont déjà définis sur la
+    table.</p>
+<p class="Pp">Lorsque l'outil a fini de copier les données dans la nouvelle table,
+    il utilise une opération atomique <span class="Li">&quot;RENAME TABLE&quot;</span>
+    pour renommer simultanément la table d'origine et la nouvelle table. Une fois
+    cela terminé, l'outil supprime la table d'origine.</p>
+<p class="Pp">Les clés étrangères compliquent le fonctionnement de l'outil et
+    introduisent des risques supplémentaires. La technique de renommage atomique
+    de la table d'origine et de la nouvelle table ne fonctionne pas lorsque les
+    clés étrangères font référence à la table. L'outil doit mettre à jour les clés
+    étrangères pour qu'elles fassent référence à la nouvelle table une fois le
+    changement de schéma terminé. L'outil prend en charge deux méthodes pour y
+    parvenir. Vous pouvez en savoir plus à ce sujet dans la documentation de
+    &quot;--alter-foreign-keys-method&quot;.</p>
+<p class="Pp">Les clés étrangères entraînent également certains effets
+    secondaires. La table finale aura les mêmes clés étrangères et index que la
+    table d'origine (sauf si vous spécifiez différemment dans votre instruction
+    ALTER), mais les noms des objets peuvent être légèrement modifiés pour éviter
+    les collisions de noms d'objets dans MySQL et InnoDB.</p>
+<p class="Pp">Par sécurité, l'outil ne modifie pas la table à moins que vous ne
+    spécifiiez l'option &quot;--execute&quot;, qui n'est pas activée par
+    défaut. L'outil prend en charge une variété d'autres mesures pour empêcher
+    une charge indésirable ou d'autres problèmes, notamment la détection
+    automatique des répliques, la connexion à celles-ci et l'utilisation des
+    contrôles de sécurité suivants :</p>
+<ul class="Bl-bullet">
+  <li>Dans la plupart des cas, l'outil refusera d'opérer à moins qu'une
+      clé PRIMAIRE ou un INDEX UNIQUE ne soit présent dans la table. Voir
+      &quot;--alter&quot; pour plus de détails.</li>
+  <li>L'outil refuse d'opérer s'il détecte des filtres de réplication. Voir
+      &quot;--[no]check-replication-filters&quot; pour plus de détails.</li>
+  <li>L'outil suspend l'opération de copie des données s'il observe des répliques
+      en retard de réplication. Voir &quot;--max-lag&quot; pour plus de
+      détails.</li>
+  <li>L'outil suspend ou interrompt son opération s'il détecte une charge
+      excessive sur le serveur. Voir &quot;--max-load&quot; et
+      &quot;--critical-load&quot; pour plus de détails.</li>
+  <li>L'outil définit
+      <span class="Li">&quot;innodb_lock_wait_timeout=1&quot;</span> et (pour
+      MySQL 5.5 et plus récent)
+      <span class="Li">&quot;lock_wait_timeout=60&quot;</span> afin qu'il soit
+      plus susceptible d'être victime de toute contention de verrou, et moins
+      susceptible de perturber d'autres transactions. Ces valeurs peuvent être
+      modifiées en spécifiant &quot;--set-vars&quot;.</li>
+  <li>L'outil refuse de modifier la table si des contraintes de clé étrangère y font
+      référence, à moins que vous ne spécifiiez &quot;--alter-foreign-keys-method&quot;.</li>
+  <li>L'outil ne peut pas modifier les tables MyISAM sur les nœuds
+      &quot;Percona XtraDB Cluster&quot;.</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Percona_XtraDB_Cluster'><a class='permalink' href='#Percona_XtraDB_Cluster'>Percona   XtraDB Cluster</a></h1>
+<p class="Pp">pt-online-schema-change fonctionne avec Percona XtraDB Cluster
+    (PXC) 5.5.28-23.7 et plus récent, mais il y a deux limitations : seules les
+    tables InnoDB peuvent être modifiées, et
+    <span class="Li">&quot;wsrep_OSU_method&quot;</span> doit être réglé sur
+    <span class="Li">&quot;TOI&quot;</span> (total order isolation). L'outil se
+    termine avec une erreur si l'hôte est un nœud de cluster et que la table est
+    MyISAM ou est en cours de conversion en MyISAM
+    (<span class="Li">&quot;ENGINE=MyISAM&quot;</span>), ou si
+    <span class="Li">&quot;wsrep_OSU_method&quot;</span> n'est pas
+    <span class="Li">&quot;TOI&quot;</span>. Il n'y a aucun moyen de désactiver
+    ces vérifications.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MySQL_5.7_+_Colonnes_générées'><a class='permalink' href='#MySQL_5.7_+_Colonnes_générées'>MySQL   5.7 + Colonnes générées</a></h1>
+<p class="Pp">Les outils ignorent les colonnes <span class="Li">&quot;GENERATED&quot;</span>
+    de MySQL 5.7+ car la valeur de ces colonnes est générée selon l'expression
+    utilisée pour calculer les valeurs des colonnes.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SORTIE'><a class='permalink' href='#SORTIE'>SORTIE</a></h1>
+<p class="Pp">L'outil imprime des informations sur ses activités sur STDOUT afin que
+    vous puissiez voir ce qu'il fait. Pendant la phase de copie des données, il
+    imprime des rapports &quot;--progress&quot; sur STDERR. Vous pouvez obtenir des
+    informations supplémentaires en spécifiant &quot;--print&quot;.</p>
+<p class="Pp">Si &quot;--statistics&quot; est spécifié, un rapport de divers
+    comptages d'événements internes est imprimé à la fin, comme suit :</p>
+<pre># Événement  Nombre
+# ====== =====
+# INSERT     1</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">&quot;--dry-run&quot; et &quot;--execute&quot; sont mutuellement
+    exclusifs.</p>
+<p class="Pp">Cet outil accepte des arguments de ligne de commande supplémentaires.
+    Reportez-vous à la &quot;SYNTAXE&quot; et aux informations d'utilisation pour plus
+    de détails.</p>
+<dl class="Bl-tag">
+  <dt id="alter"><a class="permalink" href="#alter">--alter</a></dt>
+  <dd>type : chaîne de caractères
+    <p class="Pp">La modification du schéma, sans les mots-clés ALTER TABLE. Vous
+        pouvez effectuer plusieurs modifications sur la table en les spécifiant
+        avec des virgules. Veuillez vous référer au manuel MySQL pour la syntaxe
+        de ALTER TABLE.</p>
+    <p class="Pp">Les limitations suivantes s'appliquent et, si elles sont tentées,
+        provoqueront un échec imprévisible de l'outil :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Dans presque tous les cas, une clé PRIMAIRE ou un INDEX UNIQUE doit être
+      présent dans la table. Ceci est nécessaire car l'outil crée un déclencheur
+      DELETE pour maintenir la nouvelle table à jour pendant que le processus
+      est en cours.
+    <p class="Pp">Une exception notable est lorsqu'une clé PRIMAIRE ou un INDEX
+        UNIQUE est créé à partir de <b>colonnes existantes</b> dans le cadre de
+        la clause ALTER ; dans ce cas, il utilisera cette (ces) colonne(s) pour
+        le déclencheur DELETE.</p>
+  </li>
+  <li>La clause <span class="Li">&quot;RENAME&quot;</span> ne peut pas être utilisée
+      pour renommer la table.</li>
+  <li>Les colonnes ne peuvent pas être renommées en les supprimant et en les
+      recréant avec le nouveau nom. L'outil ne copiera pas les données de la
+      colonne d'origine vers la nouvelle colonne.</li>
+  <li>Si vous ajoutez une colonne sans valeur par défaut et la rendez
+      NON NULLE, l'outil échouera, car il n'essaiera pas de deviner une valeur
+      par défaut pour vous ; vous devez spécifier la valeur par défaut.</li>
+  <li><span class="Li">&quot;DROP FOREIGN KEY constraint_name&quot;</span>
+      nécessite de spécifier <span class="Li">&quot;_constraint_name&quot;</span>
+      plutôt que le nom réel
+      <span class="Li">&quot;constraint_name&quot;</span>. En raison d'une limitation
+      dans MySQL, pt-online-schema-change ajoute un trait de soulignement initial
+      aux noms de contraintes de clé étrangère lors de la création de la nouvelle
+      table. Par exemple, pour supprimer cette contrainte :
+        <pre>CONSTRAINT `fk_foo` FOREIGN KEY (`foo_id`) REFERENCES `bar` (`foo_id`)
+</pre>
+    <p class="Pp">Vous devez spécifier <span class="L<div>
+<p>L'outil n'utilise pas <span class="Li">&quot;LOCK IN SHARE
+      MODE&quot;</span> avec MySQL 5.0 car cela peut provoquer une erreur de réplication qui casse la réplication :
+        <pre>Query caused different errors on master and slave. Error on master:
+'Deadlock found when trying to get lock; try restarting transaction' (1213),
+Error on slave: 'no error' (0). Default database: 'pt_osc'.
+Query: 'INSERT INTO pt_osc.t (id, c) VALUES ('730', 'new row')'
+</pre>
+    <p class="Pp">L'erreur se produit lors de la conversion d'une table MyISAM en InnoDB car MyISAM n'est pas transactionnel alors qu'InnoDB l'est. MySQL 5.1 et versions ultérieures gèrent ce cas correctement, mais les tests reproduisent l'erreur dans 5 % des cas avec MySQL 5.0.</p>
+    <p class="Pp">Il s'agit d'un bug MySQL, similaire à
+        <a href='http://bugs.mysql.com/bug.php?id=45694'>http://bugs.mysql.com/bug.php?id=45694</a>, mais il n'y a pas de correctif ni de solution de contournement dans MySQL 5.0. Sans <span class="Li">&quot;LOCK IN SHARE
+        MODE&quot;</span>, les tests réussissent dans 100 % des cas, le risque de perte de données ou de rupture de la réplication devrait donc être négligeable.</p>
+    <p class="Pp"><b>Assurez-vous de vérifier la nouvelle table si vous utilisez MySQL 5.0 et que vous effectuez une conversion</b> <b>de MyISAM vers InnoDB !</b></p>
+  </li>
+</ul>
+</div>
+<dl class="Bl-tag">
+  <dt>--alter-foreign-keys-method</dt>
+  <dd>type : string
+    <p class="Pp">Comment modifier les clés étrangères pour qu'elles référencent la nouvelle table. Les clés étrangères qui référencent la table à modifier doivent être traitées spécialement pour garantir qu'elles continuent à référencer la bonne table. Lorsque l'outil renomme la table d'origine pour laisser la nouvelle prendre sa place, les clés étrangères « suivent » la table renommée et doivent être modifiées pour référencer la nouvelle table à la place.</p>
+    <p class="Pp">L'outil prend en charge deux techniques pour y parvenir. Il trouve automatiquement les « tables enfants » qui référencent la table à modifier.</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="auto"><a class="permalink" href="#auto">auto</a></dt>
+  <dd>Détermine automatiquement la meilleure méthode. L'outil utilise
+      <span class="Li">&quot;rebuild_constraints&quot;</span> si possible (voir la description de cette méthode pour plus de détails), et sinon, il utilise
+      <span class="Li">&quot;drop_swap&quot;</span>.</dd>
+  <dt id="rebuild_constraints"><a class="permalink" href="#rebuild_constraints">rebuild_constraints</a></dt>
+  <dd>Cette méthode utilise <span class="Li">&quot;ALTER TABLE&quot;</span> pour supprimer et ré-ajouter les contraintes de clé étrangère qui référencent la nouvelle table. C'est la technique préférée, sauf si une ou plusieurs des tables « enfants » sont si volumineuses que l'<span class="Li">&quot;ALTER&quot;</span> prendrait trop de temps. L'outil détermine cela en comparant le nombre de lignes dans la table enfant au rythme auquel l'outil est capable de copier les lignes de l'ancienne table vers la nouvelle. Si l'outil estime que la table enfant peut être modifiée en moins de temps que le « --chunk-time », il utilisera cette technique. Pour estimer le temps nécessaire à la modification de la table enfant, l'outil multiplie le taux de copie des lignes par « --chunk-size-limit », car <span class="Li">&quot;ALTER TABLE&quot;</span> de MySQL est généralement beaucoup plus rapide que le processus externe de copie des lignes.
+    <p class="Pp">En raison d'une limitation de MySQL, les clés étrangères n'auront pas les mêmes noms après l'ALTER qu'avant. L'outil doit renommer la clé étrangère lorsqu'il la redéfinit, ce qui ajoute un trait de soulignement au début du nom. Dans certains cas, MySQL renomme également automatiquement les index requis pour la clé étrangère.</p>
+  </dd>
+  <dt id="drop_swap"><a class="permalink" href="#drop_swap">drop_swap</a></dt>
+  <dd>Désactive les vérifications de clés étrangères (FOREIGN_KEY_CHECKS=0), puis supprime la table d'origine avant de renommer la nouvelle table à sa place. Ceci est différent de la méthode normale d'échange des tables, qui utilise un <span class="Li">&quot;RENAME&quot;</span> atomique indétectable par les applications clientes.
+    <p class="Pp">Cette méthode est plus rapide et ne bloque pas, mais elle est plus risquée pour deux raisons. Premièrement, pendant un court instant entre la suppression de la table d'origine et le renommage de la table temporaire, la table à modifier n'existe tout simplement pas, et les requêtes contre elle entraîneront une erreur. Deuxièmement, s'il y a une erreur et que la nouvelle table ne peut pas être renommée à la place de l'ancienne, il est trop tard pour annuler, car l'ancienne table a disparu définitivement.</p>
+    <p class="Pp">Cette méthode force
+        <span class="Li">&quot;--no-swap-tables&quot;</span> et
+        <span class="Li">&quot;--no-drop-old-table&quot;</span>.</p>
+  </dd>
+  <dt id="none"><a class="permalink" href="#none">none</a></dt>
+  <dd>Cette méthode est similaire à <span class="Li">&quot;drop_swap&quot;</span> sans le « swap ». Toutes les clés étrangères qui référençaient la table d'origine référenceront désormais une table inexistante. Cela provoquera généralement des violations de clés étrangères visibles dans <span class="Li">&quot;SHOW ENGINE
+      INNODB
+      STATUS&quot;</span>, similaires à ce qui suit :
+        <pre>Trying to add to index `idx_fk_staff_id` tuple:
+DATA TUPLE: 2 fields;
+0: len 1; hex 05; asc  ;;
+1: len 4; hex 80000001; asc     ;;
+But the parent table `sakila`.`staff_old`
+or its .ibd file does not currently exist!
+</pre>
+    <p class="Pp">C'est parce que la table d'origine (dans ce cas,
+        sakila.staff) a été renommée en sakila.staff_old puis supprimée. Cette méthode de gestion des contraintes de clé étrangère est fournie pour que l'administrateur de la base de données puisse désactiver la fonctionnalité intégrée de l'outil si désiré.</p>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>--[no]analyze-before-swap</dt>
+  <dd>défaut : oui
+    <p class="Pp">Exécute ANALYZE TABLE sur la nouvelle table avant l'échange avec l'ancienne. Par défaut, cela se produit uniquement lors de l'exécution de MySQL 5.6 et versions ultérieures, et lorsque <span class="Li">&quot;innodb_stats_persistent&quot;</span> est activé. Spécifiez l'option explicitement pour l'activer ou la désactiver indépendamment de la version de MySQL et de <span class="Li">&quot;innodb_stats_persistent&quot;</span>.</p>
+    <p class="Pp">Cela contourne un problème potentiellement grave lié aux statistiques de l'optimiseur InnoDB. Si la table en cours de modification est très sollicitée et que l'outil se termine rapidement, la nouvelle table n'aura pas de statistiques d'optimiseur après l'échange. Cela peut entraîner des requêtes rapides utilisant des index à effectuer des analyses complètes de tables jusqu'à ce que les statistiques de l'optimiseur soient mises à jour (généralement après 10 secondes). Si la table est volumineuse et le serveur très sollicité, cela peut provoquer une interruption de service.</p>
+  </dd>
+  <dt id="ask"><a class="permalink" href="#ask">--ask-pass</a></dt>
+  <dd>Demande un mot de passe lors de la connexion à MySQL.</dd>
+  <dt id="binary"><a class="permalink" href="#binary">--binary-index</a></dt>
+  <dd>Cette option modifie le comportement de « --history » de telle sorte que les colonnes de limite supérieure et inférieure de la table d'historique soient créées avec le type de données BLOB. Ceci est utile lorsque vous modifiez de grandes tables avec des clés qui incluent un type de données binaires ou qui ont des jeux de caractères non standard. Voir « --history » et « --resume ».</dd>
+  <dt id="channel"><a class="permalink" href="#channel">--channel</a></dt>
+  <dd>type : string
+    <p class="Pp">Nom du canal utilisé lors de la connexion à un serveur utilisant des canaux de réplication. Supposons que vous ayez deux sources de réplication, source_a au port 12345, source_b au port 1236 et une réplique connectée aux deux sources en utilisant les canaux chan_source_a et chan_source_b. Vous pouvez utiliser --channel=chan_source_a pour spécifier le nom du canal à utiliser dans la commande SHOW REPLICA STATUS que pt-online-schema-change utilise pour calculer le décalage de réplication.</p>
+  </dd>
+  <dt id="charset"><a class="permalink" href="#charset">--charset</a></dt>
+  <dd>forme courte : -A ; type : string
+    <p class="Pp">Jeu de caractères par défaut. Si la valeur est utf8, active Perl's binmode sur STDOUT pour utf8, passe l'option mysql_enable_utf8 à DBD::mysql et exécute SET NAMES UTF8 après la connexion à MySQL. Toute autre valeur active binmode sur STDOUT sans la couche utf8, et exécute SET NAMES après la connexion à MySQL.</p>
+  </dd>
+  <dt>--[no]check-alter</dt>
+  <dd>défaut : oui
+    <p class="Pp">Analyse le « --alter » spécifié et essaie de signaler un comportement involontaire possible. Actuellement, il vérifie :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Column"><a class="permalink" href="#Column">Renommages de colonnes</a></dt>
+  <dd>Dans les versions précédentes de l'outil, le renommage d'une colonne avec
+      <span class="Li">&quot;CHANGE COLUMN name new_name&quot;</span> entraînait la perte des données de cette colonne. L'outil analyse maintenant l'instruction alter et essaie de détecter ces cas, de sorte que les colonnes renommées devraient avoir les mêmes données que les originales. Cependant, le code qui fait cela n'est pas un analyseur SQL complet, vous devriez donc d'abord exécuter l'outil avec
+      &quot;--dry-run&quot; et &quot;--print&quot; et vérifier qu'il détecte correctement les colonnes renommées.</dd>
+  <dt id="DROP"><a class="permalink" href="#DROP">DROP PRIMARY KEY</a></dt>
+  <dd>Si « --alter » contient <span class="Li">&quot;DROP PRIMARY
+      KEY&quot;</span> (insensible à la casse et aux espaces), un avertissement est affiché et l'outil se termine à moins que « --dry-run » ne soit spécifié. La modification de la clé primaire peut être dangereuse, mais l'outil peut la gérer. Les déclencheurs de l'outil, en particulier le déclencheur DELETE, sont les plus affectés par la modification de la clé primaire car l'outil préfère utiliser la clé primaire pour ses déclencheurs. Vous devriez d'abord exécuter l'outil avec « --dry-run » et
+      « --print » et vérifier que les déclencheurs sont corrects.</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>--[no]check-foreign-keys</dt>
+  <dd>défaut : oui
+    <p class="Pp">Vérifie les clés étrangères auto-référencées. Actuellement, les clés étrangères auto-référencées ne sont pas entièrement prises en charge, donc pour éviter les erreurs, ce programme ne s'exécutera pas si la table a des clés étrangères auto-référencées. Utilisez ce paramètre pour désactiver les vérifications des clés étrangères auto-référencées.</p>
+  </dd>
+  <dt id="check"><a class="permalink" href="#check">--check-interval</a></dt>
+  <dd>type : temps ; défaut : 1
+    <p class="Pp">Temps de veille entre les vérifications de « --max-lag ».</p>
+  </dd>
+  <dt>--[no]check-plan</dt>
+  <dd>défaut : oui
+    <p class="Pp">Vérifie les plans d'exécution des requêtes pour la sécurité. Par défaut, cette option amène l'outil à exécuter EXPLAIN avant d'exécuter des requêtes censées accéder à une petite quantité de données, mais qui pourraient accéder à de nombreuses lignes si MySQL choisit un mauvais plan d'exécution. Celles-ci incluent les requêtes pour déterminer les limites des morceaux et les requêtes de morceaux elles-mêmes. S'il apparaît que MySQL utilisera un mauvais plan d'exécution de requête, l'outil arrêtera la copie des lignes et mourra.</p>
+    <p class="Pp">L'outil utilise plusieurs heuristiques pour déterminer si un plan d'exécution est mauvais. La première est de savoir si EXPLAIN signale que MySQL a l'intention d'utiliser l'index souhaité pour accéder aux lignes. Si MySQL choisit un index différent, l'outil considère la requête comme non sécurisée.</p>
+    <p class="Pp">L'outil vérifie également quelle partie de l'index MySQL signale qu'il utilisera pour la requête. La sortie EXPLAIN montre cela dans la colonne key_len. L'outil mémorise la plus grande key_len vue et se termine si MySQL signale qu'il utilisera un préfixe plus petit de l'index.</p>
+    <p class="Pp">Cette option ajoute une certaine</p>
+  </dd>
+</dl>
+ <dl>
+  <dt>--[no]chunk-tables</dt>
+  <dd>
+    <p class="Pp">Lorsque cette option est activée, le tableau est découpé en
+        morceaux pour minimiser la perte d'informations sur le serveur. Cela
+        peut ralentir la copie de données car chaque morceau nécessite une requête
+        supplémentaire. La réduction des morceaux à une taille trop petite
+        provoquera une surcharge de trafic réseau plus importante. Il est donc
+        recommandé de ne pas réduire la taille des morceaux de manière excessive
+        afin d'éviter un temps d'exécution très long.</p>
+  </dd>
+  <dt>--[no]check-replication-filters</dt>
+  <dd>par défaut : yes
+    <p class="Pp">Interrompt l'opération si un filtre de réplication est défini
+        sur un serveur. L'outil recherche les options de serveur qui filtrent la
+        réplication, telles que binlog_ignore_db et replicate_do_db. S'il trouve
+        de tels filtres, il s'arrête avec une erreur.</p>
+    <p class="Pp">Si les répliques sont configurées avec des options de filtrage,
+        vous devez faire attention à ne pas modifier les bases de données ou les
+        tables qui existent sur la source de réplication et non sur les répliques,
+        car cela pourrait entraîner une défaillance de la réplication. Pour plus
+        d'informations sur les règles de réplication, consultez
+        <a href='http://dev.mysql.com/doc/en/replication-rules.html'>http://dev.mysql.com/doc/en/replication-rules.html</a>.</p>
+  </dd>
+  <dt id="check~2"><a class="permalink" href="#check~2">--check-replica-lag</a></dt>
+  <dd>type : string
+    <p class="Pp">Suspend la copie des données jusqu'à ce que le retard de cette
+        réplique soit inférieur à "--max-lag". La valeur est un DSN qui hérite des
+        propriétés des options de connexion ("--port", "--user", etc.). Cette option
+        remplace le comportement normal de recherche et de surveillance continue
+        du retard de réplication sur TOUTES les répliques connectées. Si vous ne
+        souhaitez pas surveiller TOUTES les répliques, mais que vous souhaitez en
+        surveiller plus d'une, utilisez l'option DSN de l'option "--recursion-method"
+        au lieu de cette option.</p>
+  </dd>
+  <dt id="check~3"><a class="permalink" href="#check~3">--check-slave-lag</a></dt>
+  <dd>type : string
+    <p class="Pp">Cette option est obsolète et sera supprimée dans les futures
+        versions. Utilisez "--check-replica-lag" à la place.</p>
+  </dd>
+  <dt id="chunk"><a class="permalink" href="#chunk">--chunk-index</a></dt>
+  <dd>type : string
+    <p class="Pp">Préfère cet index pour le découpage des tables. Par défaut,
+        l'outil choisit l'index le plus approprié pour le découpage. Cette option
+        vous permet de spécifier l'index que vous préférez. Si l'index n'existe
+        pas, l'outil revient à son comportement par défaut de choix d'un index.
+        L'outil ajoute l'index aux instructions SQL dans une clause
+        <span class="Li">&quot;FORCE INDEX&quot;</span>. Soyez prudent lors de
+        l'utilisation de cette option ; un mauvais choix d'index pourrait entraîner
+        de mauvaises performances.</p>
+  </dd>
+  <dt id="chunk~2"><a class="permalink" href="#chunk~2">--chunk-index-columns</a></dt>
+  <dd>type : int
+    <p class="Pp">Utilise seulement ce nombre de colonnes de gauche d'un
+        "--chunk-index". Ceci ne fonctionne que pour les index composites, et est
+        utile dans les cas où un bug dans l'optimiseur de requêtes (planificateur)
+        de MySQL lui fait analyser une large plage de lignes au lieu d'utiliser
+        l'index pour localiser précisément les points de départ et de fin. Ce
+        problème se produit parfois sur des index comportant de nombreuses colonnes,
+        par exemple 4 ou plus. Si cela se produit, l'outil peut afficher un avertissement
+        concernant l'option "--[no]check-plan". Demander à l'outil d'utiliser
+        seulement les N premières colonnes de l'index est une solution de contournement
+        pour le bug dans certains cas.</p>
+  </dd>
+  <dt id="chunk~3"><a class="permalink" href="#chunk~3">--chunk-size</a></dt>
+  <dd>type : size; par défaut : 1000
+    <p class="Pp">Nombre de lignes à sélectionner pour chaque morceau copié. Les
+        suffixes autorisés sont k, M, G.</p>
+    <p class="Pp">Cette option peut remplacer le comportement par défaut, qui
+        consiste à ajuster dynamiquement la taille des morceaux pour essayer de
+        faire en sorte que les morceaux s'exécutent en exactement "--chunk-time"
+        secondes. Lorsque cette option n'est pas explicitement définie, sa valeur
+        par défaut est utilisée comme point de départ, mais après cela, l'outil
+        ignore la valeur de cette option. Si vous définissez explicitement cette
+        option, cela désactive le comportement d'ajustement dynamique et essaie de
+        faire en sorte que tous les morceaux aient exactement le nombre de lignes
+        spécifié.</p>
+  </dd>
+  <dt id="chunk~4"><a class="permalink" href="#chunk~4">--chunk-size-limit</a></dt>
+  <dd>type : float; par défaut : 4.0
+    <p class="Pp">Ne copie pas les morceaux dont la taille est supérieure à la
+        taille de morceau souhaitée, multipliée par cette limite.</p>
+    <p class="Pp">Lorsqu'une table n'a pas d'index unique, les tailles des morceaux
+        peuvent être inexactes. Cette option spécifie une limite maximale tolérable
+        à l'inexactitude. L'outil utilise &lt;EXPLAIN&gt; pour estimer le nombre de
+        lignes dans le morceau. Si cette estimation dépasse la taille de morceau
+        souhaitée multipliée par la limite, l'outil arrête de copier les lignes et
+        s'arrête.</p>
+    <p class="Pp">La valeur minimale pour cette option est 1, ce qui signifie qu'aucun
+        morceau ne peut être plus grand que "--chunk-size". Vous ne voudrez
+        probablement pas spécifier 1, car les lignes rapportées par EXPLAIN sont des
+        estimations, qui peuvent différer du nombre réel de lignes dans le morceau.
+        Vous pouvez désactiver la vérification des morceaux surdimensionnés en
+        spécifiant une valeur de 0.</p>
+    <p class="Pp">L'outil utilise également cette option pour déterminer comment
+        gérer les clés étrangères qui référencent la table à modifier. Voir
+        "--alter-foreign-keys-method" pour plus de détails.</p>
+  </dd>
+  <dt id="chunk~5"><a class="permalink" href="#chunk~5">--chunk-time</a></dt>
+  <dd>type : float; par défaut : 0.5
+    <p class="Pp">Ajuste dynamiquement la taille des morceaux pour que chaque
+        requête de copie de données prenne ce temps pour s'exécuter. L'outil suit le
+        taux de copie (lignes par seconde) et ajuste la taille des morceaux après
+        chaque requête de copie de données, de sorte que la requête suivante prenne
+        ce temps (en secondes) pour s'exécuter. Il maintient une moyenne mobile exponentiellement
+        décroissante des requêtes par seconde, de sorte que si les performances du
+        serveur changent en raison des modifications de la charge du serveur,
+        l'outil s'adapte rapidement.</p>
+    <p class="Pp">Si cette option est définie sur zéro, la taille des morceaux n'est
+        pas ajustée automatiquement, de sorte que les temps de requête varient,
+        mais pas les tailles des morceaux de requête. Une autre façon de faire la même
+        chose est de spécifier une valeur pour "--chunk-size" explicitement, au lieu
+        de la laisser à sa valeur par défaut.</p>
+  </dd>
+  <dt id="config"><a class="permalink" href="#config">--config</a></dt>
+  <dd>type : Array
+    <p class="Pp">Lit cette liste de fichiers de configuration séparés par des
+        virgules ; si spécifié, cela doit être la première option sur la ligne de
+        commande.</p>
+  </dd>
+  <dt>--history-table</dt>
+  <dd>type : string; par défaut : percona.pt_osc_history
+    <p class="Pp">Crée la base de données et la table "--history" si elles n'existent
+        pas. La structure de la table d'historique est la même que la table suggérée
+        mentionnée dans "--history".</p>
+    <p class="Pp">Par défaut, "--history" crée automatiquement la base de données et
+        la table spécifiées par cette option si elles n'existent pas.</p>
+  </dd>
+  <dt id="critical"><a class="permalink" href="#critical">--critical-load</a></dt>
+  <dd>type : Array; par défaut : Threads_running=50
+    <p class="Pp">Examine SHOW GLOBAL STATUS après chaque morceau, et s'arrête si
+        la charge est trop élevée. L'option accepte une liste de variables de statut
+        MySQL et de seuils, séparés par des virgules. Une valeur
+        <span class="Li">&quot;=MAX_VALUE&quot;</span> (ou
+        <span class="Li">&quot;:MAX_VALUE&quot;</span>) optionnelle peut suivre
+        chaque variable. Si elle n'est pas fournie, l'outil détermine un seuil en
+        examinant la valeur actuelle au démarrage et en la doublant.</p>
+    <p class="Pp">Voir "--max-load" pour plus de détails. Ces options fonctionnent de
+        manière similaire, à la différence que cette option interrompra l'opération
+        de l'outil au lieu de la mettre en pause, et que la valeur par défaut est
+        calculée différemment si vous ne spécifiez pas de seuil. La raison d'être de
+        cette option est une vérification de sécurité au cas où les déclencheurs
+        sur la table d'origine ajouteraient une charge excessive au serveur, provoquant
+        une interruption de service. Il n'y a probablement pas une seule valeur de
+        Threads_running qui soit incorrecte pour tous les serveurs, mais une valeur
+        par défaut de 50 semble probablement inacceptablement élevée pour la plupart des
+        serveurs, indiquant que l'opération doit être annulée immédiatement.</p>
+  </dd>
+  <dt id="database"><a class="permalink" href="#database">--database</a></dt>
+  <dd>forme courte : -D; type : string
+    <p class="Pp">Se connecte à cette base de données.</p>
+  </dd>
+  <dt id="default"><a class="permalink" href="#default">--default-engine</a></dt>
+  <dd>Supprime <span class="Li">&quot;ENGINE&quot;</span> de la nouvelle table.
+    <p class="Pp">Par défaut, la nouvelle table est créée avec les mêmes options
+        de table que la table d'origine. Ainsi, si la table d'origine utilise InnoDB,
+        la nouvelle table utilisera InnoDB. Dans certains cas impliquant la réplication,
+        cela peut entraîner des modifications involontaires sur les répliques qui
+        utilisent un moteur différent pour la même table. La spécification de cette
+        option fait que la nouvelle table est créée avec le moteur par défaut du
+        système.</p>
+  </dd>
+  <dt id="data"><a class="permalink" href="#data">--data-dir</a></dt>
+  <dd>type : string
+    <p class="Pp">Crée la nouvelle table sur une partition différente en utilisant
+        la fonctionnalité DATA DIRECTORY. Disponible uniquement sur 5.6+. Ce paramètre
+        est ignoré s'il est utilisé en même temps que remove-data-dir.</p>
+  </dd>
+  <dt id="remove"><a class="permalink" href="#remove">--remove-data-dir</a></dt>
+  <dd>par défaut : no
+    <p class="Pp">Si la table d'origine a été créée en utilisant la fonctionnalité
+        DATA DIRECTORY, la supprime et crée la nouvelle table dans le répertoire
+        par défaut de MySQL sans créer de nouveau fichier isl.</p>
+  </dd>
+  <dt id="defaults"><a class="permalink" href="#defaults">--defaults-file</a></dt>
+  <dd>forme courte : -F; type : string
+    <p class="Pp">Lit uniquement les options mysql à partir du fichier donné. Vous
+        devez fournir un chemin d'accès absolu.</p>
+  </dd>
+  <dt>--[no]drop-new-table</dt>
+  <dd>par défaut : yes
+    <p class="Pp">Supprime la nouvelle table si la copie de la table d'origine échoue.</p>
+    <p class="Pp">La spécification de
+        <span class="Li">&quot;--no-drop-new-table&quot;</span> et
+        <span class="Li">&quot;--no-swap-tables&quot;</span> laisse la nouvelle copie
+        modifiée de la table sans modifier la table d'origine. Voir
+        "--new-table-name".</p>
+    <p class="Pp">--no-drop-new-table ne fonctionne pas avec
+        <span class="Li">&quot;alter-foreign-keys-method
+      drop_swap&quot;</span>.</p>
+  </dd>
+  <dt>--[no]drop-old-table</dt>
+  <dd>par défaut : yes
+    <p class="Pp">Supprime la table d'origine après l'avoir renommée. Une fois que la
+        table d'origine a été renommée avec succès pour laisser la nouvelle table
+        prendre sa place, et s'il n'y a pas d'erreurs, l'outil supprime la table
+        d'origine par défaut. En cas d'erreurs, l'outil laisse la table d'origine
+        en place.</p>
+    <p class="Pp">Si
+        <span class="Li">&quot;--no-swap-tables&quot;</span> est spécifié, alors il n'y
+        a pas de vieille table à supprimer.</p>
+  </dd>
+  <dt>--[no]drop-triggers</dt>
+  <dd>par défaut : yes
+    <p class="Pp">Supprime les déclencheurs de l'ancienne table.
+        <span class="Li">&quot;--no-drop-triggers&quot;</span> force
+        <span class="Li">&quot;--no-drop-old-table&quot;</span>.</p>
+  </dd>
+  <dt id="dry"><a class="permalink" href="#dry">--dry-run</a></dt>
+  <dd>Crée et modifie la nouvelle table, mais ne crée pas de déclencheurs, ne copie
+      pas de données et ne remplace pas la table d'origine.</dd>
+  <dt id="execute"><a class="permalink" href="#execute">--execute</a></dt>
+  <dd>Indique que vous avez lu la documentation et que vous souhaitez modifier la
+      table. Vous devez spécifier cette option pour modifier la table. Sinon,
+      l'outil effectuera uniquement quelques vérifications de sécurité et se
+      terminera. Cela permet de s'assurer que vous avez lu la documentation et que
+      vous comprenez comment utiliser cet outil. Si vous n'avez pas lu la
+      documentation, alors</dd>
+ </dl>
+ne spécifiez pas cette option.</dd>
+  <dt>--[no]check-unique-key-change</dt>
+  <dd>par défaut : yes
+    <p class="Pp">Empêchez
+        <span class="Li">&quot;pt-online-schema-change&quot;</span> de s'exécuter si
+        l'instruction spécifiée pour &quot;--alter&quot; tente d'ajouter un
+        index unique. Puisque
+        <span class="Li">&quot;pt-online-schema-change&quot;</span> utilise
+        <span class="Li">&quot;INSERT IGNORE&quot;</span> pour copier les lignes vers la
+        nouvelle table, si la ligne écrite produit une clé dupliquée, elle échouera silencieusement et des données seront perdues.</p>
+    <p class="Pp">Exemple :</p>
+        <pre>CREATE DATABASE test;
+USE test;
+CREATE TABLE `a` (
+  `id` int(11) NOT NULL,
+  `unique_id` varchar(32) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+insert into a values (1, &quot;a&quot;);
+insert into a values (2, &quot;b&quot;);
+insert into a values (3, &quot;&quot;);
+insert into a values (4, &quot;&quot;);
+insert into a values (5, NULL);
+insert into a values (6, NULL);
+</pre>
+    <p class="Pp">L'utilisation de
+        <span class="Li">&quot;pt-online-schema-change&quot;</span> pour ajouter un
+        index unique sur le champ <span class="Li">&quot;unique_id&quot;</span>,
+        entraînera la perte de certaines lignes en raison de l'utilisation de
+        <span class="Li">&quot;INSERT IGNORE&quot;</span> pour copier les lignes de la
+        table source. Pour cette raison,
+        <span class="Li">&quot;pt-online-schema-change&quot;</span> échouera s'il détecte que le paramètre &quot;--alter&quot; tente d'ajouter une
+        clé unique et affichera une requête d'exemple à exécuter pour détecter s'il existe des lignes qui produiront des index dupliqués.</p>
+    <p class="Pp">Même si vous exécutez la requête et qu'il n'y a pas de lignes qui produiront des index dupliqués, gardez à l'esprit qu'après avoir exécuté cette requête, des modifications peuvent être apportées à la table qui peuvent produire des lignes dupliquées et ces données seront perdues.</p>
+  </dd>
+  <dt id="force"><a class="permalink" href="#force">--force</a></dt>
+  <dd>Cette option contourne la confirmation en cas d'utilisation de
+      alter-foreign-keys-method = none, ce qui pourrait enfreindre les contraintes de clé étrangère.
+    <p class="Pp">Cette option permet également d'utiliser l'option --where sans les options --no-drop-new-table et --no-swap-tables.</p>
+  </dd>
+  <dt id="help"><a class="permalink" href="#help">--help</a></dt>
+  <dd>Afficher l'aide et quitter.</dd>
+  <dt id="history"><a class="permalink" href="#history">--history</a></dt>
+  <dd>Écrit la progression du travail dans une table. Les travaux inachevés peuvent être redémarrés avec l'option &quot;--resume&quot;. La table d'historique doit avoir cette structure
+      (MAGIC_create_pt_osc_history) :
+        <pre>CREATE TABLE pt_osc_history (
+   job_id         INT               NOT NULL AUTO_INCREMENT,
+   db             CHAR(64)          NOT NULL,
+   tbl            CHAR(64)          NOT NULL,
+   new_table_name CHAR(64)          DEFAULT NULL,
+   altr           TEXT              NOT NULL,
+   args           TEXT              NOT NULL,
+   lower_boundary TEXT,
+   upper_boundary TEXT,
+   done           ENUM('yes','no')  NOT NULL DEFAULT 'no',
+   ts             TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   PRIMARY KEY (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+</pre>
+    <p class="Pp">Remarque : le type de données de lower_boundary et upper_boundary peut être BLOB.
+        Voir &quot;--binary-index&quot;.</p>
+  </dd>
+  <dt id="host"><a class="permalink" href="#host">--host</a></dt>
+  <dd>forme courte : -h ; type : chaîne
+    <p class="Pp">Se connecter à l'hôte.</p>
+  </dd>
+  <dt id="max"><a class="permalink" href="#max">--max-flow-ctl</a></dt>
+  <dd>type : flottant
+    <p class="Pp">Similaire à --max-lag mais pour les clusters PXC. Vérifie le temps moyen pendant lequel le cluster a été en pause pour le contrôle de flux et fait pauser l'outil s'il dépasse le pourcentage indiqué dans l'option. Une valeur de 0
+        fera pauser l'outil lorsque *toute* activité de contrôle de flux est détectée.
+        Par défaut, aucun contrôle de flux n'est effectué. Cette option est disponible pour les versions PXC 5.6 ou supérieures.</p>
+  </dd>
+  <dt id="max~2"><a class="permalink" href="#max~2">--max-lag</a></dt>
+  <dd>type : temps ; par défaut : 1s
+    <p class="Pp">Met en pause la copie des données jusqu'à ce que le décalage de toutes les répliques soit inférieur à cette valeur. Après chaque requête de copie de données (chaque bloc), l'outil examine le décalage de réplication de toutes les répliques auxquelles il se connecte, en utilisant
+        Seconds_Behind_Source. Si une réplique a un décalage supérieur à la valeur de cette option, l'outil dormira pendant &quot;--check-interval&quot; secondes, puis vérifiera à nouveau toutes les répliques. Si vous spécifiez
+        &quot;--check-replica-lag&quot;, l'outil n'examinera que ce serveur pour le décalage, pas tous les serveurs. Si vous souhaitez contrôler exactement quels serveurs
+        l'outil surveille, utilisez la valeur DSN de
+      &quot;--recursion-method&quot;.</p>
+    <p class="Pp">L'outil attend indéfiniment que les répliques cessent d'avoir du décalage. Si une réplique est arrêtée, l'outil attend indéfiniment jusqu'à ce que la réplique soit démarrée.
+        La copie des données continue lorsque toutes les répliques fonctionnent et ne sont pas excessivement en décalage.</p>
+    <p class="Pp">L'outil affiche des rapports de progression pendant l'attente. Si une réplique
+        est arrêtée, il affiche un rapport de progression immédiatement, puis à nouveau à chaque intervalle de rapport de progression.</p>
+  </dd>
+  <dt id="max~3"><a class="permalink" href="#max~3">--max-load</a></dt>
+  <dd>type : Tableau ; par défaut : Threads_running=25
+    <p class="Pp">Examine SHOW GLOBAL STATUS après chaque bloc, et fait une pause si des variables de statut sont supérieures à leurs seuils. L'option accepte une liste de variables de statut MySQL séparées par des virgules. Une valeur facultative
+        <span class="Li">&quot;=MAX_VALUE&quot;</span> (ou
+        <span class="Li">&quot;:MAX_VALUE&quot;</span>) peut suivre chaque
+        variable. Si elle n'est pas fournie, l'outil détermine un seuil en examinant la valeur actuelle et en l'augmentant de 20 %.</p>
+    <p class="Pp">Par exemple, si vous souhaitez que l'outil fasse une pause lorsque
+        Threads_connected devient trop élevé, vous pouvez spécifier
+        &quot;Threads_connected&quot;, et l'outil vérifiera la valeur actuelle
+        lorsqu'il commencera à travailler et ajoutera 20 % à cette valeur. Si la valeur actuelle
+        est de 100, alors l'outil fera une pause lorsque Threads_connected dépassera 120, et
+        reprendra le travail lorsqu'il sera à nouveau inférieur à 120. Si vous souhaitez spécifier un seuil explicite, tel que 110, vous pouvez utiliser soit
+        &quot;Threads_connected:110&quot;, soit
+      &quot;Threads_connected=110&quot;.</p>
+    <p class="Pp">Le but de cette option est d'empêcher l'outil d'ajouter trop de charge au serveur. Si les requêtes de copie de données sont intrusives, ou si elles provoquent des attentes de verrouillage, alors d'autres requêtes sur le serveur auront tendance à être bloquées et mises en file d'attente.
+        Cela provoquera généralement une augmentation de Threads_running, et l'outil peut le détecter en exécutant SHOW GLOBAL STATUS immédiatement
+        après la fin de chaque requête. Si vous spécifiez un seuil pour cette variable,
+        vous pouvez alors demander à l'outil d'attendre que les requêtes s'exécutent
+        normalement à nouveau. Cela n'empêchera pas la mise en file d'attente, cependant ; cela donnera seulement au serveur une chance de récupérer de la mise en file d'attente. Si vous remarquez une mise en file d'attente, il est préférable de diminuer le temps de bloc.</p>
+  </dd>
+  <dt id="preserve"><a class="permalink" href="#preserve">--preserve-triggers</a></dt>
+  <dd>Préserve les anciens déclencheurs lorsqu'ils sont spécifiés. Depuis MySQL 5.7.2, il est possible de définir plusieurs déclencheurs pour une table donnée qui ont le même événement de déclencheur et le même moment d'action. Cela nous permet d'ajouter les déclencheurs nécessaires pour
+      <span class="Li">&quot;pt-online-schema-change&quot;</span> même si la
+      table a déjà ses propres déclencheurs. Si cette option est activée,
+      <span class="Li">&quot;pt-online-schema-change&quot;</span> tentera de
+      copier tous les déclencheurs existants vers la nouvelle table AVANT de commencer à copier les lignes de la table d'origine pour s'assurer que les anciens déclencheurs peuvent être appliqués après la modification de la table.
+    <p class="Pp">Exemple.</p>
+        <pre>CREATE TABLE test.t1 (
+     id INT NOT NULL AUTO_INCREMENT,
+     f1 INT,
+     f2 VARCHAR(32),
+     PRIMARY KEY (id)
+);
+CREATE TABLE test.log (
+   ts  TIMESTAMP,
+   msg VARCHAR(255)
+);
+CREATE TRIGGER test.after_update
+ AFTER
+   UPDATE ON test.t1
+   FOR EACH ROW
+     INSERT INTO test.log VALUES (NOW(), CONCAT(&quot;updated row row with id &quot;, OLD.id, &quot; old f1:&quot;, OLD.f1, &quot; new f1: &quot;, NEW.f1 ));
+</pre>
+    <p class="Pp">Pour cette combinaison de table et de déclencheurs, il n'est pas possible d'utiliser --preserve-triggers avec un --alter comme ceci :
+        <span class="Li">&quot;DROP COLUMN f1&quot;</span> car le déclencheur
+        fait référence à la colonne supprimée et cela ferait échouer le déclencheur.</p>
+    <p class="Pp">Après avoir testé que les déclencheurs fonctionneront sur la nouvelle table, les déclencheurs sont supprimés de la nouvelle table jusqu'à ce que toutes les lignes aient été copiées, puis ils sont réappliqués.</p>
+    <p class="Pp">--preserve-triggers ne peut pas être utilisé avec ces autres
+        paramètres, --no-drop-triggers, --no-drop-old-table et --no-swap-tables
+        puisque --preserve-triggers implique que les anciens déclencheurs doivent être supprimés et recréés dans la nouvelle table. Puisqu'il n'est pas possible d'avoir plus d'un déclencheur portant le même nom, les anciens déclencheurs doivent être supprimés afin de pouvoir les recréer dans la nouvelle table.</p>
+    <p class="Pp">L'utilisation de <span class="Li">&quot;--preserve-triggers&quot;</span>
+        avec <span class="Li">&quot;--no-swap-tables&quot;</span> entraînera le maintien des déclencheurs sur la table d'origine. Veuillez lire la documentation de --swap-tables</p>
+    <p class="Pp">Si <span class="Li">&quot;--no-swap-tables&quot;</span>
+        et <span class="Li">&quot;--no-drop-new-table&quot;</span> sont tous deux définis, le déclencheur restera sur la table d'origine et sera dupliqué sur la nouvelle table (le déclencheur aura un suffixe aléatoire car aucun nom de déclencheur n'est unique).</p>
+  </dd>
+  <dt id="new"><a class="permalink" href="#new">--new-table-name</a></dt>
+  <dd>type : chaîne ; par défaut : <span class="Li">%T_new</span>
+    <p class="Pp">Nom de la nouvelle table avant l'échange.
+        <span class="Li">%T</span> est remplacé par le nom de la table d'origine.
+        Lorsque la valeur par défaut est utilisée, l'outil préfixe le nom avec jusqu'à 10
+        <span class="Li">&quot;_&quot;</span> (underscore) pour trouver un nom de table unique. Si un nom de table est spécifié, l'outil ne le préfixe pas avec
+        <span class="Li">&quot;_&quot;</span>, donc la table ne doit pas
+      exister.</p>
+  </dd>
+  <dt id="null"><a class="permalink" href="#null">--null-to-not-null</a></dt>
+  <dd>Permet de modifier une colonne qui autorise les valeurs NULL en une colonne qui ne les autorise pas. Les lignes existantes contenant des valeurs NULL seront converties en la valeur par défaut en fonction du type de données, par exemple 0 pour les types de données numériques, '' pour les types de données chaîne. Les nouvelles lignes utiliseront la valeur par défaut définie par l'utilisateur si elle est spécifiée pour la colonne.</dd>
+  <dt id="only"><a class="permalink" href="#only">--only-same-schema-fks</a></dt>
+  <dd>Vérifie les clés étrangères uniquement sur les tables du même schéma que la table d'origine. Cette option est dangereuse car si vous avez des FK faisant référence à des tables dans d'autres schémas, elles ne seront pas détectées.</dd>
+  <dt id="password"><a class="permalink" href="#password">--password</a></dt>
+  <dd>forme courte : -p ; type : chaîne
+    <p class="Pp">Mot de passe à utiliser lors de la connexion. Si le mot de passe contient des virgules, elles doivent être échappées avec une barre oblique inverse : &quot;exam\,ple&quot;</p>
+  </dd>
+  <dt id="pause"><a class="permalink" href="#pause">--pause-file</a></dt>
+  <dd>type : chaîne
+    <p class="Pp">L'exécution sera mise en pause tant que le fichier spécifié par ce paramètre existe.</p>
+  </dd>
+  <dt id="pid"><a class="permalink" href="#pid">--pid</a></dt>
+  <dd>type : chaîne
+    <p class="Pp">Crée le fichier PID donné.</p>
+  </dd>  <dt id="pid"><a class="permalink" href="#pid">--pid</a></dt>
+  <dd>type: string; default: /var/run/pt-online-schema-change.pid
+    <p class="Pp">File to store the PID of the tool. The tool won't start if the PID
+        file already exists and the PID it contains is different than the
+        current PID. However, if the PID file exists and the PID it contains is
+        no longer running, the tool will overwrite the PID file with the current
+        PID. The PID file is removed automatically when the tool exits.</p>
+  </dd>
+  <dt id="plugin"><a class="permalink" href="#plugin">--plugin</a></dt>
+  <dd>type: string
+    <p class="Pp">Fichier de module Perl qui définit une
+        classe <span class="Li">&quot;pt_online_schema_change_plugin&quot;</span>. Un plugin vous permet d'écrire un module Perl qui peut s'accrocher à de nombreuses parties de pt-online-schema-change.</p>
+    <p class="Pp">Voir &quot;PLUGIN&quot; pour plus d'informations.</p>
+  </dd>
+  <dt id="port"><a class="permalink" href="#port">--port</a></dt>
+  <dd>forme courte : -P ; type : int
+    <p class="Pp">Numéro de port à utiliser pour la connexion.</p>
+  </dd>
+  <dt id="print"><a class="permalink" href="#print">--print</a></dt>
+  <dd>Imprimer les instructions SQL sur STDOUT. Spécifier cette option vous permet de voir
+      la plupart des instructions que l'outil exécute. Vous pouvez utiliser cette option
+      avec &quot;--dry-run&quot;, par exemple.</dd>
+  <dt id="progress"><a class="permalink" href="#progress">--progress</a></dt>
+  <dd>type : tableau ; défaut : time,30
+    <p class="Pp">Afficher des rapports de progression sur STDERR pendant la copie des lignes. La valeur
+        est une liste séparée par des virgules avec deux parties. La première partie peut être
+        pourcentage, temps ou itérations ; la seconde partie spécifie la fréquence d'affichage d'une mise à jour, en pourcentage, secondes ou nombre d'
+        itérations.</p>
+  </dd>
+  <dt id="quiet"><a class="permalink" href="#quiet">--quiet</a></dt>
+  <dd>forme courte : -q
+    <p class="Pp">Ne pas imprimer de messages sur STDOUT (désactive
+        &quot;--progress&quot;). Les erreurs et les avertissements sont toujours imprimés sur
+        STDERR.</p>
+  </dd>
+  <dt id="recurse"><a class="permalink" href="#recurse">--recurse</a></dt>
+  <dd>type : int
+    <p class="Pp">Nombre de niveaux à parcourir en profondeur dans la hiérarchie lors de la découverte
+        des réplicas. Par défaut, c'est infini. Voir également
+      &quot;--recursion-method&quot;.</p>
+  </dd>
+  <dt id="recursion"><a class="permalink" href="#recursion">--recursion-method</a></dt>
+  <dd>type : tableau ; défaut : processlist,hosts
+    <p class="Pp">Méthode de récursion préférée pour découvrir les réplicas. Les méthodes
+        possibles sont :</p>
+        <pre>MÉTHODE       UTILISE
+===========  ==================
+processlist  SHOW PROCESSLIST
+hosts        SHOW REPLICAS (SHOW SLAVE HOSTS avant MySQL 8.1)
+dsn=DSN      DSNs d'une table
+none         Ne pas trouver de réplicas
+</pre>
+    <p class="Pp">La méthode processlist est la valeur par défaut, car SHOW REPLICAS
+        n'est pas fiable. Cependant, la méthode hosts peut mieux fonctionner si le serveur
+        utilise un port non standard (pas 3306). L'outil fait généralement la bonne chose
+        et trouve tous les réplicas, mais vous pouvez spécifier une méthode préférée et elle
+        sera utilisée en premier.</p>
+    <p class="Pp">La méthode hosts nécessite que les réplicas soient configurés avec
+        report_host, report_port, etc.</p>
+    <p class="Pp">La méthode dsn est spéciale : elle spécifie une table à partir de laquelle
+        d'autres chaînes DSN sont lues. Le DSN spécifié doit indiquer un D et un t, ou
+        un t qualifié par la base de données. La table DSN doit avoir la structure suivante :</p>
+        <pre>CREATE TABLE `dsns` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `parent_id` int(11) DEFAULT NULL,
+  `dsn` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+);
+</pre>
+    <p class="Pp">Pour que l'outil surveille uniquement les hôtes 10.10.1.16 et
+        10.10.1.17 pour le retard de réplication, insérez les valeurs
+        <span class="Li">&quot;h=10.10.1.16&quot;</span> et
+        <span class="Li">&quot;h=10.10.1.17&quot;</span> dans la table.
+        Actuellement, les DSN sont triés par id, mais id et parent_id sont autrement ignorés.</p>
+    <p class="Pp">Vous pouvez modifier la liste des hôtes pendant que OSC est en cours d'exécution : si
+        vous modifiez le contenu de la table DSN, OSC le prendra en compte très
+      bientôt.</p>
+  </dd>
+  <dt id="reverse"><a class="permalink" href="#reverse">--reverse-triggers</a></dt>
+  <dd>Copier les déclencheurs ajoutés pendant la copie dans l'ordre inverse. Les commandes dans
+      la nouvelle table seront reflétées dans l'ancienne table. Vous pouvez utiliser cela comme mesure de sécurité,
+      de sorte que l'ancienne table continue de recevoir les mises à jour. Cette option nécessite
+      <span class="Li">&quot;--no-drop-old-table&quot;</span>.
+    <p class="Pp">Attention ! Cette option crée des déclencheurs inversés sur la nouvelle table
+        avant de commencer la copie. Une fois la nouvelle table renommée avec son nom d'origine,
+        les déclencheurs continueront de fonctionner. Mais comme la version des métadonnées de changement de nom
+        dans le cache de la table changera également, vous pourriez commencer à recevoir des erreurs
+        &quot;Prepared statement needs to be re-prepared&quot;. La solution de contournement consiste à ré-préparer les instructions. Si vous n'utilisez pas
+        de requêtes préparées côté serveur, votre application ne devrait pas être
+      affectée.</p>
+  </dd>
+  <dt id="resume"><a class="permalink" href="#resume">--resume</a></dt>
+  <dd>type : int
+    <p class="Pp">Reprendre la modification de la table à partir du dernier bloc terminé. Si l'outil
+        s'arrête avant d'avoir terminé la copie des lignes, cette option permet de reprendre la copie
+        à partir du dernier bloc copié.</p>
+    <p class="Pp">L'option accepte l'ID du travail échoué. Cet ID est imprimé
+        lorsque pt-online-schema-change est exécuté avec l'option
+        &quot;--history&quot; et stocké dans &quot;--history-table&quot;.</p>
+    <p class="Pp">Attention ! Pour utiliser cette option, l'exécution précédente et échouée
+        de pt-online-schema-change doit utiliser les options &quot;--history&quot;,
+        &quot;--nodrop-new-table&quot; et &quot;--nodrop-triggers&quot;.
+        Sinon, pt-online-schema-change ne pourra pas reprendre.</p>
+  </dd>
+  <dt id="skip"><a class="permalink" href="#skip">--skip-check-replica-lag</a></dt>
+  <dd>type : DSN ; répétable : oui
+    <p class="Pp">DSN à ignorer lors de la vérification du retard du réplica. Il peut être utilisé plusieurs fois. Exemple : --skip-check-replica-lag h=127.0.0.1,P=12345
+        --skip-check-replica-lag h=127.0.0.1,P=12346 Veuillez prendre en considération que même si pour le pilote MySQL h=127.1 est égal à
+        h=127.0.0.1, pour ce paramètre vous devez spécifier l'adresse IP complète.
+      </p>
+  </dd>
+  <dt id="skip~2"><a class="permalink" href="#skip~2">--skip-check-slave-lag</a></dt>
+  <dd>type : DSN ; répétable : oui
+    <p class="Pp">Cette option est obsolète et sera supprimée dans les futures
+        versions. Utilisez &quot;--skip-check-replica-lag&quot; à la place.</p>
+  </dd>
+  <dt id="slave"><a class="permalink" href="#slave">--slave-user</a></dt>
+  <dd>type : string
+    <p class="Pp">Cette option est obsolète et sera supprimée dans les futures
+        versions. Utilisez &quot;--replica-user&quot; à la place.</p>
+  </dd>
+  <dt id="slave~2"><a class="permalink" href="#slave~2">--slave-password</a></dt>
+  <dd>type : string
+    <p class="Pp">Cette option est obsolète et sera supprimée dans les futures
+        versions. Utilisez &quot;--replica-password&quot; à la place.</p>
+  </dd>
+  <dt id="replica"><a class="permalink" href="#replica">--replica-user</a></dt>
+  <dd>type : string
+    <p class="Pp">Définit l'utilisateur à utiliser pour se connecter aux réplicas. Ce
+        paramètre vous permet d'avoir un utilisateur différent avec moins de privilèges sur
+        les réplicas, mais cet utilisateur doit exister sur tous les réplicas.</p>
+  </dd>
+  <dt id="replica~2"><a class="permalink" href="#replica~2">--replica-password</a></dt>
+  <dd>type : string
+    <p class="Pp">Définit le mot de passe à utiliser pour se connecter aux réplicas. Il
+        peut être utilisé avec --replica-user et le mot de passe de l'utilisateur doit
+        être le même sur tous les réplicas.</p>
+  </dd>
+  <dt id="set"><a class="permalink" href="#set">--set-vars</a></dt>
+  <dd>type : Tableau
+    <p class="Pp">Définit les variables MySQL dans cette liste séparée par des virgules de
+        paires <span class="Li">&quot;variable=valeur&quot;</span>.</p>
+    <p class="Pp">Par défaut, l'outil définit :</p>
+        <pre>wait_timeout=10000
+innodb_lock_wait_timeout=1
+lock_wait_timeout=60
+</pre>
+    <p class="Pp">Les variables spécifiées sur la ligne de commande remplacent ces
+        valeurs par défaut. Par exemple, spécifier <span class="Li">&quot;--set-vars
+        wait_timeout=500&quot;</span> remplace la valeur par défaut de
+        <span class="Li">10000</span>.</p>
+    <p class="Pp">L'outil affiche un avertissement et continue si une variable ne peut pas être définie.</p>
+    <p class="Pp">Notez que la définition de la variable
+        <span class="Li">&quot;sql_mode&quot;</span> nécessite des échappements délicats pour pouvoir analyser les guillemets et les virgules.</p>
+    <p class="Pp">Exemple :</p>
+        <pre>--set-vars sql_mode=\'STRICT_ALL_TABLES\\,ALLOW_INVALID_DATES\'
+</pre>
+    <p class="Pp">Notez le simple antislash pour les guillemets et le double antislash
+        pour la virgule.</p>
+  </dd>
+  <dt id="sleep"><a class="permalink" href="#sleep">--sleep</a></dt>
+  <dd>type : float ; défaut : 0
+    <p class="Pp">Durée du sommeil (en secondes) après la copie de chaque bloc. Cette
+        option est utile lorsque le throttling par &quot;--max-lag&quot; et
+        &quot;--max-load&quot; n'est pas possible. Une petite valeur, inférieure à la seconde,
+        devrait être utilisée, comme 0.1, sinon l'outil pourrait prendre très longtemps pour copier de grandes tables.</p>
+  </dd>
+  <dt id="socket"><a class="permalink" href="#socket">--socket</a></dt>
+  <dd>forme courte : -S ; type : string
+    <p class="Pp">Fichier socket à utiliser pour la connexion.</p>
+  </dd>
+  <dt id="statistics"><a class="permalink" href="#statistics">--statistics</a></dt>
+  <dd>Imprimer des statistiques sur les compteurs internes. Ceci est utile pour voir combien d'avertissements ont été supprimés par rapport au nombre d'INSERT.</dd>
+  <dt>--[no]swap-tables</dt>
+  <dd>défaut : yes
+    <p class="Pp">Échanger la table d'origine et la nouvelle table modifiée. Cette étape
+        achève le processus de changement de schéma en ligne en faisant en sorte que la table avec le
+        nouveau schéma prenne la place de la table d'origine. La table d'origine devient "l'ancienne table",
+        et l'outil la supprime à moins que vous ne désactiviez "--[no]drop-old-table".</p>
+    <p class="Pp">L'utilisation de <span class="Li">&quot;--no-swap-tables&quot;</span>
+        exécutera tout le processus, créera la nouvelle table, copiera toutes les lignes mais à la fin supprimera la nouvelle table. Elle est destinée à exécuter un --dry-run plus réaliste.</p>
+  </dd>
+  <dt id="tries"><a class="permalink" href="#tries">--tries</a></dt>
+  <dd>type : tableau
+    <p class="Pp">Combien de fois essayer les opérations critiques. Si certaines
+        opérations échouent en raison d'erreurs non fatales et récupérables, l'outil attend et
+        réessaie l'opération. Voici les opérations qui sont retentées, avec leur nombre d'essais par défaut et le temps d'attente entre les essais (en secondes) :</p>
+        <pre>OPÉRATION            ESSAIS   ATTENTE
+===================  =====   ====
+create_triggers         10      1
+drop_triggers           10      1
+copy_rows               10   0.25
+swap_tables             10      1
+update_foreign_keys     10      1
+analyze_table           10      1
+</pre>
+    <p class="Pp">Pour modifier les valeurs par défaut, spécifiez les nouvelles valeurs comme ceci :</p>
+        <pre>--tries create_triggers:5:0.5,drop_triggers:5:0.5
+</pre>
+    <p class="Pp">Cela fait que l'outil essaie
+        <span class="Li">&quot;create_triggers&quot;</span> et
+        <span class="Li">&quot;drop_triggers&quot;</span> 5 fois avec une attente de 0.5
+        seconde entre les essais. Le format est donc :</p>
+        <pre>operation:essais:attente[,operation:essais:attente]
+</pre>
+    <p class="Pp">Les trois valeurs doivent être spécifiées.</p>
+    <p class="Pp">Notez que la plupart des opérations sont affectées uniquement dans MySQL 5.5 et versions ultérieures par
+        <span class="Li">&quot;lock_wait_timeout&quot;</span> (voir &quot;--set-vars&quot;)
+        en raison des verrous de métadonnées. L'opération
+        <span class="Li">&quot;copy_rows&quot;</span> est affectée dans n'importe quelle version de MySQL par
+        <span class="Li">&quot;innodb_lock_wait_timeout&q</code>{
+  "options": [
+    {
+      "name": "--retries",
+      "short_form": "-r",
+      "type": "integer",
+      "description": "number of times to retry each operation if it fails. Default is 10.",
+      "details": [
+        "For creating and dropping triggers, the number of tries applies to each \"CREATE TRIGGER\" and \"DROP TRIGGER\" statement for each trigger. For copying rows, the number of tries applies to each chunk, not the entire table. For swapping tables, the number of tries usually applies once because there is usually only one \"RENAME TABLE\" statement. For rebuilding foreign key constraints, the number of tries applies to each statement (\"ALTER\" statements for the \"rebuild_constraints\" \"--alter-foreign-keys-method\"; other statements for the \"drop_swap\" method).",
+        "The tool retries each operation if these errors occur:",
+        [
+          "Lock wait timeout (innodb_lock_wait_timeout and lock_wait_timeout)",
+          "Deadlock found",
+          "Query is killed (KILL QUERY <thread_id>)",
+          "Connection is killed (KILL CONNECTION <thread_id>)",
+          "Lost connection to MySQL"
+        ],
+        "In the case of lost and killed connections, the tool will automatically reconnect.",
+        "Failures and retries are recorded in the \"--statistics\"."
+      ]
+    },
+    {
+      "name": "--user",
+      "short_form": "-u",
+      "type": "string",
+      "description": "User for login if not current user."
+    },
+    {
+      "name": "--version",
+      "description": "Show version and exit."
+    },
+    {
+      "name": "--[no]version-check",
+      "default": "yes",
+      "description": "Check for the latest version of Percona Toolkit, MySQL, and other programs.",
+      "details": [
+        "This is a standard \"check for updates automatically\" feature, with two additional features. First, the tool checks its own version and also the versions of the following software: operating system, Percona Monitoring and Management (PMM), MySQL, Perl, MySQL driver for Perl (DBD::mysql), and Percona Toolkit. Second, it checks for and warns about versions with known problems. For example, MySQL 5.5.25 had a critical bug and was re-released as 5.5.25a.",
+        "A secure connection to Percona’s Version Check database server is done to perform these checks. Each request is logged by the server, including software version numbers and unique ID of the checked system. The ID is generated by the Percona Toolkit installation script or when the Version Check database call is done for the first time.",
+        "Any updates or known problems are printed to STDOUT before the tool's normal output. This feature should never interfere with the normal operation of the tool.",
+        "For more information, visit https://www.percona.com/doc/percona-toolkit/LATEST/version-check.html."
+      ]
+    },
+    {
+      "name": "--where",
+      "type": "string",
+      "description": "Copy only rows matching this WHERE clause. You can use this option to limit the copying to only part of the table. This is particularly useful if you want to restart pt-online-schema-change job after it was failed.",
+      "details": [
+        "This option is much like the -w option to mysqldump. Do not specify the WHERE keyword. You might need to quote the value. Here is an example:",
+        "pt-online-schema-change --where \"id > 12345678\"",
+        "Warning! If used without options \"--no-drop-new-table\" and \"--no-swap-tables\" may lead to data loss, therefore this operation only allowed if option \"--force\" also specified."
+      ]
+    },
+    {
+      "name": "--[no]fail-on-stopped-replication",
+      "default": "yes",
+      "description": "If replication is stopped, fail with an error (exit status 128) instead of waiting until replication is restarted."
+    }
+  ],
+  "plugin": {
+    "description": "The file specified by \"--plugin\" must define a class (i.e. a package) called \"pt_online_schema_change_plugin\" with a new() subroutine. The tool will create an instance of this class and call any hooks that it defines. No hooks are required, but a plugin isn't very useful without them.",
+    "hooks_description": "These hooks, in this order, are called if defined:",
+    "hooks": [
+      "init",
+      "before_create_new_table",
+      "after_create_new_table",
+      "before_alter_new_table",
+      "after_alter_new_table",
+      "before_create_triggers",
+      "after_create_triggers",
+      "before_copy_rows",
+      "on_copy_rows_after_nibble",
+      "after_copy_rows",
+      "before_swap_tables",
+      "after_swap_tables",
+      "before_update_foreign_keys",
+      "after_update_foreign_keys",
+      "before_drop_old_table",
+      "after_drop_old_table",
+      "before_drop_triggers",
+      "before_die",
+      "before_exit",
+      "get_slave_lag (deprecated)",
+      "get_replica_lag"
+    ],
+    "hook_arguments_info": "Each hook is passed different arguments. To see which arguments are passed to a hook, search for the hook's name in the tool's source code, like:",
+    "hook_arguments_example": "# --plugin hook\nif ( $plugin && $plugin->can('init') ) {\n   $plugin->init(\n      orig_tbl       => $orig_tbl,\n      child_tables   => $child_tables,\n      renamed_cols   => $renamed_cols,\n      slaves         => $slaves,\n      slave_lag_cxns => $slave_lag_cxns,\n   );\n}",
+    "hook_call_comment": "The comment \"# --plugin hook\" precedes every hook call.",
+    "template_file": "Here's a plugin file template for all hooks:\npackage pt_online_schema_change_plugin;\nuse strict;\nsub new {\n   my ($class, %args) = @_; \n   my $self = { %args };\n   return bless $self, $class;\n}\nsub init {\n   my ($self, %args) = @_; \n   print \"PLUGIN init\\n\";\n}\nsub before_create_new_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_create_new_table\\n\";\n}\nsub after_create_new_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_create_new_table\\n\";\n}\nsub before_alter_new_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_alter_new_table\\n\";\n}\nsub after_alter_new_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_alter_new_table\\n\";\n}\nsub before_create_triggers {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_create_triggers\\n\";\n}\nsub after_create_triggers {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_create_triggers\\n\";\n}\nsub before_copy_rows {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_copy_rows\\n\";\n}\nsub on_copy_rows_after_nibble {\n   my ($self, %args) = @_; \n   print \"PLUGIN on_copy_rows_after_nibble\\n\";\n}\nsub after_copy_rows {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_copy_rows\\n\";\n}\nsub before_swap_tables {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_swap_tables\\n\";\n}\nsub after_swap_tables {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_swap_tables\\n\";\n}\nsub before_update_foreign_keys {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_update_foreign_keys\\n\";\n}\nsub after_update_foreign_keys {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_update_foreign_keys\\n\";\n}\nsub before_drop_old_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_drop_old_table\\n\";\n}\nsub after_drop_old_table {\n   my ($self, %args) = @_; \n   print \"PLUGIN after_drop_old_table\\n\";\n}\nsub before_drop_triggers {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_drop_triggers\\n\";\n}\nsub before_die {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_die\\n\";\n}\nsub before_exit {\n   my ($self, %args) = @_; \n   print \"PLUGIN before_exit\\n\";\n}\nsub get_replica_lag {\n   my ($self, %args) = @_; \n   print \"PLUGIN get_replica_lag\\n\";\n   return sub { return 0; };\n}\nsub get_slave_lag {\n   my ($self, %args) = @_; \n   print \"PLUGIN get_slave_lag\\n\";\n   return sub { return 0; };\n}\n1;",
+    "get_replica_lag_note": "Notice that \"get_replica_lag\" must return a function reference; ideally one that returns actual replica lag, not simply zero like in the example.",
+    "example_usage": "Here's an example that actually does something:\npackage pt_online_schema_change_plugin;\nuse strict;\nsub new {\n   my ($class, %args) = @_; \n   my $self = { %args };\n   return bless $self, $class;\n}\nsub after_create_new_table {\n   my ($self, %args) = @_; \n   my $new_tbl = $args{new_tbl};\n   my $dbh     = $self->{cxn}->dbh;\n   my $row = $dbh->selectrow_arrayref(\"SHOW CREATE TABLE $new_tbl->{name}\");\n   warn \"after_create_new_table: $row->[1]\\n\\n\";\n}\nsub after_alter_new_table {\n   my ($self, %args) = @_; \n   my $new_tbl = $args{new_tbl};\n   my $dbh     = $self->{cxn}->dbh;\n   my $row = $dbh->selectrow_arrayref(\"SHOW CREATE TABLE $new_tbl->{name}\");\n   warn \"after_alter_new_table: $row->[1]\\n\\n\";\n}\n1;",
+    "example_description": "You could use this with \"--dry-run\" to check how the table will look before and after.",
+    "contact_info": "Please contact Percona if you have questions or need help."
+  },
+  "dsn_options": {
+    "description": "These DSN options are used to create a DSN. Each option is given like \"option=value\". The options are case-sensitive, so P and p are not the same option. There cannot be whitespace before or after the \"=\" and if the value contains whitespace it must be quoted. DSN options are comma-separated. See the percona-toolkit manpage for full details.",
+    "options": [
+      {
+        "name": "A",
+        "dsn_type": "charset",
+        "copy": "yes",
+        "description": "Default character set."
+      },
+      {
+        "name": "D",
+        "dsn_type": "database",
+        "copy": "no",
+        "description": "Database for the old and new table."
+      },
+      {
+        "name": "F",
+        "dsn_type": "mysql_read_default_file",
+        "copy": "yes",
+        "description": "Only read default options from the given file"
+      },
+      {
+        "name": "h",
+        "dsn_type": "host",
+        "copy": "yes",
+        "description": "Connect to host."
+      },
+      {
+        "name": "p",
+        "dsn_type": "password",
+        "copy": "yes",
+        "description": "Password to use when connecting. If password contains commas they must be escaped with a backslash: \"exam\\,ple\""
+      },
+      {
+        "name": "P",
+        "dsn_type": "port",
+        "copy": "yes",
+        "description": "Port number to use for connection."
+      },
+      {
+        "name": "S",
+        "dsn_type": "mysql_socket",
+        "copy": "yes",
+        "description": "Socket file to use for connection."
+      },
+      {
+        "name": "t",
+        "dsn_type": "table",
+        "copy": "no",
+        "description": "Table to alter."
+      },
+      {
+        "name": "u",
+        "dsn_type": "user",
+        "copy": "yes",
+        "description": "User for login if not current user."
+      },
+      {
+        "name": "s",
+        "dsn_type": "mysql_ssl",
+        "copy": "yes",
+        "description": "Create SSL connection"
+      }
+    ]
+  },
+  "environment": {
+    "description": "The environment variable \"PTDEBUG\" enables verbose debugging output to STDERR. To enable debugging and capture all output to a file, run the tool like:",
+    "example": "PTDEBUG=1 pt-online-schema-change ... > FILE 2>&1",
+    "warning": "Be careful: debugging out"
+  }
+}
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>pt-online-schema-change(1p) — Arch Linux</title>
+        <link rel="stylesheet" href="/css/style.css">
+        <link rel="stylesheet" href="/css/man.css">
+        <link rel="icon" href="/favicon.ico">
+    </head>
+    <body>
+        
+        <main>
+            <article class="man-page">
+<nav class="breadcrumb" aria-label="breadcrumb">
+    <ol>
+        <li><a href="/">Home</a></li>
+        <li><a href="/packages/extra/x86_64/percona-toolkit/">percona-toolkit</a></li>
+        <li><a href="/man/extra/percona-toolkit/pt-online-schema-change.1p.html">pt-online-schema-change(1p)</a></li>
+    </ol>
+</nav>
+<div class="man-container">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Nm">pt-online-schema-change</p>
+<p class="Nd">changez le schéma de table sans temps d'arrêt</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<pre>pt-online-schema-change [OPTIONS] [DSN=connection_string] [SQL=SQL_statement]</pre>
+<pre>pt-online-schema-change --alter-foreign-keys-method=... [OPTIONS] [DSN=connection_string] [SQL=SQL_statement]</pre>
+<pre>pt-online-schema-change --dry-run [OPTIONS] [DSN=connection_string] [SQL=SQL_statement]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RISQUES'><a class='permalink' href='#RISQUES'>RISQUES</a></h1>
+<p class="Pp">pt-online-schema-change est un outil puissant. En bref, il effectue les opérations suivantes :</p>
+<ul class="Bl-bullet">
+  <li>Il crée une nouvelle table vide avec le schéma souhaité.</li>
+  <li>Il copie les données de la table d'origine vers la nouvelle table.</li>
+  <li>Il crée des déclencheurs sur la table d'origine pour capturer les modifications apportées pendant que les données sont copiées.</li>
+  <li>Il applique les modifications en attente à la nouvelle table.</li>
+  <li>Il renomme la table d'origine pour qu'elle soit la nouvelle table.</li>
+  <li>Il renomme la nouvelle table pour qu'elle ait le nom d'origine.</li>
+  <li>Il supprime l'ancienne table d'origine.</li>
+</ul>
+<p class="Pp">Cependant, en dépit de ses précautions, il existe des risques. Il est impératif de comprendre ces risques avant d'utiliser
+    cet outil. Lisez la section « RISQUES » du fichier README.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pt-online-schema-change réécrit les tables de base de données en créant une nouvelle table avec le schéma souhaité, en copiant les données et en utilisant des déclencheurs pour synchroniser les données pendant que l'opération est en cours. Il s'agit de l'un des nombreux outils qui peuvent être utilisés pour effectuer des modifications de schéma en ligne sur MySQL. L'objectif est de minimiser ou d'éliminer les temps d'arrêt pour les applications qui dépendent des tables modifiées.</p>
+<p class="Pp">Il est conçu pour être utilisé sur de grandes tables où une opération `ALTER TABLE` normale prendrait trop de temps et bloquerait la table, rendant l'application indisponible. L'outil tente de minimiser la charge sur le serveur et le temps pendant lequel le verrouillage de la table est nécessaire.</p>
+<p class="Pp">Cet outil n'est pas une solution miracle. Il existe des situations où il ne peut pas être utilisé et d'autres où ses opérations peuvent affecter les performances. Il est essentiel de comprendre comment il fonctionne et ce qu'il fait avant de l'utiliser sur une table en production.</p>
+<p class="Pp"><b>NE JAMAIS UTILISER CET OUTIL SANS L'AVOIR COMPRIS COMPLÈTEMENT.</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Percona_XtraDB_Cluster'><a class='permalink' href='#Percona_XtraDB_Cluster'>Percona XtraDB Cluster</a></h1>
+<p class="Pp">pt-online-schema-change est entièrement compatible avec Percona XtraDB Cluster. Il le détectera et désactivera les déclencheurs pour éviter une surcharge du cluster.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MySQL_5.7_+_Generated_columns'><a class='permalink' href='#MySQL_5.7_+_Generated_columns'>MySQL 5.7 + Colonnes générées</a></h1>
+<p class="Pp">pt-online-schema-change fonctionne avec les colonnes générées par MySQL 5.7 et les versions ultérieures. Il peut modifier les colonnes générées et les colonnes normales dans le même `ALTER TABLE`. Il peut également ajouter des colonnes générées.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OUTPUT'><a class='permalink' href='#OUTPUT'>OUTPUT</a></h1>
+<p class="Pp">Par défaut, l'outil effectue une journalisation verbale sur STDOUT. Il peut produire des dizaines de mégaoctets de sortie sur de grandes tables.</p>
+<p class="Pp">Il est fortement recommandé d'utiliser le paramètre <span class="Li">--print</span> ou <span class="Li">--execute</span> pour exécuter l'outil, ce qui vous permet de contrôler la quantité de sortie et de la transmettre à d'autres utilitaires comme <span class="Li">pv</span> ou <span class="Li">grep</span>.</p>
+<p class="Pp">Voici un exemple typique de sortie lorsqu'il est utilisé avec <span class="Li">--print</span> :</p>
+<pre># pt-online-schema-change --print --alter "ADD COLUMN c INT" h=localhost,D=test,t=tbl_name
+USE `test`;
+ALTER TABLE `test`.`tbl_name` ADD COLUMN `c` INT;
+-- et d'autres commandes SQL pour créer la nouvelle table, copier les données, définir des déclencheurs, etc.</pre>
+<p class="Pp">La sortie peut être volumineuse et générer
+    plusieurs mégaoctets de sortie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">La plupart des options sont décrites dans le fichier README. Les plus importantes incluent :</p>
+<dl class="Bl-tag">
+  <dt id="alter"><a class="permalink" href="#alter">--alter</a> <i>string</i></dt>
+  <dd>La chaîne ALTER TABLE valide que vous souhaitez appliquer à la table. Par exemple : <span class="Li">&quot;ADD COLUMN c INT&quot;</span>, <span class="Li">&quot;DROP INDEX i_col1&quot;</span>, <span class="Li">&quot;CHANGE COLUMN c1 c1 BIGINT&quot;</span>.</dd>
+  <dt id="dry-run"><a class="permalink" href="#dry-run">--dry-run</a></dt>
+  <dd>Imprime la commande SQL qui serait exécutée, mais ne l'exécute pas. Utile pour tester.</dd>
+  <dt id="execute"><a class="permalink" href="#execute">--execute</a></dt>
+  <dd>Exécute les commandes SQL.</dd>
+  <dt id="print"><a class="permalink" href="#print">--print</a></dt>
+  <dd>Imprime les commandes SQL qui seraient exécutées, mais ne les exécute pas. Utile pour l'utiliser avec d'autres outils.</dd>
+  <dt id="alter-foreign-keys-method"><a class="permalink" href="#alter-foreign-keys-method">--alter-foreign-keys-method</a> <i>string</i></dt>
+  <dd>La méthode à utiliser pour gérer les clés étrangères sur la table cible. Les valeurs valides sont <span class="Li">auto</span>, <span class="Li">drop_swap</span>, <span class="Li">rebuild_constraints</span>, <span class="Li">disable_fk</span>.</dd>
+  <dt id="victim-master-delay"><a class="permalink" href="#victim-master-delay">--victim-master-delay</a> <i>secondes</i></dt>
+  <dd>Le délai maximum d'un esclave par rapport à son maître avant que l'outil ne soit arrêté. Défaut à 1 seconde.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PLUGIN'><a class='permalink' href='#PLUGIN'>PLUGIN</a></h1>
+<p class="Pp">Cet outil est un plugin Perl qui fonctionne avec la base de données MySQL. Il doit être installé sur le serveur MySQL.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DSN_OPTIONS'><a class='permalink' href='#DSN_OPTIONS'>DSN OPTIONS</a></h1>
+<p class="Pp">Les options DSN sont utilisées pour spécifier la connexion à la base de données. Elles incluent :</p>
+<dl class="Bl-tag">
+  <dt id="h"><a class="permalink" href="#h">--host</a> ou -h <i>string</i></dt>
+  <dd>Nom d'hôte du serveur MySQL.</dd>
+  <dt id="P"><a class="permalink" href="#P">--port</a> ou -P <i>integer</i></dt>
+  <dd>Port du serveur MySQL.</dd>
+  <dt id="u"><a class="permalink" href="#u">--user</a> ou -u <i>string</i></dt>
+  <dd>Nom d'utilisateur pour la connexion à MySQL.</dd>
+  <dt id="p"><a class="permalink" href="#p">--password</a> ou -p <i>string</i></dt>
+  <dd>Mot de passe pour la connexion à MySQL.</dd>
+  <dt id="D"><a class="permalink" href="#D">--database</a> ou -D <i>string</i></dt>
+  <dd>Nom de la base de données.</dd>
+  <dt id="t"><a class="permalink" href="#t">--table</a> ou -t <i>string</i></dt>
+  <dd>Nom de la table.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONMENT'><a class='permalink' href='#ENVIRONMENT'>ENVIRONMENT</a></h1>
+<p class="Pp">La variable d'environnement <span class="Li">PTDEBUG</span> peut être utilisée pour activer la sortie de débogage. Lorsqu'elle est activée, tous les paramètres de ligne de commande sont affichés dans la sortie.</p>
+<p class="Pp">L'utilisation de <span class="Li">PTDEBUG</span> peut exposer les mots de passe. Lorsque le débogage est activé, tous les paramètres de ligne de commande sont affichés dans la sortie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ATTENTION'><a class='permalink' href='#ATTENTION'>ATTENTION</a></h1>
+<p class="Pp">L'utilisation de &lt;PTDEBUG&gt; peut exposer les mots de passe. Lorsque le débogage est activé, tous les paramètres de ligne de commande sont affichés dans la sortie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXIT_STATUS'><a class='permalink' href='#EXIT_STATUS'>EXIT   STATUS</a></h1>
+<pre>INVALID_PARAMETERS              = 1
+UNSUPPORTED_MYSQL_VERSION       = 2
+NO_MINIMUM_REQUIREMENTS         = 3
+NO_PRIMARY_OR_UNIQUE_KEY        = 4
+INVALID_PLUGIN_FILE             = 5
+INVALID_ALTER_FK_METHOD         = 6
+INVALID_KEY_SIZE                = 7
+CANNOT_DETERMINE_KEY_SIZE       = 9
+NOT_SAFE_TO_ASCEND              = 9
+ERROR_CREATING_NEW_TABLE        = 10
+ERROR_ALTERING_TABLE            = 11
+ERROR_CREATING_TRIGGERS         = 12
+ERROR_RESTORING_TRIGGERS        = 13
+ERROR_SWAPPING_TABLES           = 14
+ERROR_UPDATING_FKS              = 15
+ERROR_DROPPING_OLD_TABLE        = 16
+UNSUPPORTED_OPERATION           = 17
+MYSQL_CONNECTION_ERROR          = 18
+LOST_MYSQL_CONNECTION           = 19
+ERROR_CREATING_REVERSE_TRIGGERS = 20</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYSTEM_REQUIREMENTS'><a class='permalink' href='#SYSTEM_REQUIREMENTS'>SYSTEM   REQUIREMENTS</a></h1>
+<p class="Pp">Vous avez besoin de Perl, DBI, DBD::mysql et de certains packages de base qui devraient être installés dans toute version raisonnablement récente de Perl.</p>
+<p class="Pp">Cet outil ne fonctionne qu'avec MySQL 5.0.2 et les versions ultérieures, car les versions antérieures ne prennent pas en charge les déclencheurs. Un certain nombre de permissions doivent également être définies sur MySQL pour que pt-online-schema-change fonctionne comme prévu. Les privilèges globaux PROCESS, SUPER, REPLICATION SLAVE, ainsi que les privilèges de table SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER et TRIGGER doivent être accordés sur le serveur. La réplique n'a besoin que des privilèges REPLICATION SLAVE et REPLICATION CLIENT.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BUGS</a></h1>
+<p class="Pp">Pour une liste des bogues connus, voir
+    <a href='https://jira.percona.com/projects/PT/issues'>https://jira.percona.com/projects/PT/issues</a>.</p>
+<p class="Pp">Veuillez signaler les bogues à
+    <a href='https://jira.percona.com/projects/PT'>https://jira.percona.com/projects/PT</a>. Incluez les informations suivantes dans votre rapport de bogue :</p>
+<ul class="Bl-bullet">
+  <li>Commande complète utilisée pour exécuter l'outil</li>
+  <li>Outil « --version »</li>
+  <li>Version de MySQL de tous les serveurs impliqués</li>
+  <li>Sortie de l'outil, y compris STDERR</li>
+  <li>Fichiers d'entrée (fichiers de log/dump/config, etc.)</li>
+</ul>
+<p class="Pp">Si possible, incluez la sortie de débogage en exécutant l'outil avec
+    <span class="Li">&quot;PTDEBUG&quot;</span> ; voir
+  &quot;ENVIRONMENT&quot;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DOWNLOADING'><a class='permalink' href='#DOWNLOADING'>DOWNLOADING</a></h1>
+<p class="Pp">Visitez <a href='http://www.percona.com/software/percona-toolkit/'>http://www.percona.com/software/percona-toolkit/</a> pour
+    télécharger la dernière version de Percona Toolkit. Ou, obtenez la dernière version
+    depuis la ligne de commande :</p>
+<pre>wget percona.com/get/percona-toolkit.tar.gz
+wget percona.com/get/percona-toolkit.rpm
+wget percona.com/get/percona-toolkit.deb</pre>
+<p class="Pp">Vous pouvez également obtenir des outils individuels à partir de la dernière version :</p>
+<pre>wget percona.com/get/TOOL</pre>
+<p class="Pp">Remplacez <span class="Li">&quot;TOOL&quot;</span> par le nom
+    de n'importe quel outil.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTHORS</a></h1>
+<p class="Pp">Daniel Nichter et Baron Schwartz</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ACKNOWLEDGMENTS'><a class='permalink' href='#ACKNOWLEDGMENTS'>ACKNOWLEDGMENTS</a></h1>
+<p class="Pp">Le concept de « modification de schéma en ligne » a été implémenté pour la première fois par Shlomi Noach dans son outil
+    <span class="Li">&quot;oak-online-alter-table&quot;</span>, partie de
+    <a href='http://code.google.com/p/openarkkit/'>http://code.google.com/p/openarkkit/</a>. Les ingénieurs de Facebook ont ensuite créé une autre version appelée
+    <span class="Li">&quot;OnlineSchemaChange.php&quot;</span> comme expliqué dans
+    leur article de blog : <a href='http://tinyurl.com/32zeb86'>http://tinyurl.com/32zeb86</a>. Cet outil est un hybride
+    des deux approches, avec des fonctionnalités supplémentaires qui n'étaient présentes dans aucune des deux.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ABOUT_PERCONA_TOOLKIT'><a class='permalink' href='#ABOUT_PERCONA_TOOLKIT'>ABOUT   PERCONA TOOLKIT</a></h1>
+<p class="Pp">Cet outil fait partie de Percona Toolkit, une collection d'outils en ligne de commande avancés pour MySQL développés par Percona. Percona Toolkit a été divisé en deux projets en juin 2011 : Maatkit et Aspersa. Ces projets ont été créés par Baron Schwartz et développés principalement par lui et Daniel
+    Nichter. Visitez <a href='http://www.percona.com/software/'>http://www.percona.com/software/</a> pour en savoir plus sur d'autres
+    logiciels gratuits et open-source de Percona.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT,_LICENSE,_AND_WARRANTY'><a class='permalink' href='#COPYRIGHT,_LICENSE,_AND_WARRANTY'>COPYRIGHT,   LICENSE, AND WARRANTY</a></h1>
+<p class="Pp">Ce programme est protégé par copyright 2011-2024 Percona LLC et/ou ses
+    affiliés.</p>
+<p class="Pp">CE PROGRAMME EST FOURNI « TEL QUEL » ET SANS AUCUNE GARANTIE EXPLICITE OU IMPLICITE, Y COMPRIS, SANS S'Y LIMITER, LES GARANTIES IMPLICITES DE QUALITÉ MARCHANDE ET D'ADÉQUATION À UN USAGE PARTICULIER.</p>
+<p class="Pp">Ce programme est un logiciel libre ; vous pouvez le redistribuer et/ou le modifier selon les termes de la Licence Publique Générale GNU, telle que publiée par la Free Software Foundation, version 2 ; OU la Licence Artistique Perl. Sur les systèmes UNIX et similaires, vous pouvez exécuter `man perlgpl` ou `man perlartistic` pour lire ces licences.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale GNU avec ce programme ; sinon, écrivez à la Free Software Foundation,
+    Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp">pt-online-schema-change 3.7.0</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='POD_ERRORS'><a class='permalink' href='#POD_ERRORS'>POD   ERRORS</a></h1>
+<p class="Pp">Hé ! <b>Le document ci-dessus contenait des erreurs de codage, qui sont expliquées ci-dessous :</b></p>
+<dl class="Bl-tag">
+  <dt id="Around"><a class="permalink" href="#Around">Autour de la ligne
+    13749 :</a></dt>
+  <dd>Caractère non ASCII rencontré avant =encoding dans 'Percona&#x2019;s'. En supposant
+      UTF-8</dd>
+</dl>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-01-01</td>
+    <td class="foot-os">perl v5.40.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/percona-toolkit/">extra/percona-toolkit</a></dd>
+        <dt>Version :</dt>
+        <dd>3.7.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.percona.com/software/database-tools/percona-toolkit">https://www.percona.com/software/database-tools/percona-toolkit</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/percona-toolkit/">/listing/extra/percona-toolkit/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#RISQUES">RISQUES</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#Percona_XtraDB_Cluster">Percona XtraDB Cluster</a></li>
+        
+            <li><a href="#MySQL_5.7_+_Generated_columns">MySQL 5.7 + Colonnes générées</a></li>
+        
+            <li><a href="#OUTPUT">OUTPUT</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#PLUGIN">PLUGIN</a></li>
+        
+            <li><a href="#DSN_OPTIONS">DSN OPTIONS</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONMENT</a></li>
+        
+            <li><a href="#ATTENTION">ATTENTION</a></li>
+        
+            <li><a href="#EXIT_STATUS">EXIT STATUS</a></li>
+        
+            <li><a href="#SYSTEM_REQUIREMENTS">SYSTEM REQUIREMENTS</a></li>
+        
+            <li><a href="#BUGS">BUGS</a></li>
+        
+            <li><a href="#DOWNLOADING">DOWNLOADING</a></li>
+        
+            <li><a href="#AUTHORS">AUTHORS</a></li>
+        
+            <li><a href="#ACKNOWLEDGMENTS">ACKNOWLEDGMENTS</a></li>
+        
+            <li><a href="#ABOUT_PERCONA_TOOLKIT">ABOUT PERCONA TOOLKIT</a></li>
+        
+            <li><a href="#COPYRIGHT,_LICENSE,_AND_WARRANTY">COPYRIGHT, LICENSE, AND WARRANTY</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+            <li><a href="#POD_ERRORS">POD ERRORS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pt-online-schema-change.1p.txt">txt</a>, 
+        
+            <a href="/man/pt-online-schema-change.1p.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

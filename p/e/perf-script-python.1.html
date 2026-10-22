@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perf-script-python(1) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perf-script-python(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/perf/">perf</a></p>
+<p class="lic">Licences: GPL-2.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERF-SCRIPT-PYTHON(1)</td>
+    <td class="head-vol">Manuel perf</td>
+    <td class="head-rtitle">PERF-SCRIPT-PYTHON(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perf-script-python - Traiter les données de trace avec un script Python</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<pre><i>perf script</i> [-s [Python]:script[.py] ]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cette option de script perf est utilisée pour traiter les données de script perf à l'aide de l'interpréteur Python intégré de perf. Elle lit et traite le fichier d'entrée et affiche les résultats de l'analyse de trace implémentée dans le script Python donné, le cas échéant.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UN_EXEMPLE_RAPIDE'><a class='permalink' href='#UN_EXEMPLE_RAPIDE'>UN EXEMPLE RAPIDE</a></h1>
+<p class="Pp">Cette section montre le processus, du début à la fin, de création d'un script Python fonctionnel qui agrège et extrait des informations utiles d'un flux de script perf brut. Vous pouvez éviter de lire le reste de ce document si un exemple vous suffit ; le reste du document fournit plus de détails sur chaque étape et liste les fonctions de bibliothèque disponibles pour les auteurs de scripts.</p>
+<p class="Pp">Cet exemple détaille en fait les étapes qui ont été utilisées pour créer le script <i>syscall-counts</i> que vous voyez lorsque vous listez les scripts de script perf disponibles via <i>perf script -l</i>. En tant que tel, ce script montre également comment intégrer votre script dans la liste des scripts <i>perf script</i> généraux listés par cette commande.</p>
+<p class="Pp">Le script syscall-counts est un script simple, mais il démontre toutes les idées de base nécessaires pour créer un script utile. Voici un exemple de sa sortie (les noms de syscall ne sont pas encore pris en charge, ils apparaîtront sous forme de nombres) :</p>
+<div class="Bd-indent">
+<pre>.ft C
+syscall events:
+event                                          count
+----------------------------------------  -----------
+sys_write                                     455067
+sys_getdents                                    4072
+sys_close                                       3037
+sys_swapoff                                     1769
+sys_read                                         923
+sys_sched_setparam                               826
+sys_open                                         331
+sys_newfstat                                     326
+sys_mmap                                         217
+sys_munmap                                       216
+sys_futex                                        141
+sys_select                                       102
+sys_poll                                          84
+sys_setitimer                                     12
+sys_writev                                         8
+15                                                 8
+sys_lseek                                          7
+sys_rt_sigprocmask                                 6
+sys_wait4                                          3
+sys_ioctl                                          3
+sys_set_robust_list                                1
+sys_exit                                           1
+56                                                 1
+sys_access                                         1
+.ft</pre>
+</div>
+<p class="Pp">Fondamentalement, notre tâche consiste à conserver un décompte par syscall qui est mis à jour chaque fois qu'un appel système se produit dans le système. Notre script fera cela, mais nous devons d'abord enregistrer les données qui seront traitées par ce script. Théoriquement, il existe plusieurs façons de le faire :</p>
+<div class="Bd-indent">&#x2022; nous pouvons activer tous les événements dans le répertoire tracing/events/syscalls, mais cela représente plus de 600 syscalls, bien au-delà du nombre autorisé par perf. Ces événements syscall individuels seront cependant utiles si nous voulons plus tard utiliser les conseils obtenus à partir des scripts généraux pour approfondir et obtenir plus de détails sur les syscalls individuels intéressants.</div>
+<div class="Bd-indent">&#x2022; nous pouvons activer les syscalls sys_enter et/ou sys_exit trouvées sous tracing/events/raw_syscalls. Ceux-ci sont appelés pour toutes les syscalls ; le champ <i>id</i> peut être utilisé pour distinguer les numéros de syscall individuels.</div>
+<p class="Pp">Pour ce script, nous avons seulement besoin de savoir qu'une syscall a été entrée ; nous ne nous soucions pas de la façon dont elle est sortie, nous utiliserons donc <i>perf record</i> pour n'enregistrer que les événements sys_enter :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# perf record -a -e raw_syscalls:sys_enter
+^C[ perf record: Woken up 1 times to write data ]
+[ perf record: Captured and wrote 56.545 MB perf.data (~2470503 samples) ]
+.ft</pre>
+</div>
+<p class="Pp">Les options disent essentiellement de collecter des données pour chaque événement syscall dans tout le système et de multiplexer la sortie par cœur CPU en un seul flux. Ce flux unique sera enregistré dans un fichier dans le répertoire courant appelé perf.data.</p>
+<p class="Pp">Une fois que nous avons un fichier perf.data contenant nos données, nous pouvons utiliser l'option -g de <i>perf script</i> pour générer un script Python qui contiendra une fonction de rappel pour chaque type d'événement trouvé dans le flux de trace perf.data (pour plus de détails, voir la section SCRIPTS DE DÉMARRAGE).</p>
+<div class="Bd-indent">
+<pre>.ft C
+# perf script -g python
+generated Python script: perf-script.py
+The output file created also in the current directory is named
+perf-script.py.  Here's the file in its entirety:
+# perf script event handlers, generated by perf script -g python
+# Licensed under the terms of the GNU GPL License version 2
+# The common_* event handler fields are the most useful fields common to
+# all events.  They don't necessarily correspond to the 'common_*' fields
+# in the format files.  Those fields not available as handler params can
+# be retrieved using Python functions of the form common_*(context).
+# See the perf-script-python Documentation for the list of available functions.
+import os
+import sys
+sys.path.append(os.environ['PERF_EXEC_PATH'] + \
+        '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
+from perf_trace_context import *
+from Core import *
+def trace_begin():
+        print &quot;in trace_begin&quot;
+def trace_end():
+        print &quot;in trace_end&quot;
+def raw_syscalls__sys_enter(event_name, context, common_cpu,
+        common_secs, common_nsecs, common_pid, common_comm,
+        id, args):
+                print_header(event_name, common_cpu, common_secs, common_nsecs,
+                        common_pid, common_comm)
+                print &quot;id=%d, args=%s\n&quot; % \
+                (id, args),
+def trace_unhandled(event_name, context, event_fields_dict):
+                print ' '.join(['%s=%s'%(k,str(v))for k,v in sorted(event_fields_dict.items())])
+def print_header(event_name, cpu, secs, nsecs, pid, comm):
+        print &quot;%-20s %5u %05u.%09u %8u %-20s &quot; % \
+        (event_name, cpu, secs, nsecs, pid, comm),
+.ft</pre>
+</div>
+<p class="Pp">En haut se trouve un bloc de commentaires suivi de quelques instructions d'importation et d'une ajout de chemin que tous les scripts perf devraient inclure.</p>
+<p class="Pp">Après cela, il y a quelques fonctions générées, trace_begin() et trace_end(), qui sont appelées au début et à la fin du script respectivement (pour plus de détails, voir la section STRUCTURE_DU_SCRIPT ci-dessous).</p>
+<p class="Pp">Après celles-ci se trouvent les fonctions de <i>gestionnaire d'événements</i> générées pour chaque événement dans la sortie de <i>perf record</i>. Les fonctions de gestionnaire prennent la forme subsystem__event_name, et contiennent des paramètres nommés, un pour chaque champ de l'événement ; dans ce cas, il n'y a qu'un seul événement, raw_syscalls__sys_enter(). (voir la section GESTIONNAIRES D'ÉVÉNEMENTS ci-dessous pour plus d'informations sur les gestionnaires d'événements).</p>
+<p class="Pp">Les deux dernières fonctions sont, comme les fonctions begin et end, générées pour chaque script. La première, trace_unhandled(), est appelée chaque fois que le script trouve un événement dans le fichier perf.data qui ne correspond à aucun gestionnaire d'événements dans le script. Cela pourrait signifier soit que l'étape d'enregistrement a enregistré des types d'événements qui ne l'intéressaient pas vraiment, soit que le script a été exécuté sur un fichier de trace qui ne correspond pas au script.</p>
+<p class="Pp">Le script généré par l'option -g imprime simplement une ligne pour chaque événement trouvé dans le flux de trace, c'est-à-dire qu'il affiche essentiellement l'événement et ses valeurs de paramètres sur la sortie standard. La fonction print_header() est simplement une fonction utilitaire utilisée à cette fin. Renommons le script et exécutons-le pour voir la sortie par défaut :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# mv perf-script.py syscall-counts.py
+# perf script -s syscall-counts.py
+raw_syscalls__sys_enter     1 00840.847582083     7506 perf                  id=1, args=
+raw_syscalls__sys_enter     1 00840.847595764     7506 perf                  id=1, args=
+raw_syscalls__sys_enter     1 00840.847620860     7506 perf                  id=1, args=
+raw_syscalls__sys_enter     1 00840.847710478     6533 npviewer.bin          id=78, args=
+raw_syscalls__sys_enter     1 00840.847719204     6533 npviewer.bin          id=142, args=
+raw_syscalls__sys_enter     1 00840.847755445     6533 npviewer.bin          id=3, args=
+raw_syscalls__sys_enter     1 00840.847775601     6533 npviewer.bin          id=3, args=
+raw_syscalls__sys_enter     1 00840.847781820     6533 npviewer.bin          id=3, args=
+.
+.
+.
+.ft</pre>
+</div>
+<p class="Pp">Bien sûr, pour ce script, nous ne sommes pas intéressés par l'impression de chaque événement de trace, mais plutôt par son agrégation d'une manière utile. Nous allons donc nous débarrasser de tout ce qui concerne l'impression ainsi que des fonctions trace_begin() et trace_unhandled(), que nous n'utiliserons pas. Cela nous laisse avec ce squelette minimaliste :</p>
+<div cla
+ss="Bd-indent">
+<pre>.ft C
+import os
+import sys
+sys.path.append(os.environ['PERF_EXEC_PATH'] + \
+        '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
+from perf_trace_context import *
+from Core import *
+def trace_end():
+        print "dans trace_end"
+def raw_syscalls__sys_enter(event_name, context, common_cpu,
+        common_secs, common_nsecs, common_pid, common_comm,
+        id, args):
+.ft</pre>
+</div>
+<p class="Pp">Dans trace_end(), nous allons simplement afficher les résultats, mais
+    avant cela, nous devons générer quelques résultats à afficher. Pour ce faire,
+    nous devons faire en sorte que notre gestionnaire sys_enter() effectue le
+    comptage nécessaire jusqu'à ce que tous les événements aient été comptés. Une
+    table de hachage indexée par l'ID de l'appel système est un bon moyen de
+    stocker ces informations ; chaque fois que le gestionnaire sys_enter() est
+    appelé, nous incrémentons simplement un compteur associé à cette entrée de
+    hachage indexée par cet ID d'appel système :</p>
+<div class="Bd-indent">
+<pre>.ft C
+  syscalls = autodict()
+  try:
+    syscalls[id] += 1
+  except TypeError:
+    syscalls[id] = 1
+.ft</pre>
+</div>
+<p class="Pp">L'objet <i>autodict</i> des appels système est un type spécial de
+    dictionnaire Python (implémenté dans Core.py) qui implémente les hachages
+    autovivifiants de Perl en Python, c'est-à-dire qu'avec les hachages
+    autovivifiants, vous pouvez affecter des valeurs de hachage imbriquées sans
+    avoir à créer les niveaux intermédiaires s'ils n'existent pas, par exemple
+    syscalls[comm][pid][id] = 1 créera les niveaux de hachage intermédiaires et
+    affectera finalement la valeur 1 à l'entrée de hachage pour <i>id</i> (car
+    la valeur affectée n'est pas un objet de hachage en soi, la valeur initiale
+    est affectée dans l'exception TypeError. Eh bien, il existe peut-être une
+    meilleure façon de faire cela en Python, mais c'est ce qui fonctionne pour
+    l'instant).</p>
+<p class="Pp">En intégrant ce code dans le gestionnaire
+    raw_syscalls__sys_enter(), nous obtenons effectivement un dictionnaire à
+    un seul niveau indexé par l'ID de l'appel système et dont les valeurs sont
+    les compteurs que nous avons totalisés.</p>
+<p class="Pp">La fonction print_syscall_totals() itère sur les entrées du
+    dictionnaire et affiche une ligne pour chaque entrée contenant le nom de
+    l'appel système (les clés du dictionnaire contiennent les ID des appels
+    système, qui sont passés à la fonction Util syscall_name(), qui traduit les
+    numéros bruts des appels système en chaînes de noms d'appels système
+    correspondants). La sortie est affichée après que tous les événements du
+    trace aient été traités, en appelant la fonction print_syscall_totals() depuis
+    le gestionnaire trace_end() appelé à la fin du traitement du script.</p>
+<p class="Pp">Le script final produisant la sortie montrée ci-dessus est présenté
+    en entier ci-dessous (la fonction d'aide syscall_name() n'est pas encore
+    disponible, vous ne pouvez manipuler que les ID pour le moment) :</p>
+<div class="Bd-indent">
+<pre>.ft C
+import os
+import sys
+sys.path.append(os.environ['PERF_EXEC_PATH'] + \
+        '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
+from perf_trace_context import *
+from Core import *
+from Util import *
+syscalls = autodict()
+def trace_end():
+        print_syscall_totals()
+def raw_syscalls__sys_enter(event_name, context, common_cpu,
+        common_secs, common_nsecs, common_pid, common_comm,
+        id, args):
+        try:
+                syscalls[id] += 1
+        except TypeError:
+                syscalls[id] = 1
+def print_syscall_totals():
+    if for_comm is not None:
+            print "\nsyscall events for %s:\n\n" % (for_comm),
+    else:
+            print "\nsyscall events:\n\n",
+    print "%-40s  %10s\n" % ("event", "count"),
+    print "%-40s  %10s\n" % ("----------------------------------------", \
+                                 "-----------"),
+    for id, val in sorted(syscalls.iteritems(), key = lambda(k, v): (v, k), \
+                                  reverse = True):
+            print "%-40s  %10d\n" % (syscall_name(id), val),
+.ft</pre>
+</div>
+<p class="Pp">Le script peut être exécuté comme auparavant :</p>
+<div class="Bd-indent">
+<pre># perf script -s syscall-counts.py</pre>
+</div>
+<p class="Pp">Ce sont donc les étapes essentielles pour écrire et exécuter un
+    script. Le processus peut être généralisé à n'importe quel point de trace ou
+    ensemble de points de trace qui vous intéressent - trouvez essentiellement le
+    point de trace (les points de trace) qui vous intéressent en consultant la
+    liste des événements disponibles montrée par <i>perf list</i> et/ou en
+    consultant /sys/kernel/tracing/events/ pour des informations détaillées sur les
+    événements et les champs, enregistrez les données de trace correspondantes en
+    utilisant <i>perf record</i>, en lui passant la liste des événements
+    intéressants, générez un script squelette en utilisant <i>perf script -g
+    python</i> et modifiez le code pour agréger et afficher les données pour vos
+    besoins particuliers.</p>
+<p class="Pp">Après avoir fait cela, vous pourriez vous retrouver avec un script
+    généraliste que vous souhaitez conserver et avoir à disposition pour une
+    utilisation future. En écrivant quelques scripts shell très simples et en les
+    plaçant au bon endroit, vous pouvez faire apparaître votre script aux côtés des
+    autres scripts listés par la commande <i>perf script -l</i>, par exemple :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# perf script -l
+List of available trace scripts:
+  wakeup-latency                       system-wide min/max/avg wakeup latency
+  rw-by-file &lt;comm&gt;                    r/w activity for a program, by file
+  rw-by-pid                            system-wide r/w activity
+.ft</pre>
+</div>
+<p class="Pp">Un effet secondaire agréable de cela est que vous capturez également
+    la commande <i>perf record</i>, probablement longue, nécessaire pour
+    enregistrer les événements pour le script.</p>
+<p class="Pp">Pour que le script apparaisse comme un script <i>intégré</i>, vous
+    écrivez deux scripts simples, un pour l'enregistrement et un pour le
+    <i>rapport</i>.</p>
+<p class="Pp">Le script <i>record</i> est un script shell portant le même nom de base
+    que votre script, mais avec -record ajouté. Le script shell doit être placé
+    dans le répertoire perf/scripts/python/bin de l'arborescence source du noyau.
+    Dans ce script, vous écrivez la ligne de commande <i>perf record</i> nécessaire
+    pour votre script :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# cat kernel-source/tools/perf/scripts/python/bin/syscall-counts-record
+#!/bin/bash
+perf record -a -e raw_syscalls:sys_enter
+.ft</pre>
+</div>
+<p class="Pp">Le script <i>report</i> est également un script shell portant le même
+    nom de base que votre script, mais avec -report ajouté. Il doit également être
+    situé dans le répertoire perf/scripts/python/bin. Dans ce script, vous écrivez
+    la ligne de commande <i>perf script -s</i> nécessaire pour exécuter votre
+    script :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# cat kernel-source/tools/perf/scripts/python/bin/syscall-counts-report
+#!/bin/bash
+# description: system-wide syscall counts
+perf script -s ~/libexec/perf-core/scripts/python/syscall-counts.py
+.ft</pre>
+</div>
+<p class="Pp">Notez que l'emplacement du script Python indiqué dans le script shell
+    se trouve dans le répertoire libexec/perf-core/scripts/python - c'est là que
+    le script sera copié par <i>make install</i> lorsque vous installerez perf.
+    Pour que l'installation copie votre script là-bas, votre script doit être
+    situé dans le répertoire perf/scripts/python de l'arborescence source du
+    noyau :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# ls -al kernel-source/tools/perf/scripts/python
+total 32
+drwxr-xr-x 4 trz trz 4096 2010-01-26 22:30 .
+drwxr-xr-x 4 trz trz 4096 2010-01-26 22:29 ..
+drwxr-xr-x 2 trz trz 4096 2010-01-26 22:29 bin
+-rw-r--r-- 1 trz trz 2548 2010-01-26 22:29 check-perf-script.py
+drwxr-xr-x 3 trz trz 4096 2010-01-26 22:49 Perf-Trace-Util
+-rw-r--r-- 1 trz trz 1462 2010-01-26 22:30 syscall-counts.py
+.ft</pre>
+</div>
+<p class="Pp">Une fois que vous avez fait cela (n'oubliez pas de refaire un
+    <i>make install</i>, sinon votre script n'apparaîtra pas à l'exécution),
+    <i>perf script -l</i> devrait afficher une nouvelle entrée pour votre
+    script :</p>
+<div class="Bd-indent">
+<pre>.ft C
+# perf script -l
+List of available trace scripts:
+  wakeup-latency                       system-wide min/max/avg wakeup latency
+  rw-by-file &lt;comm&gt;                    r/w activity for a program, by file
+  rw-by-pid                            system-wide r/w activity
+  syscall-counts                       system-wide syscall counts
+.ft</pre>
+</div>
+<p class="Pp">Vous pouvez maintenant effectuer l'étape d'enregistrement via <i>perf
+    script record</i> :</p>
+<div class="Bd-indent">
+<pre># perf script record syscall-counts</pre>
+</div>
+<p class="Pp">et afficher la sortie en utilisant <i>perf script report</i> :</p>
+<div class="Bd-indent">
+<pre># perf script report syscall-counts</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='STARTER_SCRIPTS'><a class='permalink' href='#STARTER_SCRIPTS'>SCRIPTS   DÉMARREURS</a></h1>
+<p class="Pp">Vous pouvez rapidement commencer à écrire un script pour un ensemble
+    particulier de données de trace en générant un script squelette à l'aide de
+    <i>perf script -g python</i> dans le même répertoire qu'un fichier de trace
+    perf.data existant. Cela générera un script de démarrage contenant un gestionnaire
+    pour chaque type d'événement dans le fichier de trace ; il affiche simplement
+    tous les champs disponibles pour chaque événement du fichier de trace.</p>
+<p class="Pp">Vous pouvez également consulter les scripts existants dans
+    ~/libexec/perf-core/scripts/python pour des exemples typiques montrant comment
+    effectuer des opérations de base comme agréger des données d'événements, afficher
+    des résultats, etc. De plus, le script check-perf-script.py, bien qu'il ne soit
+    pas intéressant pour ses résultats, tente d'exercer toutes les fonctionnalités
+    principales de scripting.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EVENT_HANDLERS'><a class='permalink' href='#EVENT_HANDLERS'>GESTIONNAIRES   D'ÉVÉNEMENTS</a></h1>
+<p class="Pp">Lorsque perf script est appelé en utilisant un script de trace, une
+    <i>fonction de gestionnaire</i> définie par l'utilisateur est appelée pour
+    chaque événement dans la trace. S'il n'y a pas de fonction de gestionnaire
+    définie pour un type d'événement donné, l'événement est ignoré (ou passé à une
+    fonction <i>trace_unhandled</i>, voir ci-dessous) et l'événement suivant est
+    traité.</p>
+<p class="Pp">La plupart des valeurs de champs des événements sont passées comme
+    arguments à la fonction de gestionnaire ; certains des moins courants ne le sont
+    pas - ceux-ci sont disponibles via des appels vers l'exécutable perf (voir ci-dessous).</p>
+<p class="Pp">Par exemple, la commande perf record suivante peut être utilisée pour
+    enregistrer tous les événements sched_wakeup du système :</p>
+<div class="Bd-indent">
+<pre># perf record -a -e sched:sched_wakeup</pre>
+</div>
+<p class="Pp">Les traces destinées à être traitées à l'aide d'un script doivent être
+    enregistrées avec l'option ci-dessus : -a pour activer la collecte à l'échelle
+    du système.</p>
+<p class="Pp">Le fichier de format pour l'événement sched_wakeup définit les champs
+    suivants (voir /sys/kernel/tracing/events/sched/sched_wakeup/format) :</p>
+<div class="Bd-indent">
+<pre>.ft C
+ format:
+        field:unsigned short common_type;
+        field:unsigned char common_flags;
+        field:unsigned char common_preempt_count;
+        field:int common_pid;
+        field:char comm[TASK_COMM_LEN];
+        field:pid_t pid;
+        field:int prio;
+        field:int success;
+        field:int target_cpu;
+.ft</pre>
+</div>
+<p class="Pp">La fonction de gestionnaire pour cet événement serait définie comme :</p>
+<div class="Bd-indent">
+<pre>.ft C
+def sched__sched_wakeup(event_name, context, common_cpu, common_secs,
+       common_nsecs, common_pid, common_comm,
+       comm, pid, prio, success, target_cpu):
+       pass
+.ft</pre>
+</div>
+<p class="Pp">Le gestionnaire prend la forme sous-système__nom_événement.</p>
+<p class="Pp">Les arguments common_* dans la liste des arguments du gestionnaire sont
+    l'ensemble des arguments passés à tous les gestionnaires d'événements ; certains des
+    champs correspondent aux champs common_* dans le fichier de format, mais certains
+    sont synthétisés, et certains des champs common_* ne sont pas assez communs pour être
+    passés à chaque événement comme arguments mais sont disponibles en tant que fonctions
+    de bibliothèque.</p>
+<p class="Pp">Voici une brève description de chacun des arguments d'événement
+    invariants :</p>
+<div class="Bd-indent">
+<pre>event_name                 </pre>
+</div>
+le nom de l'événement sous forme de texte
+contexte                    un 'cookie' opaque utilisé dans les rappels vers perf
+common_cpu                 le cpu sur lequel l'événement s'est produit
+common_secs                la partie secondes de l'horodatage de l'événement
+common_nsecs               la partie nanosecondes de l'horodatage de l'événement
+common_pid                 le pid de la tâche courante
+common_comm                le nom du processus courant</pre>
+</div>
+<p class="Pp">Tous les champs restants dans le fichier de format de l'événement
+    ont des homologues en tant qu'arguments de fonction de gestionnaire du même
+    nom, comme on peut le voir dans l'exemple ci-dessus.</p>
+<p class="Pp">Ce qui précède fournit les bases nécessaires pour accéder
+    directement à chaque champ de chaque événement dans un trace, ce qui
+    couvre 90 % de ce que vous devez savoir pour écrire un script de trace
+    utile. Les sections ci-dessous couvrent le reste.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SCRIPT_LAYOUT'><a class='permalink' href='#SCRIPT_LAYOUT'>MISE   EN PAGE DU SCRIPT</a></h1>
+<p class="Pp">Chaque script Python de script perf doit commencer par configurer un
+    chemin de recherche de modules Python et importer quelques modules de
+    support (voir les descriptions des modules ci-dessous) :</p>
+<div class="Bd-indent">
+<pre>.ft C
+ import os
+ import sys
+ sys.path.append(os.environ['PERF_EXEC_PATH'] + \
+              '/scripts/python/Perf-Trace-Util/lib/Perf/Trace')
+ from perf_trace_context import *
+ from Core import *
+.ft</pre>
+</div>
+<p class="Pp">Le reste du script peut contenir des fonctions de gestionnaire et
+    des fonctions de support dans n'importe quel ordre.</p>
+<p class="Pp">Outre les fonctions de gestionnaire d'événements discutées
+    ci-dessus, chaque script peut implémenter un ensemble de fonctions
+    facultatives :</p>
+<p class="Pp"><b>trace_begin</b>, si défini, est appelé avant le traitement de
+    tout événement et donne aux scripts une chance d'effectuer des tâches de
+    configuration :</p>
+<div class="Bd-indent">
+<pre>.ft C
+def trace_begin():
+    pass
+.ft</pre>
+</div>
+<p class="Pp"><b>trace_end</b>, si défini, est appelé après le traitement de tous
+    les événements et donne aux scripts une chance d'effectuer des tâches de fin
+    de script, telles que l'affichage des résultats :</p>
+<div class="Bd-indent">
+<pre>.ft C
+def trace_end():
+    pass
+.ft</pre>
+</div>
+<p class="Pp"><b>trace_unhandled</b>, si défini, est appelé pour tout événement pour
+    lequel aucun gestionnaire n'est explicitement défini. L'ensemble standard
+    d'arguments courants lui est passé :</p>
+<div class="Bd-indent">
+<pre>.ft C
+def trace_unhandled(event_name, context, event_fields_dict):
+    pass
+.ft</pre>
+</div>
+<p class="Pp"><b>process_event</b>, si défini, est appelé pour tout événement
+    autre qu'un point de trace</p>
+<div class="Bd-indent">
+<pre>.ft C
+def process_event(param_dict):
+    pass
+.ft</pre>
+</div>
+<p class="Pp"><b>context_switch</b>, si défini, est appelé pour chaque changement
+    de contexte</p>
+<div class="Bd-indent">
+<pre>.ft C
+def context_switch(ts, cpu, pid, tid, np_pid, np_tid, machine_pid, out, out_preempt, *x):
+    pass
+.ft</pre>
+</div>
+<p class="Pp"><b>auxtrace_error</b>, si défini, est appelé pour toute erreur de
+    trace de zone AUX</p>
+<div class="Bd-indent">
+<pre>.ft C
+def auxtrace_error(typ, code, cpu, pid, tid, ip, ts, msg, cpumode, *x):
+    pass
+.ft</pre>
+</div>
+<p class="Pp">Les sections suivantes décrivent chacun des modules Python de
+    scripts perf intégrés disponibles et leurs fonctions associées.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AVAILABLE_MODULES_AND_FUNCTIONS'><a class='permalink' href='#AVAILABLE_MODULES_AND_FUNCTIONS'>MODULES ET FONCTIONS DISPONIBLES</a></h1>
+<p class="Pp">Les sections suivantes décrivent les fonctions et variables
+    disponibles via les différents modules Python de script perf. Pour utiliser
+    les fonctions et variables du module donné, ajoutez la ligne <i>from XXXX
+    import</i> correspondante à votre script de script perf.</p>
+<section class="Ss">
+<h2 class="Ss" id='Core.py_Module'><a class='permalink' href='#Core.py_Module'>Module Core.py</a></h2>
+<p class="Pp">Ces fonctions fournissent quelques fonctions essentielles aux
+    scripts utilisateur.</p>
+<p class="Pp">Les fonctions <b>flag_str</b> et <b>symbol_str</b> fournissent
+    des chaînes de caractères lisibles par l'homme pour les champs de drapeau et
+    symboliques. Celles-ci correspondent aux chaînes et valeurs analysées à
+    partir des champs <i>print fmt</i> des fichiers de format d'événement :</p>
+<div class="Bd-indent">
+<pre>flag_str(event_name, field_name, field_value) - retourne la représentation textuelle correspondant à field_value pour le champ de drapeau field_name de l'événement event_name
+symbol_str(event_name, field_name, field_value) - retourne la représentation textuelle correspondant à field_value pour le champ symbolique field_name de l'événement event_name</pre>
+</div>
+<p class="Pp">La fonction <b>autodict</b> renvoie un type spécial de dictionnaire
+    Python qui implémente les hachages <i>autovivifiants</i> de Perl en Python,
+    c'est-à-dire qu'avec les hachages autovivifiants, vous pouvez attribuer des
+    valeurs de hachage imbriquées sans avoir à vous soucier de créer des niveaux
+    intermédiaires s'ils n'existent pas.</p>
+<div class="Bd-indent">
+<pre>autodict() - retourne une instance de dictionnaire autovivifiant</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='perf_trace_context_Module'><a class='permalink' href='#perf_trace_context_Module'>Module perf_trace_context</a></h2>
+<p class="Pp">Certains des champs <i>communs</i> du fichier de format d'événement
+    ne sont pas si communs, mais doivent néanmoins être rendus accessibles aux
+    scripts utilisateur.</p>
+<p class="Pp">perf_trace_context définit un ensemble de fonctions qui peuvent être
+    utilisées pour accéder à ces données dans le contexte de l'événement
+    courant. Chacune de ces fonctions attend une variable de contexte, qui est la
+    même que la variable de contexte passée à chaque gestionnaire d'événement
+    tracepoint comme deuxième argument. Pour les événements non-tracepoint, la
+    variable de contexte est également présente sous le nom
+    perf_trace_context.perf_script_context.</p>
+<div class="Bd-indent">
+<pre>common_pc(context) - retourne le nombre de préemptions communes pour l'événement courant
+common_flags(context) - retourne les drapeaux communs pour l'événement courant
+common_lock_depth(context) - retourne la profondeur de verrouillage commune pour l'événement courant
+perf_sample_insn(context) - retourne l'instruction de code machine
+perf_set_itrace_options(context, itrace_options) - définit les options --itrace si elles n'ont pas déjà été définies
+perf_sample_srcline(context) - retourne le nom du fichier source, le numéro de ligne
+perf_sample_srccode(context) - retourne le nom du fichier source, le numéro de ligne, la ligne source
+perf_config_get(config_name) - retourne la valeur de l'élément de configuration nommé, ou None s'il n'est pas défini</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Util.py_Module'><a class='permalink' href='#Util.py_Module'>Module Util.py</a></h2>
+<p class="Pp">Diverses fonctions utilitaires à utiliser avec perf script :</p>
+<div class="Bd-indent">
+<pre>nsecs(secs, nsecs) - retourne le nombre total de nanosecondes étant donné une paire secondes/nanosecondes
+nsecs_secs(nsecs) - retourne la partie entière des secondes étant donné des nanosecondes
+nsecs_nsecs(nsecs) - retourne le reste des nanosecondes étant donné des nanosecondes
+nsecs_str(nsecs) - retourne une chaîne imprimable sous la forme secondes.nanosecondes
+avg(total, n) - retourne la moyenne étant donné une somme et un nombre total de valeurs</pre>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SUPPORTED_FIELDS'><a class='permalink' href='#SUPPORTED_FIELDS'>CHAMPS SUPPORTÉS</a></h1>
+<p class="Pp">Champs actuellement supportés :</p>
+<p class="Pp">ev_name, comm, id, stream_id, pid, tid, cpu, ip, time, period,
+    phys_addr, addr, symbol, symoff, dso, time_enabled, time_running, values,
+    callchain, brstack, brstacksym, datasrc, datasrc_decode, iregs, uregs,
+    weight, transaction, raw_buf, attr, cpumode.</p>
+<p class="Pp">Champs qui peuvent également être présents :</p>
+<div class="Bd-indent">
+<pre>flags - drapeaux d'échantillon
+flags_disp - affichage des drapeaux d'échantillon
+insn_cnt - nombre d'instructions pour déterminer les instructions par cycle (IPC)
+cyc_cnt - nombre de cycles pour déterminer l'IPC
+addr_correlates_sym - addr peut être corrélé à un symbole
+addr_dso - addr dso
+addr_symbol - addr symbole
+addr_symoff - addr décalage de symbole</pre>
+</div>
+<p class="Pp">Certains champs ont des sous-éléments :</p>
+<p class="Pp">brstack: from, to, from_dsoname, to_dsoname, mispred, predicted,
+    in_tx, abort, cycles.</p>
+<p class="Pp">brstacksym: items: from, to, pred, in_tx, abort (converti en
+  chaîne)</p>
+<p class="Pp">Par exemple, nous pouvons utiliser ce code pour imprimer les champs
+    &quot;from&quot;, &quot;to&quot;, &quot;cycles&quot; de brstack.</p>
+<p class="Pp">if <i>brstack</i> in dict: for entry in dict[<i>brstack</i>]:
+    print &quot;from %s, to %s, cycles %s&quot; % (entry[&quot;from&quot;],
+    entry[&quot;to&quot;], entry[&quot;cycles&quot;])</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/perf-script.1.en'>perf-script(1)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2024-09-24</td>
+    <td class="foot-os">perf</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/perf/">extra/perf</a></dd>
+        <dt>Version :</dt>
+        <dd>6.17-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.kernel.org">https://www.kernel.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/perf/">/listing/extra/perf/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTHÈSE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#A_QUICK_EXAMPLE">UN EXEMPLE RAPIDE</a></li>
+        
+            <li><a href="#STARTER_SCRIPTS">SCRIPTS DE DÉMARRAGE</a></li>
+        
+            <li><a href="#EVENT_HANDLERS">GESTIONNAIRES D'ÉVÉNEMENTS</a></li>
+        
+            <li><a href="#SCRIPT_LAYOUT">MISE EN PAGE DU SCRIPT</a></li>
+        
+            <li><a href="#AVAILABLE_MODULES_AND_FUNCTIONS">MODULES ET FONCTIONS DISPONIBLES</a></li>
+        
+            <li><a href="#SUPPORTED_FIELDS">CHAMPS SUPPORTÉS</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perf-script-python.1.en.txt">txt</a>, 
+        
+            <a href="/man/perf-script-python.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

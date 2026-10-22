@@ -1,0 +1,2718 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>xtrabackup(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">xtrabackup(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/xtrabackup/">xtrabackup</a></p>
+<p class="lic">Licences: GPL-2.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">XTRABACKUP(1)</td>
+    <td class="head-vol">Percona XtraBackup</td>
+    <td class="head-rtitle">XTRABACKUP(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">xtrabackup - Documentation Percona XtraBackup 8.0</p>
+<p class="Pp">Le binaire <i>xtrabackup</i> est un programme C compilé, lié aux
+    bibliothèques <i>InnoDB</i> et aux bibliothèques client standard de
+    <i>MySQL</i>.</p>
+<p class="Pp"><i>xtrabackup</i> permet de réaliser des sauvegardes à un instant
+    donné des tables <i>InnoDB</i> / <i>XtraDB</i>, ainsi que des définitions
+    de schéma, des tables <i>MyISAM</i> et d'autres parties du serveur.</p>
+<p class="Pp">Les bibliothèques <i>InnoDB</i> fournissent la fonctionnalité
+    d'application d'un journal aux fichiers de données. Les bibliothèques client
+    <i>MySQL</i> sont utilisées pour analyser les options de ligne de commande et
+    les fichiers de configuration.</p>
+<p class="Pp">L'outil fonctionne soit en mode <b>--backup</b>, soit en mode
+    <b>--prepare</b>, correspondant aux deux fonctions principales qu'il
+    exécute. Il existe plusieurs variations de ces fonctions pour accomplir
+    différentes tâches, ainsi que deux modes moins couramment utilisés :
+    <b>--stats</b> et <b>--print-param</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTRES_TYPES_DE_SAUVEGARDES'><a class='permalink' href='#AUTRES_TYPES_DE_SAUVEGARDES'>AUTRES TYPES DE SAUVEGARDES</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Sauvegardes_Incementielles'><a class='permalink' href='#Sauvegardes_Incementielles'>Sauvegardes Incementielles</a></h2>
+<p class="Pp"><i>xtrabackup</i> prend en charge les sauvegardes incrémentielles.
+    Il ne copie que les données qui ont changé depuis la dernière sauvegarde
+    complète. Vous pouvez effectuer plusieurs sauvegardes incrémentielles entre
+    chaque sauvegarde complète, vous permettant ainsi de mettre en place un
+    processus de sauvegarde tel qu'une sauvegarde complète une fois par semaine et
+    une sauvegarde incrémentielle tous les jours, ou des sauvegardes complètes
+    tous les jours et des sauvegardes incrémentielles toutes les heures.</p>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Les sauvegardes incrémentielles sur le moteur de stockage
+  MyRocks ne déterminent pas si une sauvegarde complète ou incrémentielle
+  précédente contient les mêmes fichiers. <b>Percona XtraBackup</b> copie tous les
+  fichiers MyRocks chaque fois qu'il effectue une sauvegarde.</div>
+</div>
+<p class="Pp">Les sauvegardes incrémentielles fonctionnent car chaque page
+    <i>InnoDB</i> (généralement de 16 Ko) contient un numéro de séquence de
+    journal, ou LSN. Le LSN est le numéro de version du système pour l'ensemble
+    de la base de données. Le LSN de chaque page indique à quel point elle a été
+    modifiée récemment. Une sauvegarde incrémentielle copie chaque page dont le
+    LSN est plus récent que le LSN de la sauvegarde incrémentielle ou complète
+    précédente. Deux algorithmes sont utilisés pour trouver l'ensemble des pages
+    à copier. Le premier, disponible avec tous les types et versions de serveur,
+    consiste à vérifier directement le LSN de la page en lisant toutes les pages
+    de données. Le second, disponible avec <i>Percona Server for MySQL</i>, consiste
+    à activer la fonctionnalité de <i>suivi des pages modifiées</i> sur le serveur,
+    qui notera les pages au fur et à mesure de leur modification. Ces informations
+    seront ensuite écrites dans un fichier séparé compact, appelé fichier bitmap.
+    Le binaire <i>xtrabackup</i> utilisera ce fichier pour ne lire que les pages
+    de données nécessaires à la sauvegarde incrémentielle, économisant potentiellement
+    de nombreuses requêtes de lecture. Ce dernier algorithme est activé par défaut
+    si le binaire <i>xtrabackup</i> trouve le fichier bitmap. Il est possible de
+    spécifier <b>--incremental-force-scan</b> pour lire toutes les pages même si
+    les données du bitmap sont disponibles.</p>
+<p class="Pp">Les sauvegardes incrémentielles ne comparent pas réellement les
+    fichiers de données avec les fichiers de la sauvegarde précédente. En fait,
+    vous pouvez utiliser <b>--incremental-lsn</b> pour effectuer une sauvegarde
+    incrémentielle sans même avoir la sauvegarde précédente, si vous connaissez son
+    LSN. Les sauvegardes incrémentielles lisent simplement les pages et comparent
+    leur LSN à celui de la dernière sauvegarde. Cependant, vous avez toujours besoin
+    d'une sauvegarde complète pour restaurer les modifications incrémentielles ;
+    sans sauvegarde complète comme base, les sauvegardes incrémentielles sont
+    inutiles.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Création_dune_Sauvegarde_Incrémentielle'><a class='permalink' href='#Création_dune_Sauvegarde_Incrémentielle'>Création dune Sauvegarde Incrémentielle</a></h2>
+<p class="Pp">Pour créer une sauvegarde incrémentielle, commencez par une sauvegarde
+    complète comme d'habitude. Le binaire <i>xtrabackup</i> écrit un fichier
+    appelé <b>xtrabackup_checkpoints</b> dans le répertoire cible de la
+    sauvegarde. Ce fichier contient une ligne indiquant le <b>to_lsn</b>, qui est
+    le LSN de la base de données à la fin de la sauvegarde. Créez la sauvegarde
+    complète avec une commande telle que la suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --target-dir=/data/backups/base --datadir=/var/lib/mysql/</pre>
+</div>
+</div>
+<p class="Pp">Si vous examinez le fichier <b>xtrabackup_checkpoints</b>, vous
+    devriez voir un contenu similaire à ce qui suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>backup_type = full-backuped
+from_lsn = 0
+to_lsn = 1291135</pre>
+</div>
+</div>
+<p class="Pp">Maintenant que vous avez une sauvegarde complète, vous pouvez en
+    créer une sauvegarde incrémentielle basée sur celle-ci. Utilisez une commande
+    telle que la suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --target-dir=/data/backups/inc1 \
+--incremental-basedir=/data/backups/base --datadir=/var/lib/mysql/</pre>
+</div>
+</div>
+<p class="Pp">Le répertoire <b>/data/backups/inc1/</b> devrait maintenant
+    contenir des fichiers delta, tels que <b>ibdata1.delta</b> et
+    <b>test/table1.ibd.delta</b>. Ceux-ci représentent les changements depuis
+    le <b>LSN 1291135</b>. Si vous examinez le fichier
+    <b>xtrabackup_checkpoints</b> dans ce répertoire, vous devriez voir quelque
+    chose de similaire à ce qui suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>backup_type = incremental
+from_lsn = 1291135
+to_lsn = 1291340</pre>
+</div>
+</div>
+<p class="Pp">La signification devrait être évidente. Il est maintenant possible
+    d'utiliser ce répertoire comme base pour une autre sauvegarde incrémentielle :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --target-dir=/data/backups/inc2 \
+--incremental-basedir=/data/backups/inc1 --datadir=/var/lib/mysql/</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Préparation_des_Sauvegardes_Incrémentielles'><a class='permalink' href='#Préparation_des_Sauvegardes_Incrémentielles'>Préparation des Sauvegardes Incrémentielles</a></h2>
+<p class="Pp">L'étape <b>--prepare</b> pour les sauvegardes incrémentielles n'est
+    pas la même que pour les sauvegardes normales. Dans les sauvegardes normales,
+    deux types d'opérations sont effectués pour rendre la base de données cohérente
+    : les transactions validées sont rejouées à partir du fichier journal sur les
+    fichiers de données, et les transactions non validées sont annulées. Vous devez
+    sauter l'annulation des transactions non validées lors de la préparation d'une
+    sauvegarde, car les transactions qui étaient non validées au moment de votre
+    sauvegarde peuvent être en cours, et il est probable qu'elles seront validées
+    dans la prochaine sauvegarde incrémentielle. Vous devriez utiliser l'option
+    <b>--apply-log-only</b> pour empêcher la phase d'annulation.</p>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Si vous n'utilisez pas l'option <b>--apply-log-only</b>
+  pour empêcher la phase d'annulation, vos sauvegardes incrémentielles seront
+  inutiles. Après l'annulation des transactions, les sauvegardes incrémentielles
+  ultérieures ne pourront pas être appliquées.</div>
+</div>
+<p class="Pp">En commençant par la sauvegarde complète que vous avez créée, vous
+    pouvez la préparer, puis y appliquer les différences incrémentielles. Rappelez-vous
+    que vous avez les sauvegardes suivantes :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>/data/backups/base
+/data/backups/inc1
+/data/backups/inc2</pre>
+</div>
+</div>
+<p class="Pp">Pour préparer la sauvegarde de base, vous devez exécuter
+    <b>--prepare</b> comme d'habitude, mais empêcher la phase d'annulation :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>xtrabackup --prepare --apply-log-only --target-dir=/data/backups/base</pre>
+</div>
+</div>
+<p class="Pp">La sortie devrait se terminer par un texte tel que le suivant :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>101107 20:49:43  InnoDB: Shutdown completed; log sequence number 1291135</pre>
+</div>
+</div>
+<p class="Pp">Le numéro de séquence du journal devrait correspondre au
+    <b>to_lsn</b> de la sauvegarde de base, que vous avez vu précédemment.</p>
+<p class="Pp">Cette sauvegarde est en fait sûre à restaurer telle quelle maintenant,
+    même si la phase d'annulation a été sautée. Si vous la restaurez et démarrez
+    <i>MySQL</i>, <i>InnoDB</i> détectera que la phase d'annulation n'a pas été
+    effectuée, et le fera en arrière-plan, comme il le fait habituellement pour une
+    récupération après incident au démarrage. Il vous notifiera que la base de
+    données n'a pas été arrêtée normalement.</p>
+<p class="Pp">Pour appliquer la première sauvegarde incrémentielle à la sauvegarde
+    complète, vous devriez utiliser la commande suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>xtrabackup --prepare --apply-log-only --target-dir=/data/backups/base \
+--incremental-dir=/data/backups/inc1</pre>
+</div>
+</div>
+<p class="Pp">Cela applique les fichiers delta aux fichiers dans
+    <b>/data/backups/base</b>, les faisant avancer dans le temps jusqu'au moment
+    de la sauvegarde incrémentielle. Il applique ensuite le journal de rejeu comme
+    d'habitude au résultat. Les données finales se trouvent dans
+    <b>/data/backups/base</b>, pas dans le répertoire incrémentiel. Vous devriez
+    voir une sortie similaire à la suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>incremental backup from 1291135 is enabled.
+xtrabackup: cd to /data/backups/base/
+xtrabackup: This target seems to be already prepared.
+xtrabackup: xtrabackup_logfile detected: size=2097152, start_lsn=(1291340)
+Applying /data/backups/inc1/ibdata1.delta ...
+Applying /data/backups/inc1/test/table1.ibd.delta ...
+.... snip
+101107 20:56:30  InnoDB: Shutdown completed; log sequence number 1291340</pre>
+</div>
+</div>
+<p class="Pp">Encore une fois, le LSN devrait correspondre à ce que vous avez vu
+    lors de votre inspection précédente de la première sauvegarde incrémentielle.
+    Si vous restaurez les fichiers de <b>/data/backups/base</b>, vous devriez voir
+    l'état des données</p>
+</div>
+</section>
+</section>
+
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+base comme point de départ
+    la première sauvegarde incrémentielle.</p>
+<p class="Pp">La préparation de la deuxième sauvegarde incrémentielle est un processus similaire :
+    appliquez les deltas à la sauvegarde de base (modifiée), et vous ferez avancer ses données
+    dans le temps jusqu'au point de la deuxième sauvegarde incrémentielle :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>xtrabackup --prepare --target-dir=/data/backups/base \
+--incremental-dir=/data/backups/inc2</pre>
+</div>
+</div>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent"><b>--apply-log-only</b> doit être utilisé lors de la fusion de toutes
+  les sauvegardes incrémentielles sauf la dernière. C'est pourquoi la ligne précédente ne contient pas
+  l'option <b>--apply-log-only</b>. Même si <b>--apply-log-only</b> était
+  utilisé lors de la dernière étape, la sauvegarde serait toujours cohérente, mais dans ce cas,
+  le serveur effectuerait la phase de restauration.</div>
+</div>
+<p class="Pp">Si vous souhaitez éviter l'avis que <i>InnoDB</i> n'a pas été arrêté normalement,
+    lorsque vous avez appliqué les deltas souhaités à la sauvegarde de base, vous pouvez exécuter
+    <b>--prepare</b> à nouveau sans désactiver la phase de restauration.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Restaurer_les_sauvegardes_incrémentielles'><a class='permalink' href='#Restaurer_les_sauvegardes_incrémentielles'>Restaurer   les sauvegardes incrémentielles</a></h2>
+<p class="Pp">Après avoir préparé les sauvegardes incrémentielles, le répertoire de base
+    contient les mêmes données que la sauvegarde complète. Pour restaurer cette sauvegarde, vous pouvez utiliser
+    cette commande : <b>xtrabackup --copy-back --target-dir=BASE-DIR</b></p>
+<p class="Pp">Vous devrez peut-être changer la propriété comme détaillé dans
+    restoring_a_backup.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sauvegardes_incrémentielles_en_flux_avec_xbstream'><a class='permalink' href='#Sauvegardes_incrémentielles_en_flux_avec_xbstream'>Sauvegardes   incrémentielles en flux avec xbstream</a></h2>
+<p class="Pp">Les sauvegardes incrémentielles en flux peuvent être effectuées avec
+    l'option de flux <i>xbstream</i>. Actuellement, les sauvegardes sont empaquetées dans le format personnalisé
+    <b>xbstream</b>. Avec cette fonctionnalité, vous devez également effectuer une sauvegarde de BASE. Effectuer une sauvegarde de BASE.INDENT 0.0</p>
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --target-dir=/data/backups</pre>
+</div>
+<br/>
+<br/>
+Effectuer une sauvegarde locale.INDENT 0.0
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --incremental-lsn=LSN-number --stream=xbstream --target-dir=./ &gt; incremental.xbstream</pre>
+</div>
+<br/>
+<br/>
+Décompresser la sauvegarde.INDENT 0.0
+<div class="Bd-indent">
+<pre>$ xbstream -x &lt; incremental.xbstream</pre>
+</div>
+<br/>
+<br/>
+Effectuer une sauvegarde locale et la diffuser sur le serveur distant et la décompresser.INDENT 0.0
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --incremental-lsn=LSN-number --stream=xbstream --target-dir=./
+$ ssh user@hostname &quot; cat - | xbstream -x -C &gt; /backup-dir/&quot;</pre>
+</div>
+<br/>
+<br/>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sauvegardes_partielles'><a class='permalink' href='#Sauvegardes_partielles'>Sauvegardes   partielles</a></h2>
+<p class="Pp"><i>xtrabackup</i> prend en charge les sauvegardes partielles lorsque l'option
+    innodb_file_per_table est activée. Il existe trois façons de créer des sauvegardes partielles :</p>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>correspondance des noms de tables avec une expression régulière</dd>
+  <dt>2.</dt>
+  <dd>fournir une liste de noms de tables dans un fichier</dd>
+  <dt>3.</dt>
+  <dd>fournir une liste de bases de données</dd>
+</dl>
+</div>
+<p class="Pp"><b>ATTENTION :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Ne copiez pas la sauvegarde préparée.
+<p class="Pp">La restauration des sauvegardes partielles doit se faire en important les tables,
+    et non en utilisant l'option <i>--copy-back</i>. Il n'est pas recommandé d'exécuter
+    des sauvegardes incrémentielles après avoir exécuté une sauvegarde partielle.</p>
+<p class="Pp">Bien qu'il existe des scénarios où la restauration peut se faire en copiant
+    les fichiers, cela peut entraîner des incohérences de base de données dans de nombreux cas et ce n'est pas
+    une méthode recommandée.</p>
+</div>
+</div>
+<p class="Pp">Aux fins de cette page de manuel, nous supposerons qu'il existe
+    une base de données nommée <b>test</b> qui contient les tables nommées
+    <b>t1</b> et <b>t2</b>.</p>
+<p class="Pp"><b>ATTENTION :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Si l'une des tables correspondantes ou listées est supprimée pendant
+  la sauvegarde, <i>xtrabackup</i> échouera.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Créer_des_sauvegardes_partielles'><a class='permalink' href='#Créer_des_sauvegardes_partielles'>Créer   des sauvegardes partielles</a></h2>
+<p class="Pp">Il existe plusieurs façons de spécifier quelle partie de l'ensemble des données
+    est sauvegardée :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Utilisez l'option <b>--tables</b> pour lister les noms de tables</li>
+  <li>Utilisez l'option <b>--tables-file</b> pour lister les tables dans un fichier</li>
+  <li>Utilisez l'option <b>--databases</b> pour lister les bases de données</li>
+  <li>Utilisez l'option <b>--databases-file</b> pour lister les bases de données</li>
+</ul>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <i>--tables</i></h2>
+<p class="Pp">La première méthode utilise l'option <i>--tables</i> de xtrabackup.
+    La valeur de l'option est une expression régulière qui est mise en correspondance avec le nom de la base de données
+    et le nom de la table entièrement qualifiés en utilisant le format
+    <b>nom_base_de_données.nom_table</b>.</p>
+<p class="Pp">Pour sauvegarder uniquement les tables de la base de données
+    <b>test</b>, utilisez la commande suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --datadir=/var/lib/mysql --target-dir=/data/backups/ \
+--tables=&quot;^test[.].*&quot;</pre>
+</div>
+</div>
+<p class="Pp">Pour sauvegarder uniquement la table <b>test.t1</b>, utilisez la commande suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --datadir=/var/lib/mysql --target-dir=/data/backups/ \
+--tables=&quot;^test[.]t1&quot;</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <i>--tables-file</i></h2>
+<p class="Pp">L'option <b>--tables-file</b> spécifie un fichier qui peut contenir
+    plusieurs noms de tables, un nom de table par ligne dans le fichier. Seules les tables
+    nommées dans le fichier seront sauvegardées. Les noms correspondent exactement,
+    sensibles à la casse, sans aucune correspondance de modèle ou d'expression régulière. Les noms de tables doivent être entièrement qualifiés au format
+    <b>nom_base_de_données.nom_table</b>.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ echo &quot;mydatabase.mytable&quot; &gt; /tmp/tables.txt
+$ xtrabackup --backup --tables-file=/tmp/tables.txt</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Les options <i>--databases</i> et <i>--databases-file</i></h2>
+<p class="Pp">L'option `--databases` accepte une liste de bases de données
+    et de tables à sauvegarder, séparée par des espaces, au format
+    <b>nom_base_de_données[.nom_table]</b>. En plus de cette liste, assurez-vous de spécifier
+    les bases de données <b>mysql</b>, <b>sys</b>, et</p>
+<p class="Pp"><b>performance_schema</b>. Ces bases de données sont nécessaires lors de la restauration des bases de données à l'aide de <i>xtrabackup --copy-back</i>.</p>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Les tables traitées pendant l'étape --prepare peuvent également être
+  ajoutées à la sauvegarde même si elles ne sont pas explicitement listées par le paramètre si
+  elles ont été créées après le début de la sauvegarde.</div>
+</div>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --databases='mysql sys performance_schema test ...'</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <b>--databases-file</b></h2>
+<p class="Pp">L'option <i>--databases-file</i> spécifie un fichier qui peut
+    contenir plusieurs bases de données et tables au format
+    <b>nom_base_de_données[.nom_table]</b>, un nom d'élément par ligne dans le fichier. Les noms correspondent exactement,
+    sensibles à la casse, sans correspondance de modèle ou d'expression régulière.</p>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Les tables traitées pendant l'étape --prepare peuvent également être
+  ajoutées à la sauvegarde même si elles ne sont pas explicitement listées par le paramètre si
+  elles ont été créées après le début de la sauvegarde.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Préparer_les_sauvegardes_partielles'><a class='permalink' href='#Préparer_les_sauvegardes_partielles'>Préparer   les sauvegardes partielles</a></h2>
+<p class="Pp">La procédure est analogue à la restauration de tables individuelles : appliquez
+    les journaux et utilisez l'option <i>--export</i> :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --prepare --export --target-dir=/path/to/partial/backup</pre>
+</div>
+</div>
+<p class="Pp">Lorsque vous utilisez l'option <i>--prepare</i> sur une sauvegarde partielle, vous
+    verrez des avertissements concernant des tables qui n'existent pas. C'est parce que ces
+    tables existent dans le dictionnaire de données à l'intérieur d'InnoDB, mais les fichiers
+    .ibd correspondants n'existent pas. Ils n'ont pas été copiés dans le répertoire de sauvegarde.
+    Ces tables seront supprimées du dictionnaire de données, et lorsque vous restaurerez
+    la sauvegarde et démarrerez InnoDB, elles n'existeront plus et ne provoqueront aucune erreur ni avertissement dans le fichier journal.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">Impossible de trouver de fichier associé à l'ID d'espace de table : 5
+<p class="Pp">Utilisez --innodb-directories pour trouver les fichiers d'espace de table. Si cela échoue, utilisez --innodb-force-recovery=1 pour ignorer cela et perdre définitivement toutes les modifications apportées aux espaces de table manquants.</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Restaurer_les_sauvegardes_partielles'><a class='permalink' href='#Restaurer_les_sauvegardes_partielles'>Restaurer   les sauvegardes partielles</a></h2>
+<p class="Pp">La restauration doit se faire en restaurant des tables individuelles dans
+    la sauvegarde partielle sur le serveur.</p>
+<p class="Pp">Elle peut également se faire en copiant la sauvegarde préparée dans un
+    datadir &quot;propre&quot; (dans ce cas, assurez-vous d'inclure la
+    base de données <b>mysql</b>) vers le datadir où vous déplacez la sauvegarde. Une base de données système peut être créée avec ce qui suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ sudo mysql --initialize --user=mysql</pre>
+</div>
+</div>
+<p class="Pp">Une fois que vous démarrez le serveur, vous pouvez voir mysql se plaindre d'espaces de table manquants :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>2021-07-19T12:42:11.077200Z 1 [Warning] [MY-012351] [InnoDB] Tablespace 4, name 'test1/t1', file './d2/test1.ibd' is missing!
+2021-07-19T12:42:11.077300Z 1 [Warning] [MY-012351] [InnoDB] Tablespace 4, name 'test1/t1', file './d2/test1.ibd' is missing!</pre>
+</div>
+</div>
+<p class="Pp">Afin de nettoyer la base de données orpheline du dictionnaire de données,
+    vous devez créer manuellement le répertoire de base de données manquant, puis <b>DROP</b>
+    cette base de données du serveur.</p>
+<p class="Pp">Exemple de création de la base de données manquante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ mkdir /var/lib/mysql/test1/d2</pre>
+</div>
+</div>
+<p class="Pp">Exemple de suppression de la base de données du serveur :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>mysql&gt; DROP DATABASE d2;
+Query OK, 2 rows affected (0.5 sec)</pre>
+</div>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FONCTIONNALITES_AVANCEES'><a class='permalink' href='#FONCTIONNALITES_AVANCEES'>FONCTIONNALITÉS   AVANCÉES</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='Analyser_les_statistiques_des_tables'><a class='permalink' href='#Analyser_les_statistiques_des_tables'>Analyser   les statistiques des tables</a></h2>
+<p class="Pp">Le binaire <i>xtrabackup</i> peut analyser les fichiers de données InnoDB
+    en mode lecture seule pour en fournir des statistiques. Pour ce faire, vous devriez utiliser
+    l'option <b>--stats</b>. Vous pouvez la combiner avec l'option <b>--tables</b>
+    pour limiter les fichiers à examiner. Elle utilise également
+  l'option <b>--use-memory</b>.</p>
+<p class="Pp">Vous pouvez effectuer l'analyse sur un serveur en cours d'exécution, avec un certain risque d'erreurs dues au fait que les données sont modifiées pendant l'analyse. Ou, vous pouvez analyser une copie de sauvegarde de la base de données. Dans tous les cas, pour utiliser la fonctionnalité de statistiques, vous avez besoin d'une copie propre de la base de données, y compris des fichiers journaux de taille correcte.</p>
+</section>
+oui,
+    vous devez exécuter avec <b>--prepare</b> deux fois pour utiliser cette fonctionnalité
+    sur une sauvegarde.</p>
+<p class="Pp">Le résultat de l'exécution sur une sauvegarde peut ressembler à ce qui suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>&lt;INDEX STATISTICS&gt;
+  table: test/table1, index: PRIMARY, space id: 12, root page 3
+  estimated statistics in dictionary:
+    key vals: 25265338, leaf pages 497839, size pages 498304
+  real statistics:
+     level 2 pages: pages=1, data=5395 bytes, data/pages=32%
+     level 1 pages: pages=415, data=6471907 bytes, data/pages=95%
+        leaf pages: recs=25958413, pages=497839, data=7492026403 bytes, data/pages=91%</pre>
+</div>
+</div>
+<p class="Pp">Cela peut être interprété comme suit :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>La première ligne affiche simplement le nom de la table et de l'index ainsi que ses identifiants internes. Si vous voyez un index nommé <b>GEN_CLUST_INDEX</b>, il s'agit de l'index clusterisé de la table, créé automatiquement car vous n'avez pas explicitement créé de <b>PRIMARY KEY</b>.</li>
+  <li>Les statistiques estimées dans les informations du dictionnaire sont similaires aux données collectées par <b>ANALYZE TABLE</b> dans <i>InnoDB</i> pour être stockées comme statistiques de cardinalité estimée et transmises à l'optimiseur de requêtes.</li>
+  <li>Les informations de statistiques réelles sont le résultat de l'analyse des pages de données et du calcul d'informations exactes sur l'index.</li>
+  <li><b>The level &lt;X&gt; pages</b> : la sortie signifie que la ligne affiche des informations sur les pages à ce niveau dans l'arbre d'index. Plus <b>&lt;X&gt;</b> est grand, plus il est éloigné des pages feuilles, qui sont au niveau 0. La première ligne est la page racine.</li>
+  <li>La sortie <b>leaf pages</b> affiche les pages feuilles, bien sûr. C'est là que les données de la table sont stockées.</li>
+  <li>La sortie <b>external pages</b> (non affichée) montre les grandes pages externes qui contiennent des valeurs trop longues pour tenir dans la ligne elle-même, telles que les longues valeurs <b>BLOB</b> et <b>TEXT</b>.</li>
+  <li><b>recs</b> est le nombre réel d'enregistrements (lignes) dans les pages feuilles.</li>
+  <li><b>pages</b> est le nombre de pages.</li>
+  <li><b>data</b> est la taille totale des données dans les pages, en octets.</li>
+  <li><b>data/pages</b> est calculé comme (<b>data</b> / (<b>pages</b> * <b>PAGE_SIZE</b>)) * 100%. Il n'atteindra jamais 100% en raison de l'espace réservé aux en-têtes et pieds de page.</li>
+</ul>
+</div>
+<p class="Pp">Un exemple plus détaillé est publié dans un article du blog MySQL Performance
+    <i>post</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Script_to_Format_Output'><a class='permalink' href='#Script_to_Format_Output'>Script pour formater la sortie</a></h2>
+<p class="Pp">Le script suivant peut être utilisé pour résumer et tabuler la sortie des informations de statistiques :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>tabulate-xtrabackup-stats.pl
+#!/usr/bin/env perl
+use strict;
+use warnings FATAL =&gt; 'all';
+my $script_version = &quot;0.1&quot;;
+my $PG_SIZE = 16_384; # InnoDB utilise par défaut des pages de 16 Ko, modifiez si nécessaire.
+my ($cur_idx, $cur_tbl);
+my (%idx_stats, %tbl_stats);
+my ($max_tbl_len, $max_idx_len) = (0, 0);
+while ( my $line = &lt;&gt; ) {
+   if ( my ($t, $i) = $line =~ m/table: (.*), index: (.*), space id:/ ) {
+      $t =~ s!/!.!;
+      $cur_tbl = $t;
+      $cur_idx = $i;
+      if ( length($i) &gt; $max_idx_len ) {
+         $max_idx_len = length($i);
+      }
+      if ( length($t) &gt; $max_tbl_len ) {
+         $max_tbl_len = length($t);
+      }
+   }
+   elsif ( my ($kv, $lp, $sp) = $line =~ m/key vals: (\d+), \D*(\d+), \D*(\d+)/ ) {
+      @{$idx_stats{$cur_tbl}-&gt;{$cur_idx}}{qw(est_kv est_lp est_sp)} = ($kv, $lp, $sp);
+      $tbl_stats{$cur_tbl}-&gt;{est_kv} += $kv;
+      $tbl_stats{$cur_tbl}-&gt;{est_lp} += $lp;
+      $tbl_stats{$cur_tbl}-&gt;{est_sp} += $sp;
+   }
+   elsif ( my ($l, $pages, $bytes) = $line =~ m/(?:level (\d+)|leaf) pages:.*pages=(\d+), data=(\d+) bytes/ ) {
+      $l ||= 0;
+      $idx_stats{$cur_tbl}-&gt;{$cur_idx}-&gt;{real_pages} += $pages;
+      $idx_stats{$cur_tbl}-&gt;{$cur_idx}-&gt;{real_bytes} += $bytes;
+      $tbl_stats{$cur_tbl}-&gt;{real_pages} += $pages;
+      $tbl_stats{$cur_tbl}-&gt;{real_bytes} += $bytes;
+   }
+}
+my $hdr_fmt = &quot;%${max_tbl_len}s %${max_idx_len}s %9s %10s %10s\n&quot;;
+my @headers = qw(TABLE INDEX TOT_PAGES FREE_PAGES PCT_FULL);
+printf $hdr_fmt, @headers;
+my $row_fmt = &quot;%${max_tbl_len}s %${max_idx_len}s %9d %10d %9.1f%%\n&quot;;
+foreach my $t ( sort keys %tbl_stats ) {
+   my $tbl = $tbl_stats{$t};
+   printf $row_fmt, $t, &quot;&quot;, $tbl-&gt;{est_sp}, $tbl-&gt;{est_sp} - $tbl-&gt;{real_pages},
+      $tbl-&gt;{real_bytes} / ($tbl-&gt;{real_pages} * $PG_SIZE) * 100;
+   foreach my $i ( sort keys %{$idx_stats{$t}} ) {
+      my $idx = $idx_stats{$t}-&gt;{$i};
+      printf $row_fmt, $t, $i, $idx-&gt;{est_sp}, $idx-&gt;{est_sp} - $idx-&gt;{real_pages},
+         $idx-&gt;{real_bytes} / ($idx-&gt;{real_pages} * $PG_SIZE) * 100;
+   }
+}</pre>
+</div>
+</div>
+Exemple de sortie de script
+<p class="Pp">La sortie du script Perl ci-dessus, lorsqu'elle est exécutée sur l'exemple présenté dans l'article de blog mentionné précédemment, apparaîtra comme suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>          TABLE           INDEX TOT_PAGES FREE_PAGES   PCT_FULL
+art.link_out104                    832383      38561      86.8%
+art.link_out104         PRIMARY    498304         49      91.9%
+art.link_out104       domain_id     49600       6230      76.9%
+art.link_out104     domain_id_2     26495       3339      89.1%
+art.link_out104 from_message_id     28160        142      96.3%
+art.link_out104    from_site_id     38848       4874      79.4%
+art.link_out104   revert_domain    153984      19276      71.4%
+art.link_out104    site_message     36992       4651      83.4%</pre>
+</div>
+</div>
+<p class="Pp">Les colonnes sont la table et l'index, suivis du nombre total de pages dans cet index, du nombre de pages non réellement occupées par des données, et du nombre d'octets de données réelles en pourcentage de la taille totale des pages de données réelles. La première ligne de la sortie ci-dessus, dans laquelle la colonne <b>INDEX</b> est vide, est un résumé de la table entière.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Working_with_Binary_Logs'><a class='permalink' href='#Working_with_Binary_Logs'>Utilisation des journaux binaires</a></h2>
+<p class="Pp">L'exécutable <b>xtrabackup</b> s'intègre à la table <b>log_status</b>. Cette intégration permet à <b>xtrabackup</b> d'afficher la position du journal binaire correspondant à la sauvegarde, afin que vous puissiez utiliser cette position pour provisionner une nouvelle réplique ou effectuer une récupération à un point dans le temps.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Finding_the_Binary_Log_Position'><a class='permalink' href='#Finding_the_Binary_Log_Position'>Trouver la position du journal binaire</a></h2>
+<p class="Pp">Vous pouvez trouver la position du journal binaire correspondant à une sauvegarde après qu'elle a été effectuée. Si votre sauvegarde provient d'un serveur avec la journalisation binaire activée, <b>xtrabackup</b> crée un fichier nommé <b>xtrabackup_binlog_info</b> dans le répertoire cible. Ce fichier contient le nom du fichier du journal binaire et la position exacte du moment où la sauvegarde a été prise.</p>
+<p class="Pp">La sortie est similaire à ce qui suit pendant la phase de sauvegarde :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>210715 14:14:59 Backup created in directory '/backup/'
+MySQL binlog position: filename 'binlog.000002', position '156'
+. . .
+210715 14:15:00 completed OK!</pre>
+</div>
+</div>
+<p class="Pp"><b>REMARQUE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">À partir de Percona XtraBackup 8.0.26-18.0, xtrabackup ne crée plus le fichier <b>xtrabackup_binlog_pos_innodb</b>. Ce changement est dû au fait que MySQL et Percona Server ne mettent plus à jour les informations du journal binaire sur la section globale du système de transactions de <b>ibdata</b>. Vous devez vous fier à <b>xtrabackup_binlog_info</b> quel que soit le moteur de stockage utilisé.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Récupération à un point dans le temps</h2>
+<p class="Pp">Pour effectuer une récupération à un point dans le temps à partir d'une sauvegarde <b>xtrabackup</b>, vous devez préparer et restaurer la sauvegarde, puis relire les journaux binaires à partir du point indiqué dans le fichier <b>xtrabackup_binlog_info</b>.</p>
+<p class="Pp">Une procédure plus détaillée se trouve ici.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Setting_Up_a_New_Replication_Replica'><a class='permalink' href='#Setting_Up_a_New_Replication_Replica'>Configuration d'une nouvelle réplique de réplication</a></h2>
+<p class="Pp">Pour configurer une nouvelle réplique, vous devez préparer la sauvegarde et la restaurer dans le répertoire de données de votre nouvelle réplique de réplication. Si vous utilisez la version 8.0.22 ou antérieure, dans votre commande <b>CHANGE MASTER TO</b>, utilisez le nom de fichier et la position du journal binaire indiqués dans le fichier <b>xtrabackup_binlog_info</b> pour démarrer la réplication.</p>
+<p class="Pp">Si vous utilisez la version 8.0.23 ou ultérieure, utilisez
+    <i>CHANGE_REPLICATION_SOURCE_TO et les options appropriées</i>.
+    <b>CHANGE_MASTER_TO</b> est obsolète.</p>
+<p class="Pp">Une procédure plus détaillée se trouve dans
+    ../howtos/setting_up_replication.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Restoring_Individual_Tables'><a class='permalink' href='#Restoring_Individual_Tables'>Restauration de tables individuelles</a></h2>
+<p class="Pp"><i>Percona XtraBackup</i> peut exporter une table contenue dans son propre fichier <i>.ibd</i>. Avec <i>Percona XtraBackup</i>, vous pouvez exporter des tables individuelles de n'importe quelle base de données <i>InnoDB</i> et les importer dans <i>Percona Server for MySQL</i> avec <i>XtraDB</i> ou <i>MySQL</i> 8.0. La source ne doit pas nécessairement être <i>XtraDB</i> ou <i>MySQL</i> 8.0, mais la destination oui. Cette méthode ne fonctionne qu'avec des fichiers <i>.ibd</i> individuels.</p>
+<p class="Pp">L'exemple suivant exporte et importe la table suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>CREATE TABLE export_test (
+a int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Exporting_the_Table'><a class='permalink' href='#Exporting_the_Table'>Exportation de la table</a></h2>
+<p class="Pp">La table a été créée en mode <i>innodb_file_per_table</i>, donc après avoir effectué une sauvegarde comme d'habitude avec l'option <i>--backup</i>, le fichier <i>.ibd</i> existe dans le répertoire cible :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ find /data/backups/mysql/ -name export_test.*
+/data/backups/mysql/test/export_test.ibd</pre>
+</div>
+</div>
+<p class="Pp">Lorsque vous préparez la sauvegarde, ajoutez l'option <i>--export</i> à la commande. Voici un exemple :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --prepare --export --target-dir=/data/backups/mysql/</pre>
+</div>
+</div>
+<p class="Pp"><b>REMARQUE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Si vous restaurez une table de tablespace InnoDB chiffrée, ajoutez le fichier keyring :
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --prepare --export --target-dir=/tmp/table \
+--keyring-file-data=/var/lib/mysql-keyring/keyring</pre>
+</div>
+</div>
+</div>
+</div>
+<p class="Pp">Vous devriez maintenant voir un fichier <i>.exp</i> dans le répertoire cible :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ find /data/backups/mysql/ -name export_test.*
+/data/backups/mysql/test/export_test.exp
+/data/backups/mysql/test/export_test.ibd
+/data/backups/mysql/test/export_test.cfg</pre>
+</div>
+</div>
+<p class="Pp">Ces trois fichiers sont les seuls requis pour importer la table dans un serveur exécutant <i>Percona Server for MySQL</i> avec <i>XtraDB</i> ou <i>MySQL</i> 8.0. Si le serveur utilise le chiffrement de tablespace <i>InnoDB</i>, un fichier <i>.cfp</i> supplémentaire est ajouté, contenant la clé de transfert et une clé de tablespace chiffrée.</p>
+<p class="Pp"><b>REMARQUE :</b></p>
+<div class="Bd-indent">
+<div clas<div class="Bd-indent">Le fichier de métadonnées <i>.cfg</i> contient une copie du dictionnaire <i>InnoDB</i> dans un format spécial. Ce format est différent de celui du fichier <i>.exp</i> utilisé dans <i>XtraDB</i> dans le même but. Un fichier <i>.cfg</i> n'est pas requis pour importer un tablespace dans <i>MySQL</i> 8.0 ou Percona Server for MySQL 8.0.
+<p class="Pp">Un tablespace est importé avec succès même si la table provient d'un autre serveur, mais <i>InnoDB</i> effectue une validation du schéma si le fichier <i>.cfg</i> correspondant se trouve dans le même répertoire.</p>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Importing_the_Table'><a class='permalink' href='#Importing_the_Table'>Importation   de la Table</a></h2>
+<p class="Pp">Sur le serveur de destination exécutant <i>Percona Server for MySQL</i> avec <i>XtraDB</i> et l'option <i>innodb_import_table_from_xtrabackup</i> activée, ou <i>MySQL</i> 8.0, créez une table avec la même structure, puis effectuez les étapes suivantes :</p>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Exécutez la commande <b>ALTER TABLE test.export_test DISCARD TABLESPACE;</b>. Si vous voyez l'erreur suivante, activez <i>innodb_file_per_table</i> et recréez la table.</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Error"><a class="permalink" href="#Error">Erreur</a></dt>
+  <dd>
+    <p class="Pp">ERROR 1030 (HY000): Got error -1 from storage engine</p>
+  </dd>
+</dl>
+</div>
+</div>
+<dl class="Bl-tag">
+  <dt>2.</dt>
+  <dd>Copiez les fichiers exportés dans le sous-répertoire <b>test/</b> du répertoire de données du serveur de destination.</dd>
+  <dt>3.</dt>
+  <dd>Exécutez <b>ALTER TABLE test.export_test IMPORT TABLESPACE;</b></dd>
+</dl>
+</div>
+<p class="Pp">La table est importée et vous pouvez exécuter une commande <b>SELECT</b> pour voir les données importées.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='LRU_dump_backup'><a class='permalink' href='#LRU_dump_backup'>Sauvegarde   du dump LRU</a></h2>
+<p class="Pp"><i>Percona XtraBackup</i> inclut une copie sauvegardée du pool de tampons dans une sauvegarde pour réduire le temps de préchauffage. Il restaure l'état du pool de tampons à partir du fichier <b>ib_buffer_pool</b> après le redémarrage. <i>Percona XtraBackup</i> détecte <b>ib_buffer_pool</b> et le sauvegarde automatiquement. [image]</p>
+<p class="Pp">Si l'option de restauration du pool de tampons est activée dans <b>my.cnf</b>, le pool de tampons sera dans un état chaud après la restauration de la sauvegarde.</p>
+<p class="Pp"><b>VOIR AUSSI :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="MySQL"><a class="permalink" href="#MySQL"><b><i>Documentation MySQL</i> : Sauvegarde et restauration de l'état du pool de tampons</b></a></dt>
+  <dd><a href='https://dev.mysql.com/doc/refman/8.0/en/innodb-preload-buffer-pool.html'>https://dev.mysql.com/doc/refman/8.0/en/innodb-preload-buffer-pool.html</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Streaming_Backups'><a class='permalink' href='#Streaming_Backups'>Sauvegardes   en flux</a></h2>
+<p class="Pp"><b>Percona XtraBackup</b> prend en charge le mode flux. Le mode flux envoie une sauvegarde vers <b>STDOUT</b> au format <i>xbstream</i> au lieu de copier les fichiers dans le répertoire de sauvegarde.</p>
+<p class="Pp">Cette méthode vous permet d'utiliser d'autres programmes pour filtrer la sortie de la sauvegarde, offrant ainsi une plus grande flexibilité pour le stockage de la sauvegarde. Par exemple, la compression est obtenue en redirigeant la sortie vers un utilitaire de compression. L'un des avantages des sauvegardes en flux et de l'utilisation des pipes Unix est que les sauvegardes peuvent être automatiquement chiffrées.</p>
+<p class="Pp">Pour utiliser la fonctionnalité de flux, vous devez utiliser l'option <b>--stream</b>, en spécifiant le format du flux (<b>xbstream</b>) et où stocker les fichiers temporaires :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --stream=xbstream --target-dir=/tmp</pre>
+</div>
+</div>
+<p class="Pp"><i>xtrabackup</i> utilise <i>xbstream</i> pour envoyer tous les fichiers de données vers <b>STDOUT</b>, dans un format spécial <b>xbstream</b>. Une fois qu'il a terminé l'envoi de tous les fichiers de données vers <b>STDOUT</b>, il arrête xtrabackup et envoie également le fichier journal sauvegardé.</p>
+<p class="Pp"><b>VOIR AUSSI :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="More"><a class="permalink" href="#More"><b>Plus d'informations sur
+    <i>xbstream</i></b></a></dt>
+  <dd>xbstream_binary</dd>
+</dl>
+</div>
+</div>
+</div>
+<p class="Pp">Lorsque la compression est activée, <i>xtrabackup</i> compresse les données de sortie, à l'exception des fichiers méta et non-InnoDB qui ne sont pas compressés, en utilisant l'algorithme de compression spécifié. Le seul algorithme actuellement pris en charge est <b>quicklz</b>. Les fichiers résultants sont au format d'archive <b>qpress</b>, c'est-à-dire que chaque fichier *.qp produit par xtrabackup est essentiellement une archive qpress en un seul fichier et peut être extrait et décompressé par l'archiveur de fichiers <i>qpress</i> disponible dans les dépôts de logiciels Percona.</p>
+<p class="Pp">En utilisant <i>xbstream</i> comme option de flux, les sauvegardes peuvent être copiées et compressées en parallèle. Cette option peut considérablement améliorer la vitesse du processus de sauvegarde. Dans le cas où les sauvegardes sont à la fois compressées et chiffrées, elles doivent être déchiffrées avant d'être décompressées.</p>
+<table class="tbl" style="border-top-style: solid;">
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Tâche</td>
+    <td style="border-right-style: solid;">Commande</td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Envoyer la sauvegarde en flux dans une archive nommée <b>backup.xbstream</b></td>
+    <td style="border-right-style: solid;"><b>xtrabackup --backup
+      --stream=xbstream --target-dir=./ &gt; backup.xbstream</b></td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Envoyer la sauvegarde en flux dans une archive <i>compressée</i> nommée <b>backup.xbstream</b></td>
+    <td style="border-right-style: solid;"><b>xtrabackup --backup
+      --stream=xbstream --compress --target-dir=./ &gt; backup.xbstream</b></td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Chiffrer la sauvegarde</td>
+    <td style="border-right-style: solid;">$ xtrabackup --backup
+      --stream=xbstream ./ &gt; backup.xbstream gzip - | openssl des3 -salt -k
+      &quot;password&quot; &gt; backup.xbstream.gz.des3</td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Décompresser la sauvegarde dans le répertoire courant</td>
+    <td style="border-right-style: solid;"><b>xbstream -x &lt;
+      backup.xbstream</b></td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Envoyer la sauvegarde compressée directement vers un autre hôte et la décompresser</td>
+    <td style="border-right-style: solid;"><b>xtrabackup --backup --compress
+      --stream=xbstream --target-dir=./ | ssh user@otherhost &quot;xbstream
+      -x&quot;</b></td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Envoyer la sauvegarde vers un autre serveur en utilisant <b>netcat</b>.</td>
+    <td style="border-right-style: solid;">Sur l'hôte de destination : 0.0 3.5 $ nc
+      -l 9999 | cat - &gt; /data/backups/backup.xbstream 168u 168u Sur l'hôte source : 0.0 3.5 $ xtrabackup --backup --stream=xbstream ./ | nc desthost
+      9999 168u 168u</td>
+  </tr>
+</table>
+<br/>
+<br/>
+<table class="tbl" style="border-top-style: solid;">
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Envoyer la sauvegarde vers un autre serveur en utilisant une seule ligne de commande :</td>
+    <td style="border-right-style: solid;">$ ssh <i>user@desthost</i> &quot;( nc
+      -l 9999 &gt; /data/backups/backup.xbstream &amp; )&quot; &amp;&amp;
+      xtrabackup --backup --stream=xbstream ./ | nc desthost 9999</td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Limiter le débit à 10 Mo/sec en utilisant l'outil <b>pipe viewer</b> [1]</td>
+    <td style="border-right-style: solid;">$ xtrabackup --backup
+      --stream=xbstream ./ | pv -q -L10m ssh <i>user@desthost</i> &quot;cat -
+      &gt; /data/backups/backup.xbstream&quot;</td>
+  </tr>
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Vérification des sommes de contrôle de la sauvegarde pendant le flux :</td>
+    <td style="border-right-style: solid;">Sur l'hôte de destination : 0.0 3.5 $ nc
+      -l 9999 | tee &gt;(sha1sum &gt; destination_checksum) &gt;
+      /data/backups/backup.xbstream 168u 168u Sur l'hôte source : 0.0 3.5 $
+      xtrabackup --backup --stream=xbstream ./ | tee &gt;(sha1sum &gt;
+      source_checksum) | nc desthost 9999 168u 168u Comparez les sommes de contrôle sur l'hôte source : 0.0 3.5 $ cat source_checksum
+      65e4f916a49c1f216e0887ce54cf59bf3934dbad - 168u 168u Comparez les sommes de contrôle sur l'hôte de destination : 0.0 3.5 $ cat destination_checksum
+      65e4f916a49c1f216e0887ce54cf59bf3934dbad - 168u 168u</td>
+  </tr>
+</table>
+<br/>
+<br/>
+<br/>
+<br/>
+<table class="tbl" style="border-top-style: solid;">
+  <tr style="border-left-style: solid; border-bottom-style: solid;">
+    <td style="border-right-style: solid;">Compression parallèle avec copie parallèle de la sauvegarde</td>
+    <td style="border-right-style: solid;"><b>xtrabackup --backup --compress
+      --compress-threads=8 --stream=xbstream --parallel=4 --target-dir=./ &gt;
+      backup.xbstream</b></td>
+  </tr>
+</table>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='FOOTNOTES'><a class='permalink' href='#FOOTNOTES'>NOTES DE BAS DE PAGE</a></h1>
+<dl class="Bl-tag">
+  <dt>[1]</dt>
+  <dd>Installez depuis le <i>site officiel</i> ou depuis le paquet de distribution
+      (<b>apt install pv</b>)
+    <p class="Pp">Notez que la sauvegarde en flux devra être préparée avant la restauration. Le mode flux ne prépare pas la sauvegarde.</p>
+  </dd>
+</dl>
+<section class="Ss">
+<h2 class="Ss" id='Encrypting_Backups'><a class='permalink' href='#Encrypting_Backups'>Chiffrement   des Sauvegardes</a></h2>
+<p class="Pp"><i>Percona XtraBackup</i> prend en charge le chiffrement et le déchiffrement des sauvegardes locales et en flux avec l'option <i>xbstream</i>, ajoutant ainsi une couche de protection supplémentaire. Le chiffrement est implémenté à l'aide de la bibliothèque <b>libgcrypt</b> de GnuPG.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Creating_Encrypted_Backups'><a class='permalink' href='#Creating_Encrypted_Backups'>Création   de Sauvegardes Chiffrées</a></h2>
+<p class="Pp">Pour créer une sauvegarde chiffrée, les options suivantes doivent être spécifiées (les options <b>--encrypt-key</b> et <b>--encrypt-key-file</b> sont mutuellement exclusives, c'est-à-dire qu'une seule d'entre elles doit être fournie) :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li><b>--encrypt</b></li>
+  <li>:option:` --encrypt-key`</li>
+  <li>:option:` --encrypt-key-file`</li>
+</ul>
+</div>
+<p class="Pp">Les options <b>--encrypt-key</b> et <b>--encrypt-key-file</b> peuvent être utilisées pour spécifier la clé de chiffrement. Une clé de chiffrement peut être générée avec une commande comme <b>openssl rand -base64 32</b></p>
+<p class="Pp">Un exemple de sortie de cette commande devrait ressembler à ceci :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>U2FsdGVkX19VPN7VM+lwNI0fePhjgnhgqmDBqbF3Bvs=</pre>
+</div>
+</div>
+<p class="Pp">Cette valeur peut ensuite être utilisée comme clé de chiffrement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <b>--encrypt-key</b></h2>
+<p class="Pp">Un exemple de commande <i>xtrabackup</i> utilisant l'option
+    <b>--encrypt-key</b> devrait ressembler à ceci :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+>
+<pre>$  xtrabackup --backup --encrypt=AES256 --encrypt-key=&quot;U2FsdGVkX19VPN7VM+lwNI0fePhjgnhgqmDBqbF3Bvs=&quot; --target-dir=/data/backup</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <b>--encrypt-key-file</b></h2>
+<p class="Pp">Utilisez l'option <b>--encrypt-key-file</b> comme suit:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --encrypt=AES256 --encrypt-key-file=/data/backups/keyfile --target-dir=/data/backup</pre>
+</div>
+</div>
+<p class="Pp"><b>NOTE:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Selon l'éditeur de texte que vous utilisez pour créer le
+  <b>KEYFILE</b>, l'éditeur peut insérer automatiquement le caractère CRLF (fin de ligne). Cela augmentera la taille de la clé, la rendant ainsi invalide. La méthode suggérée pour créer le fichier est d'utiliser la ligne de commande: <b>echo -n
+  &quot;U2FsdGVkX19VPN7VM+lwNI0fePhjgnhgqmDBqbF3Bvs=&quot; &gt;
+  /data/backups/keyfile</b>.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Optimiser_le_processus_de_chiffrement'><a class='permalink' href='#Optimiser_le_processus_de_chiffrement'>Optimiser   le processus de chiffrement</a></h2>
+<p class="Pp">Deux nouvelles options sont disponibles pour les sauvegardes chiffrées qui peuvent être utilisées pour accélérer le processus de chiffrement. Il s'agit de <b>--encrypt-threads</b> et <b>--encrypt-chunk-size</b>. En utilisant l'option <b>--encrypt-threads</b>, plusieurs threads peuvent être spécifiés pour être utilisés pour le chiffrement en parallèle. L'option <b>--encrypt-chunk-size</b> peut être utilisée pour spécifier la taille (en octets) du tampon de chiffrement de travail pour chaque thread de chiffrement (par défaut 64K).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Déchiffrer_les_sauvegardes_chiffrées'><a class='permalink' href='#Déchiffrer_les_sauvegardes_chiffrées'>Déchiffrer   les sauvegardes chiffrées</a></h2>
+<p class="Pp">Les sauvegardes peuvent être déchiffrées avec xbcrypt. La commande suivante en une seule ligne peut être utilisée pour chiffrer tout le dossier:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ for i in `find . -iname &quot;*\.xbcrypt&quot;`; do xbcrypt -d --encrypt-key-file=/root/secret_key --encrypt-algo=AES256 &lt; $i &gt; $(dirname $i)/$(basename $i .xbcrypt) &amp;&amp; rm $i; done</pre>
+</div>
+</div>
+<p class="Pp">L'option <b>--decrypt</b> de <i>Percona XtraBackup</i> a été implémentée et peut être utilisée pour déchiffrer les sauvegardes:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --decrypt=AES256 --encrypt-key=&quot;U2FsdGVkX19VPN7VM+lwNI0fePhjgnhgqmDBqbF3Bvs=&quot; --target-dir=/data/backup/</pre>
+</div>
+</div>
+<p class="Pp"><i>Percona XtraBackup</i> ne supprime pas automatiquement les
+    fichiers chiffrés. Afin de nettoyer le répertoire de sauvegarde, les utilisateurs doivent supprimer les fichiers <b>*.xbcrypt</b>.</p>
+<p class="Pp"><b>NOTE:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent"><b>--parallel</b> peut être utilisé avec l'option <b>--decrypt</b> pour déchiffrer plusieurs fichiers simultanément.</div>
+</div>
+<p class="Pp">Une fois les fichiers déchiffrés, la sauvegarde peut être préparée.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Préparer_les_sauvegardes_chiffrées'><a class='permalink' href='#Préparer_les_sauvegardes_chiffrées'>Préparer   les sauvegardes chiffrées</a></h2>
+<p class="Pp">Après le déchiffrement des sauvegardes, elles peuvent être préparées de la même manière que les sauvegardes complètes standard avec l'option <b>--prepare</b>:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --prepare --target-dir=/data/backup/</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Restaurer_les_sauvegardes_chiffrées'><a class='permalink' href='#Restaurer_les_sauvegardes_chiffrées'>Restaurer   les sauvegardes chiffrées</a></h2>
+<p class="Pp"><i>xtrabackup</i> offre l'option <b>--copy-back</b> pour restaurer une sauvegarde dans le datadir du serveur:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --copy-back --target-dir=/data/backup/</pre>
+</div>
+</div>
+<p class="Pp">Cela copiera tous les fichiers liés aux données dans le datadir du serveur, déterminé par le fichier de configuration <b>my.cnf</b> du serveur. Vous devriez vérifier la dernière ligne de la sortie pour un message de succès:</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>150318 11:08:13  xtrabackup: completed OK!</pre>
+</div>
+</div>
+<p class="Pp"><b>VOIR AUSSI:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="GnuPG"><a class="permalink" href="#GnuPG"><b>Documentation GnuPG: Bibliothèque
+    <b>libgcrypt</b></b></a></dt>
+  <dd><a href='http://www.gnupg.org/documentation/manuals/gcrypt/'>http://www.gnupg.org/documentation/manuals/gcrypt/</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Option <b>FLUSH</b> <b>TABLES</b> <b>WITH</b> <b>READ</b> <b>LOCK</b>
+  </h2>
+<p class="Pp">L'option <b>FLUSH TABLES WITH READ LOCK</b> fait ce qui suit avec un verrou de lecture global:</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Ferme toutes les tables ouvertes</li>
+  <li>Verrouille toutes les tables pour toutes les bases de données</li>
+</ul>
+</div>
+<p class="Pp">Libérez le verrou avec <b>UNLOCK TABLES</b>.</p>
+<p class="Pp"><b>NOTE:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent"><b>FLUSH TABLES WITH READ LOCK</b> n'empêche pas l'insertion de lignes dans les tables de journaux.</div>
+</div>
+<p class="Pp">Pour garantir des sauvegardes cohérentes, utilisez l'option <b>FLUSH TABLES WITH READ LOCK</b> avant d'effectuer une sauvegarde de fichiers non-InnoDB. L'option n'affecte pas les requêtes de longue durée.</p>
+<p class="Pp">Les requêtes de longue durée avec <b>FLUSH TABLES WITH READ LOCK</b> activé peuvent laisser le serveur en mode lecture seule jusqu'à ce que les requêtes soient terminées. Tuer <b>FLUSH TABLES WITH READ LOCK</b> n'aide pas si la base de données est dans l'état <b>Waiting for table flush</b> ou <b>Waiting for master to send event</b>. Pour revenir à un fonctionnement normal, vous devez tuer toutes les requêtes de longue durée.</p>
+<p class="Pp"><b>NOTE:</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Tout ce qui est décrit dans cette section n'a aucun effet lorsque les verrous de sauvegarde sont utilisés. <i>Percona XtraBackup</i> utilisera <i>les verrous de sauvegarde</i> lorsque disponibles comme alternative légère à <b>FLUSH TABLES WITH READ</b> <b>LOCK</b>. Cette fonctionnalité est disponible dans <i>Percona Server for MySQL</i> 5.6+. <i>Percona XtraBackup</i> l'utilise automatiquement pour copier les données non-InnoDB afin d'éviter de bloquer les requêtes DML qui modifient les tables InnoDB.</div>
+</div>
+<p class="Pp">Pour éviter que cela ne se produise, deux choses ont été implémentées:</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li><i>xtrabackup</i> attend un moment propice pour émettre le verrou global</li>
+  <li><i>xtrabackup</i> tue toutes les requêtes ou uniquement les requêtes SELECT qui empêchent l'acquisition du verrou global</li>
+</ul>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Attendre_la_fin_des_requêtes'><a class='permalink' href='#Attendre_la_fin_des_requêtes'>Attendre   la fin des requêtes</a></h2>
+<p class="Pp">Vous devriez émettre un verrou global lorsqu'aucune requête longue n'est en cours d'exécution. Attendre pour émettre le verrou global pendant une période prolongée n'est pas une bonne méthode. L'attente peut prolonger le temps nécessaire à la sauvegarde. L'option <i>--ftwrl-wait-timeout</i> peut limiter le temps d'attente. Si le verrou ne peut pas être émis pendant ce temps, <i>xtrabackup</i> arrête l'option, se termine avec un message d'erreur et la sauvegarde n'est pas effectuée.</p>
+<p class="Pp">La valeur par défaut pour cette option est zéro (0), ce qui désactive l'option.</p>
+<p class="Pp">Une autre possibilité est de spécifier le type de requête sur lequel attendre. Dans ce cas <b>--ftwrl-wait-query-type</b>. Les valeurs possibles sont <b>all</b> (toutes) et <b>update</b> (mise à jour). Lorsque <b>all</b> est utilisé, <i>xtrabackup</i> attendra que toutes les requêtes de longue durée (durée d'exécution supérieure à celle autorisée par <b>--ftwrl-wait-threshold</b>) soient terminées avant d'exécuter <b>FLUSH TABLES WITH READ LOCK</b>. Lorsque <b>update</b> est utilisé, <i>xtrabackup</i> attendra que les requêtes <b>UPDATE/ALTER/REPLACE/INSERT</b> soient terminées.</p>
+<p class="Pp">Le temps nécessaire à la complétion d'une requête spécifique est difficile à prévoir. Nous supposons que les requêtes de longue durée ne se termineront pas dans un délai raisonnable. D'autres requêtes de courte durée se terminent rapidement. <i>xtrabackup</i> utilise la valeur de l'option <i>--ftwrl-wait-threshold</i> pour spécifier les requêtes de longue durée et bloquera un verrou global. Pour utiliser cette option, l'utilisateur xtrabackup doit avoir les privilèges <b>PROCESS</b> et <b>SUPER</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Tuer_les_requêtes_bloquantes'><a class='permalink' href='#Tuer_les_requêtes_bloquantes'>Tuer   les requêtes bloquantes</a></h2>
+<p class="Pp">La deuxième option consiste à tuer toutes les requêtes qui empêchent l'acquisition du verrou global. Dans ce cas, toutes les requêtes qui s'exécutent plus longtemps que <b>FLUSH TABLES WITH</b> <b>READ LOCK</b> sont des bloqueurs potentiels. Bien que toutes les requêtes puissent être tuées, un temps supplémentaire peut être spécifié pour que les requêtes de courte durée se terminent en utilisant l'option <b>--kill-long-queries-timeout</b>. Cette option spécifie le temps imparti aux requêtes pour se terminer, après quoi toutes les requêtes en cours seront tuées. La valeur par défaut est zéro, ce qui désactive cette fonctionnalité.</p>
+<p class="Pp">L'option <b>--kill-long-query-type</b> peut être utilisée pour spécifier toutes les requêtes ou uniquement les requêtes <b>SELECT</b> qui empêchent l'acquisition du verrou global. Pour utiliser cette option, l'utilisateur xtrabackup doit avoir les privilèges <b>PROCESS</b> et <b>SUPER</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Résumé_des_options'><a class='permalink' href='#Résumé_des_options'>Résumé   des options</a></h2>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li><b>--ftwrl-wait-timeout</b> (secondes) - combien de temps attendre un moment propice. Par défaut 0, ne pas attendre.</li>
+  <li><b>--ftwrl-wait-query-type</b> - quelles requêtes longues doivent être terminées avant d'exécuter <b>FLUSH TABLES WITH READ LOCK</b>. Par défaut toutes.</li>
+  <li><b>--ftwrl-wait-threshold</b> (secondes) - combien de temps une requête doit être exécutée avant que nous la considérions comme longue et potentiellement bloquante pour le verrou global.</li>
+  <li><b>--kill-long-queries-timeout</b> (secondes) - combien de temps nous donnons aux requêtes pour se terminer après l'émission de <b>FLUSH TABLES WITH READ LOCK</b> avant de commencer à tuer. Par défaut <b>0</b>, ne pas tuer.</li>
+  <li><b>--kill-long-query-type</b> - quelles requêtes doivent être tuées une fois que <b>kill-long-queries-timeout</b> a expiré.</li>
+</ul>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Exemple'><a class='permalink' href='#Exemple'>Exemple</a></h2>
+<p class="Pp">L'exécution de <i>xtrabackup</i> avec les options suivantes entraînera <i>xtrabackup</i> à ne pas attendre plus de 3 minutes que toutes les requêtes plus anciennes que 40 secondes soient terminées.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$  xtrabackup --backup --ftwrl-wait-threshold=40 \
+--ftwrl-wait-query-type=all --ftwrl-wait-timeout=180 \
+--kill-long-queries-timeout=20 --kill-long-query-type=all \
+--target-dir=/data/backups/</pre>
+</div>
+</div>
+<p class="Pp">Après l'émission de <b>FLUSH TABLES WITH READ LOCK</b>, <i>xtrabackup</i> attendra 20 secondes pour que le verrou soit acquis. Si le verrou n'est toujours pas acquis après 20 secondes, il tuera toutes les requêtes qui s'exécutent plus longtemps que <b>FLUSH TABLES WITH</b> <b>READ LOCK</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Accélérer_le_processus_de_sauvegarde'><a class='permalink' href='#Accélérer_le_processus_de_sauvegarde'>Accélérer   le processus de sauvegarde</a></h2>
+<p class="Pp">Copie avec les options <b>--parallel</b> et <i>--compress-threads</i></p>
+<p class="Pp">Lors de la création d'une sauvegarde locale ou en streaming avec l'option <i>xbstream</i>, plusieurs fichiers peuvent être copiés en même temps en utilisant l'option <b>--parallel</b>. Cette option spécifie le nombre de threads créés par <i>xtrabackup</i> pour copier les fichiers de données.</p>
+<p class="Pp">Pour profiter de cette</p>en
+option soit les tablespaces multiples
+    l'option doit être activée (innodb_file_per_table) soit le tablespace partagé doit
+    être stocké dans plusieurs fichiers ibdata avec l'option innodb_data_file_path.
+    Avoir plusieurs fichiers pour la base de données (ou en diviser un en plusieurs) n'a
+    pas d'impact mesurable sur les performances.</p>
+<p class="Pp">Comme cette fonctionnalité est implémentée <b>au niveau du fichier</b>,
+    le transfert de fichiers simultané peut parfois augmenter le débit d'E/S lors d'une
+    sauvegarde sur des fichiers de données fortement fragmentés, en raison du chevauchement d'un plus grand
+    nombre de requêtes de lecture aléatoire. Vous devriez également envisager d'optimiser le système de fichiers
+    pour obtenir des performances maximales (par exemple, en vérifiant la fragmentation).</p>
+<p class="Pp">Si les données sont stockées dans un seul fichier, cette option n'aura aucun effet.</p>
+<p class="Pp">Pour utiliser cette fonctionnalité, ajoutez simplement l'option à une sauvegarde locale, par exemple :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --parallel=4 --target-dir=/path/to/backup</pre>
+</div>
+</div>
+<p class="Pp">En utilisant <i>xbstream</i> dans les sauvegardes en streaming, vous pouvez
+    en plus accélérer le processus de compression avec
+    l'option <b>--compress-threads</b>. Cette option spécifie le nombre de threads créés par
+    <i>xtrabackup</i> pour la compression de données parallèle. La valeur par défaut pour cette option est 1.</p>
+<p class="Pp">Pour utiliser cette fonctionnalité, ajoutez simplement l'option à une sauvegarde locale, par exemple :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --stream=xbstream --compress --compress-threads=4 --target-dir=./ &gt; backup.xbstream</pre>
+</div>
+</div>
+<p class="Pp">Avant d'appliquer les journaux, les fichiers compressés devront être décompressés.</p>
+<p class="Pp">L'option <b>--rsync</b></p>
+<p class="Pp">Afin d'accélérer le processus de sauvegarde et de minimiser le temps pendant lequel
+    <b>FLUSH TABLES</b>
+    <b>WITH READ LOCK</b> bloque les écritures, l'option
+    <b>--rsync</b> doit être utilisée. Lorsque cette option est spécifiée,
+    <i>xtrabackup</i> utilise
+    <b>rsync</b> pour copier tous les fichiers non-InnoDB au lieu de lancer un
+    <b>cp</b> séparé pour chaque fichier, ce qui peut être beaucoup plus rapide pour les serveurs avec un grand nombre de bases de données ou de tables.
+    <i>xtrabackup</i> appellera
+    <b>rsync</b> deux fois, une fois avant le
+    <b>FLUSH</b>
+    <b>TABLES WITH READ LOCK</b> et une fois pendant pour minimiser le temps pendant lequel le verrou de lecture est maintenu.
+    Lors du second appel à
+    <b>rsync</b>, il ne synchronisera que les changements apportés aux données non transactionnelles (le cas échéant) depuis le premier appel effectué avant le
+    <b>FLUSH TABLES WITH READ LOCK</b>. Notez que
+    <i>Percona XtraBackup</i> utilisera les
+    <i>verrous de sauvegarde</i> lorsque disponibles comme alternative légère à
+    <b>FLUSH TABLES WITH READ</b>
+    <b>LOCK</b>. Cette fonctionnalité est disponible dans
+    <i>Percona Server for MySQL</i> 5.6+.
+    <i>Percona XtraBackup</i> l'utilise automatiquement pour copier les données non-InnoDB afin d'éviter de bloquer les requêtes DML qui modifient les tables InnoDB.</p>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Cette option ne peut pas être utilisée avec l'option
+  <b>--stream</b>.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss">Récupération à un instant T</h2>
+<p class="Pp">La récupération jusqu'à un moment précis de l'historique de la base de données peut être effectuée avec
+    <i>xtrabackup</i> et les journaux binaires du serveur.</p>
+<p class="Pp">Notez que le journal binaire contient les opérations qui ont modifié la base de données depuis un point dans le passé. Vous avez besoin d'un datadir complet comme base, puis vous pouvez appliquer une série d'opérations du journal binaire pour que les données correspondent à ce qu'elles étaient au moment que vous souhaitez.</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --target-dir=/path/to/backup
+$ xtrabackup --prepare --target-dir=/path/to/backup</pre>
+</div>
+</div>
+<p class="Pp">Pour plus de détails sur ces procédures, consultez creating_a_backup et
+    preparing_a_backup.</p>
+<p class="Pp">Maintenant, supposons que du temps se soit écoulé, et que vous souhaitiez restaurer la base de données à un certain point dans le passé, en gardant à l'esprit la contrainte du point où l'instantané a été pris.</p>
+<p class="Pp">Pour savoir quelle est la situation de la journalisation binaire sur le serveur, exécutez les requêtes suivantes :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>mysql&gt; SHOW BINARY LOGS;
++------------------+-----------+
+| Log_name         | File_size |
++------------------+-----------+
+| mysql-bin.000001 |       126 |
+| mysql-bin.000002 |      1306 |
+| mysql-bin.000003 |       126 |
+| mysql-bin.000004 |       497 |
++------------------+-----------+</pre>
+</div>
+</div>
+<p class="Pp">et</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>mysql&gt; SHOW MASTER STATUS;
++------------------+----------+--------------+------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++------------------+----------+--------------+------------------+
+| mysql-bin.000004 |      497 |              |                  |
++------------------+----------+--------------+------------------+</pre>
+</div>
+</div>
+<p class="Pp">La première requête vous indiquera quels fichiers contiennent le journal binaire et la seconde quel fichier est actuellement utilisé pour enregistrer les modifications, ainsi que la position actuelle dans celui-ci. Ces fichiers sont généralement stockés dans le datadir (sauf si un autre emplacement est spécifié lors du démarrage du serveur avec l'option
+    <b>--log-bin=</b>).</p>
+<p class="Pp">Pour connaître la position de l'instantané pris, consultez
+    <b>xtrabackup_binlog_info</b> dans le répertoire de sauvegarde :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ cat /path/to/backup/xtrabackup_binlog_info
+mysql-bin.000003      57</pre>
+</div>
+</div>
+<p class="Pp">Cela vous indiquera quel fichier a été utilisé au moment de la sauvegarde pour le journal binaire et sa position. Cette position sera celle effective lorsque vous restaurerez la sauvegarde :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --copy-back --target-dir=/path/to/backup</pre>
+</div>
+</div>
+<p class="Pp">Comme la restauration n'affectera pas les fichiers du journal binaire (vous devrez peut-être ajuster les autorisations de fichiers, voir restoring_a_backup), l'étape suivante consiste à extraire les requêtes du journal binaire avec
+    <b>mysqlbinlog</b> en commençant par la position de l'instantané et en les redirigeant vers un fichier</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ mysqlbinlog /path/to/datadir/mysql-bin.000003 /path/to/datadir/mysql-bin.000004 \
+    --start-position=57 &gt; mybinlog.sql</pre>
+</div>
+</div>
+<p class="Pp">Notez que si vous avez plusieurs fichiers pour le journal binaire, comme dans l'exemple, vous devez extraire les requêtes avec un seul processus, comme indiqué ci-dessus.</p>
+<p class="Pp">Inspectez le fichier avec les requêtes pour déterminer quelle position ou date correspond au point dans le temps souhaité. Une fois déterminé, redirigez-le vers le serveur. En supposant que le point est
+    <b>11-12-25 01:00:00</b> :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ mysqlbinlog /path/to/datadir/mysql-bin.000003 /path/to/datadir/mysql-bin.000004 \
+    --start-position=57 --stop-datetime=&quot;11-12-25 01:00:00&quot; | mysql -u root -p</pre>
+</div>
+</div>
+<p class="Pp">et la base de données sera remontée jusqu'à ce
+    Point dans le temps.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Faire_des_sauvegardes_dans_des_environnements_de_réplication'><a class='permalink' href='#Faire_des_sauvegardes_dans_des_environnements_de_réplication'>Faire des sauvegardes dans des environnements de réplication</a></h2>
+<p class="Pp">Il existe des options spécifiques pour sauvegarder à partir d'une réplique de réplication.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <b>--slave-info</b></h2>
+<p class="Pp">Cette option est utile lors de la sauvegarde d'un serveur de réplication de réplique. Elle affiche la position du journal binaire et le nom du serveur source. Elle écrit également ces informations dans le fichier
+    <b>xtrabackup_slave_info</b> sous forme d'instruction
+    <b>CHANGE MASTER</b>.</p>
+<p class="Pp">Cette option est utile pour configurer une nouvelle réplique pour cette source. Vous pouvez démarrer un serveur de réplication avec cette sauvegarde et exécuter l'instruction enregistrée dans le fichier
+    <b>xtrabackup_slave_info</b>. Plus de détails sur cette procédure se trouvent dans replication_howto.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">L'option <b>--safe-slave-backup</b></h2>
+<p class="Pp">Afin d'assurer un état de réplication cohérent, cette option arrête le thread SQL de réplication et attend avant de commencer la sauvegarde jusqu'à ce que
+    <b>Slave_open_temp_tables</b> dans
+    <b>SHOW STATUS</b> soit égal à zéro. S'il n'y a pas de tables temporaires ouvertes, la sauvegarde aura lieu, sinon le thread SQL sera démarré et arrêté jusqu'à ce qu'il n'y ait plus de tables temporaires ouvertes. La sauvegarde échouera si
+    <b>Slave_open_temp_tables</b> ne devient pas zéro après
+    <b>--safe-slave-backup-timeout</b> secondes (par défaut 300 secondes). Le thread SQL de réplication sera redémarré lorsque la sauvegarde sera terminée.</p>
+<p class="Pp">L'utilisation de cette option est toujours recommandée lors de la sauvegarde à partir d'un serveur de réplique.</p>
+<p class="Pp"><b>AVERTISSEMENT :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">Assurez-vous que votre réplique est une réplique fidèle de la source
+  avant de l'utiliser comme source pour la sauvegarde. Un bon outil pour valider une réplique est
+  <i>pt-table-checksum</i>.</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Stocker_l_historique_des_sauvegardes_sur_le_serveur'><a class='permalink' href='#Stocker_l_historique_des_sauvegardes_sur_le_serveur'>Stocker l'historique des sauvegardes sur le serveur</a></h2>
+<p class="Pp"><i>Percona XtraBackup</i> prend en charge le stockage de l'historique des sauvegardes sur le serveur. Cette fonctionnalité a été implémentée dans
+    <i>Percona XtraBackup</i> 2.2. Le stockage de l'historique des sauvegardes sur le serveur a été mis en œuvre pour fournir aux utilisateurs des informations supplémentaires sur les sauvegardes en cours. Les informations sur l'historique des sauvegardes seront stockées dans la table
+    <i>PERCONA_SCHEMA.XTRABACKUP_HISTORY</i>.</p>
+<p class="Pp">Pour utiliser cette fonctionnalité, les options suivantes sont disponibles :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li><b>--history</b> =&lt;nom&gt; : Cette option active la fonctionnalité d'historique et permet à l'utilisateur de spécifier un nom de série de sauvegarde qui sera placé dans l'enregistrement d'historique.</li>
+  <li><b>--incremental-history-name</b> =&lt;nom&gt; : Cette option permet de créer une sauvegarde incrémentielle basée sur une série d'historique spécifique par nom.
+      <i>xtrabackup</i> recherchera dans la table d'historique la sauvegarde la plus récente (avec le plus grand
+      <b>to_lsn</b>) de la série et utilisera la valeur
+      <b>to_lsn</b> comme lsn de départ. Ceci est mutuellement exclusif avec les options
+      <b>--incremental-history-uuid</b>,
+      <b>--incremental-basedir</b> et
+      <b>--incremental-lsn</b>. Si aucun LSN valide ne peut être trouvé (pas de série portant ce nom),
+      <i>xtrabackup</i> retournera une erreur.</li>
+  <li><b>--incremental-history-uuid</b> =&lt;uuid&gt; : Permet de créer une sauvegarde incrémentielle basée sur un enregistrement d'historique spécifique identifié par un UUID.
+      <i>xtrabackup</i> recherchera dans la table d'historique l'enregistrement correspondant à l'UUID et utilisera la valeur
+      <b>to_lsn</b> comme LSN de départ. Cette option est mutuellement exclusive avec les options
+      <b>--incremental-basedir</b>,
+      <b>--incremental-lsn</b> et
+      <b>--incremental-history-name</b>. Si aucun LSN valide ne peut être trouvé (pas d'enregistrement portant cet UUID ou
+      <b>to_lsn</b> manquant),
+      <i>xtrabackup</i> retournera une erreur.</li>
+</ul>
+</div>
+<p class="Pp"><b>NOTE :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">La sauvegarde en cours d'exécution n'existera **PAS** dans la table
+  xtrabackup_history dans le jeu de sauvegarde résultant, car l'enregistrement ne sera ajouté à cette table qu'après la prise de la sauvegarde.</div>
+</div>
+<p class="Pp">Si vous souhaitez accéder à l'historique des sauvegardes en dehors de votre jeu de sauvegardes en cas d'événement catastrophique, vous devrez effectuer un
+    <b>mysqldump</b>, une sauvegarde partielle ou un
+    <b>SELECT</b> * sur la table d'historique après que
+    <i>xtrabackup</i> ait terminé.</p><section class="Sh">
+<h1 class="Sh" id="Limitations"><a class="permalink" href="#Limitations">Limitations</a></h1>
+<p class="Pp">The <code class="Nm">PERCONA_SCHEMA.XTRABACKUP_HISTORY</code> table stores information about previous server backups. Backup information is only written to this table if the backup was created using the <code class="Op">--history</code> option.</p>
+<p class="Pp">For the necessary privileges, see <a class="Xr">pxb.privilege</a>.</p>
+<table class="tbl" style="border-top-style: solid;">
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">Nom de la colonne</td>
+<td style="border-right-style: solid;">Description</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">uuid</td>
+<td style="border-right-style: solid;">Identifiant unique de la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">name</td>
+<td style="border-right-style: solid;">Nom donné par l'utilisateur à la série de sauvegardes. Il peut y avoir plusieurs entrées avec le même nom pour identifier des sauvegardes liées dans une série.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">tool_name</td>
+<td style="border-right-style: solid;">Nom de l'outil utilisé pour la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">tool_command</td>
+<td style="border-right-style: solid;">Commande exacte passée à l'outil, avec les options --password et --encryption_key obfusquées.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">tool_version</td>
+<td style="border-right-style: solid;">Version de l'outil utilisé pour la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">ibbackup_version</td>
+<td style="border-right-style: solid;">Version du binaire xtrabackup utilisé pour la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">server_version</td>
+<td style="border-right-style: solid;">Version du serveur sur lequel la sauvegarde a été effectuée.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">start_time</td>
+<td style="border-right-style: solid;">Heure de début de la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">end_time</td>
+<td style="border-right-style: solid;">Heure de fin de la sauvegarde.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">lock_time</td>
+<td style="border-right-style: solid;">Temps, en secondes, passé à appeler et à détenir les verrous pour <code class="Op">FLUSH TABLES WITH READ LOCK</code>.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">binlog_pos</td>
+<td style="border-right-style: solid;">Fichier et position du binlog à la fin de <code class="Op">FLUSH TABLES WITH READ LOCK</code>.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">innodb_from_lsn</td>
+<td style="border-right-style: solid;">LSN au début de la sauvegarde, pouvant être utilisé pour déterminer les sauvegardes précédentes.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">innodb_to_lsn</td>
+<td style="border-right-style: solid;">LSN à la fin de la sauvegarde, pouvant être utilisé comme LSN de départ pour l'incrémentiel suivant.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">partial</td>
+<td style="border-right-style: solid;">Indique s'il s'agit d'une sauvegarde partielle. Si la valeur est <code class="Op">N</code>, cela signifie qu'il s'agit d'une sauvegarde complète.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">incremental</td>
+<td style="border-right-style: solid;">Indique s'il s'agit d'une sauvegarde incrémentielle.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">format</td>
+<td style="border-right-style: solid;">Description du format de résultat (par exemple, <code class="Op">xbstream</code>).</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">compact</td>
+<td style="border-right-style: solid;">Indique s'il s'agit d'une sauvegarde compacte.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">compressed</td>
+<td style="border-right-style: solid;">Indique s'il s'agit d'une sauvegarde compressée.</td>
+</tr>
+<tr style="border-left-style: solid; border-bottom-style: solid;">
+<td style="border-right-style: solid;">encrypted</td>
+<td style="border-right-style: solid;">Indique s'il s'agit d'une sauvegarde chiffrée.</td>
+</tr>
+</table>
+<ul class="Bl-bullet">
+<li>L'option <code class="Op">--history</code> doit être spécifiée uniquement en ligne de commande et non dans un fichier de configuration pour être efficace.</li>
+<li>Les options <code class="Op">--incremental-history-name</code> et <code class="Op">--incremental-history-uuid</code> doivent être spécifiées uniquement en ligne de commande et non dans un fichier de configuration pour être efficaces.</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="IMPLEMENTATION"><a class="permalink" href="#IMPLEMENTATION">IMPLÉMENTATION</a></h1>
+<section class="Ss">
+<h2 class="Ss" id="Implementation_Details"><a class="permalink" href="#Implementation_Details">Détails d'implémentation</a></h2>
+<p class="Pp">Cette page contient des notes sur divers aspects internes du fonctionnement de l'outil <code class="Nm">xtrabackup</code>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="File_Permissions"><a class="permalink" href="#File_Permissions">Permissions des fichiers</a></h2>
+<p class="Pp"><code class="Nm">xtrabackup</code> ouvre les fichiers de données source en mode lecture-écriture, bien qu'il ne les modifie pas. Cela signifie que vous devez exécuter <code class="Nm">xtrabackup</code> en tant qu'utilisateur disposant des permissions d'écriture sur les fichiers de données. La raison pour laquelle les fichiers sont ouverts en mode lecture-écriture est que <code class="Nm">xtrabackup</code> utilise les bibliothèques embarquées <code class="Nm">InnoDB</code> pour ouvrir et lire les fichiers, et <code class="Nm">InnoDB</code> les ouvre en mode lecture-écriture car il suppose normalement qu'il va écrire dedans.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Tuning_the_OS_Buffers"><a class="permalink" href="#Tuning_the_OS_Buffers">Réglage des tampons du système d'exploitation</a></h2>
+<p class="Pp">Étant donné que <code class="Nm">xtrabackup</code> lit de grandes quantités de données depuis le système de fichiers, il utilise <code class="Nm">posix_fadvise()</code> lorsque cela est possible, pour indiquer au système d'exploitation de ne pas essayer de mettre en cache les blocs lus depuis le disque. Sans cet indice, le système d'exploitation préférerait mettre en cache les blocs, en supposant que <code class="Nm">xtrabackup</code> en aura à nouveau besoin, ce qui n'est pas le cas. La mise en cache de fichiers aussi volumineux peut exercer une pression sur la mémoire virtuelle du système d'exploitation et entraîner le déplacement d'autres processus, tels que le serveur de base de données, hors de la mémoire. L'outil <code class="Nm">xtrabackup</code> évite cela avec l'indice suivant sur les fichiers source et destination :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>posix_fadvise(file, 0, 0, POSIX_FADV_DONTNEED)</pre>
+</div>
+</div>
+<p class="Pp">De plus, <code class="Nm">xtrabackup</code> demande au système d'exploitation d'effectuer des optimisations de prélecture plus agressives sur les fichiers source :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>posix_fadvise(file, 0, 0, POSIX_FADV_SEQUENTIAL)</pre>
+</div>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Copying_Data_Files"><a class="permalink" href="#Copying_Data_Files">Copie des fichiers de données</a></h2>
+<p class="Pp">Lors de la copie des fichiers de données vers le répertoire cible, <code class="Nm">xtrabackup</code> lit et écrit 1 Mo de données à la fois. Ceci n'est pas configurable. Lors de la copie du fichier journal, <code class="Nm">xtrabackup</code> lit et écrit 512 octets à la fois. Ceci n'est pas non plus configurable et correspond au comportement d'InnoDB (une solution de contournement existe dans <i class="Em">Percona Server for MySQL</i> car il dispose d'une option pour régler <code class="Nm">innodb_log_block_size</code> pour <code class="Nm">XtraDB</code>, et dans ce cas <i class="Em">Percona XtraBackup</i> correspondra au réglage).</p>
+<p class="Pp">Après la lecture des fichiers, <code class="Nm">xtrabackup</code> itère sur le tampon de 1 Mo page par page, et vérifie la corruption de chaque page avec la fonction <code class="Nm">buf_page_is_corrupted()</code> d'InnoDB. Si la page est corrompue, il la relit et réessaie jusqu'à 10 fois pour chaque page. Il ignore cette vérification sur le tampon de double écriture.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Codes de sortie de <i>xtrabackup</i></h2>
+<p class="Pp">Le binaire <code class="Nm">xtrabackup</code> se termine avec la valeur de succès traditionnelle de 0 après une sauvegarde, en l'absence d'erreur. Si une erreur survient pendant la sauvegarde, la valeur de sortie est 1.</p>
+<p class="Pp">Dans certains cas, la valeur de sortie peut être différente de 0 ou 1, en raison du code d'option en ligne de commande inclus à partir des bibliothèques <i class="Em">MySQL</i>. Une option en ligne de commande inconnue, par exemple, provoquera un code de sortie de 255.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="REFERENCES"><a class="permalink" href="#REFERENCES">RÉFÉRENCES</a></h1>
+<section class="Ss">
+<h2 class="Ss">Référence des options de <b>xtrabackup</b></h2>
+<p class="Pp">Cette page documente toutes les options en ligne de commande du binaire <code class="Nm">xtrabackup</code>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Modes_of_operation"><a class="permalink" href="#Modes_of_operation">Modes de fonctionnement</a></h2>
+<p class="Pp">Vous invoquez <code class="Nm">xtrabackup</code> dans l'un des modes suivants :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+<li>Mode <code class="Op">--backup</code> pour effectuer une sauvegarde dans un répertoire cible.</li>
+<li>Mode <code class="Op">--prepare</code> pour restaurer les données à partir d'une sauvegarde (créée en mode <code class="Op">--backup</code>).</li>
+<li>Mode <code class="Op">--copy-back</code> pour copier les données d'une sauvegarde vers l'emplacement qui contenait les données d'origine ; pour déplacer les données au lieu de les copier, utilisez le mode alternatif <code class="Op">--move-back</code>.</li>
+<li>Mode <code class="Op">--stats</code> pour scanner les fichiers de données spécifiés et afficher les statistiques d'index.</li>
+</ul>
+</div>
+<p class="Pp">Lorsque vous avez l'intention d'exécuter <code class="Nm">xtrabackup</code> dans l'un de ces modes, utilisez la syntaxe suivante :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup [--defaults-file=#] --backup|--prepare|--copy-back|--stats [OPTIONS]</pre>
+</div>
+</div>
+<p class="Pp">Par exemple, le mode <code class="Op">--prepare</code> s'applique comme suit :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --prepare --target-dir=/data/backup/mysql/</pre>
+</div>
+</div>
+<p class="Pp">Pour tous les modes, les options par défaut sont lues à partir des groupes de configuration <code class="Nm">xtrabackup</code> et <code class="Nm">mysqld</code> à partir des fichiers suivants, dans l'ordre indiqué :</p>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+<dt>1.</dt>
+<dd><code class="Li">/etc/my.cnf</code></dd>
+<dt>2.</dt>
+<dd><code class="Li">/etc/mysql/my.cnf</code></dd>
+<dt>3.</dt>
+<dd><code class="Li">/usr/etc/my.cnf</code></dd>
+<dt>4.</dt>
+<dd><code class="Li">~/.my.cnf</code>.</dd>
+</dl>
+</div>
+<p class="Pp">En tant que premier paramètre de <code class="Nm">xtrabackup</code> (à la place de <code class="Op">--defaults-file</code>, vous pouvez fournir l'une des options suivantes :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+<li><code class="Op">--print-defaults</code> pour que <code class="Nm">xtrabackup</code> affiche la liste des arguments et quitte.</li>
+<li><code class="Op">--no-defaults</code> pour interdire la lecture des options à partir de tout fichier autre que le fichier de connexion.</li>
+<li><code class="Op">--defaults-file</code> pour lire les options par défaut à partir du fichier spécifié.</li>
+<li><code class="Op">--defaults-extra-file</code> pour lire le fichier supplémentaire spécifié après que les fichiers globaux ont été lus.</li>
+</ul>
+</div>
+</section>
+</section>
+<li><i>--defaults-group-suffix</i> pour lire les groupes de configuration avec le
+      suffixe donné. Le nom de groupe effectif est construit en concaténant les
+      groupes de configuration par défaut (<b>xtrabackup</b> et <b>mysqld</b>)
+      avec le suffixe donné.</li>
+  <li><i>--login-path</i> pour lire le chemin donné dans le fichier de connexion.</li>
+</ul>
+</div>
+Options InnoDB
+<p class="Pp">Il existe un grand groupe d'options InnoDB qui sont normalement lues
+    depuis le fichier de configuration <b>my.cnf</b>, de sorte que <i>xtrabackup</i>
+    lance son InnoDB embarqué dans la même configuration que votre serveur actuel.
+    Vous n'avez normalement pas besoin de les spécifier explicitement. Ces options
+    ont le même comportement dans InnoDB et XtraDB. Voir <i>--innodb-miscellaneous</i>
+    pour plus d'informations.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Options'><a class='permalink' href='#Options'>Options</a></h2>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="apply"><a class="permalink" href="#apply"><b>--apply-log-only</b></a></dt>
+  <dd>Cette option fait en sorte que seule l'étape de rejeu (redo) soit effectuée
+      lors de la préparation d'une sauvegarde. Elle est très importante pour les
+      sauvegardes incrémentielles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="backup"><a class="permalink" href="#backup"><b>--backup</b></a></dt>
+  <dd>Effectue une sauvegarde et la place dans <i>--target-dir</i>. Voir Créer
+      une sauvegarde.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--backup-lock-timeout</b></dt>
+  <dd>Le délai d'attente en secondes pour les tentatives d'acquisition des verrous
+      de métadonnées.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--backup-lock-retry-count</b></dt>
+  <dd>Le nombre de tentatives pour acquérir les verrous de métadonnées.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--backup-locks</b></dt>
+  <dd>Cette option contrôle si les verrous de sauvegarde doivent être utilisés à la
+      place de <b>FLUSH TABLES WITH READ LOCK</b> lors de l'étape de sauvegarde.
+      L'option n'a aucun effet lorsque les verrous de sauvegarde ne sont pas pris
+      en charge par le serveur. Cette option est activée par défaut, désactivez-la
+      avec <i>--no-backup-locks</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="check"><a class="permalink" href="#check"><b>--check-privileges</b></a></dt>
+  <dd>Cette option vérifie si <i>Percona XtraBackup</i> dispose de tous les
+      privilèges requis. Si un privilège manquant est requis pour l'opération en
+      cours, le processus s'arrêtera et affichera un message d'erreur. Si un
+      privilège manquant n'est pas requis pour l'opération en cours, mais peut
+      être nécessaire pour une autre opération XtraBackup, le processus ne sera
+      pas interrompu et un avertissement sera affiché.</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>xtrabackup: Error: missing required privilege LOCK TABLES on *.*
+xtrabackup: Warning: missing required privilege REPLICATION CLIENT on *.*</pre>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="close"><a class="permalink" href="#close"><b>--close-files</b></a></dt>
+  <dd>Ne pas garder les fichiers ouverts. Lorsque <i>xtrabackup</i> ouvre un
+      tablespace, il ne ferme normalement pas son descripteur de fichier afin de
+      gérer correctement les opérations DDL. Cependant, si le nombre de tablespaces
+      est très important et ne peut pas entrer dans une limite quelconque, il
+      existe une option pour fermer les descripteurs de fichiers une fois qu'ils
+      ne sont plus utilisés. <i>Percona XtraBackup</i> peut produire des
+      sauvegardes incohérentes avec cette option activée. Utilisez à vos risques
+      et périls.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="compress"><a class="permalink" href="#compress"><b>--compress</b></a></dt>
+  <dd>Cette option indique à <i>xtrabackup</i> de compresser toutes les données
+      de sortie, y compris le fichier journal des transactions et les fichiers de
+      méta-données, en utilisant soit l'algorithme de compression <b>quicklz</b>,
+      soit <b>lz4</b>. <b>quicklz</b> est choisi par défaut.
+    <p class="Pp">Lorsque vous utilisez <b>--compress=quicklz</b> ou
+        <b>--compress</b>, les fichiers résultants sont au format d'archive qpress,
+        c'est-à-dire que chaque fichier <b>*.qp</b> produit par
+        <i>xtrabackup</i> est essentiellement une archive qpress d'un seul
+        fichier et peut être extrait et décompressé par l'archiveur de fichiers
+        <i>qpress</i>.</p>
+    <p class="Pp"><b>--compress=lz4</b> produit des fichiers <b>*.lz4</b>. Vous
+        pouvez extraire le contenu de ces fichiers en utilisant un programme tel
+        que <b>lz4</b>.</p>
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="QuickLZ"><a class="permalink" href="#QuickLZ"><b>QuickLZ</b></a></dt>
+  <dd><a href='http://www.quicklz.com'>http://www.quicklz.com</a></dd>
+  <dt id="LZ4"><a class="permalink" href="#LZ4"><b>LZ4</b></a></dt>
+  <dd><a href='https://lz4.github.io/lz4/'>https://lz4.github.io/lz4/</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--compress-chunk-size=#</b></dt>
+  <dd>Taille des tampons de travail pour les threads de compression en octets. La
+      valeur par défaut est 64 Ko.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--compress-threads=#</b></dt>
+  <dd>Cette option spécifie le nombre de threads de travail utilisés par
+      <i>xtrabackup</i> pour la compression parallèle des données. Cette option
+      est par défaut à <b>1</b>. La compression parallèle (<i>--compress-threads</i>)
+      peut être utilisée conjointement avec la copie parallèle de fichiers (<i>--parallel</i>).
+      Par exemple, <b>--parallel=4 --compress --compress-threads=2</b> créera 4
+      threads d'E/S qui liront les données et les transmettront à 2 threads de
+      compression.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="copy"><a class="permalink" href="#copy"><b>--copy-back</b></a></dt>
+  <dd>Copie tous les fichiers d'une sauvegarde précédemment effectuée du répertoire
+      de sauvegarde vers leurs emplacements d'origine. Cette option ne copiera pas
+      les fichiers existants à moins que l'option <i>--force-non-empty-directories</i>
+      ne soit spécifiée.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="core"><a class="permalink" href="#core"><b>--core-file</b></a></dt>
+  <dd>Écrit un core dump en cas de signaux fatals.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="databases=_"><a class="permalink" href="#databases=_"><b>--databases=#</b></a></dt>
+  <dd>Cette option spécifie une liste de bases de données et de tables qui doivent
+      être sauvegardées. L'option accepte la liste sous la forme
+      <b>&quot;nom_base1[.nom_table1]</b> <b>nom_base2[.nom_table2] .
+      . .&quot;</b>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="databases"><a class="permalink" href="#databases"><b>--databases-exclude=name</b></a></dt>
+  <dd>Exclut les bases de données en fonction de leur nom. Fonctionne de la même
+      manière que <i>--databases</i>, mais les noms correspondants sont exclus
+      de la sauvegarde. Notez que cette option a une priorité plus élevée que
+      <i>--databases</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="databases~2"><a class="permalink" href="#databases~2"><b>--databases-file=#</b></a></dt>
+  <dd>Cette option spécifie le chemin vers le fichier contenant la liste des bases
+      de données et des tables qui doivent être sauvegardées. Le fichier peut
+      contenir des éléments de liste sous la forme <b>nom_base1[.nom_table1]</b>,
+      un élément par ligne.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="datadir=DIRECTORY"><a class="permalink" href="#datadir=DIRECTORY"><b>--datadir=DIRECTORY</b></a></dt>
+  <dd>Le répertoire source pour la sauvegarde. Il doit s'agir du même que le
+      datadir de votre serveur <i>MySQL</i>, il doit donc être lu depuis
+      <b>my.cnf</b> s'il existe ; sinon, vous devez le spécifier sur la ligne de
+      commande.
+    <p class="Pp">Lorsqu'il est combiné avec l'option <i>--copy-back</i> ou
+        <i>--move-back</i>, <i>--datadir</i> fait référence au répertoire de
+        destination.</p>
+    <p class="Pp">Une fois connecté au serveur, pour effectuer une sauvegarde, vous
+        aurez besoin des permissions <b>READ</b> et <b>EXECUTE</b> au niveau du
+        système de fichiers dans le datadir du serveur.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="debug"><a class="permalink" href="#debug"><b>--debug-sleep-before-unlock=#</b></a></dt>
+  <dd>Ceci est une option de débogage utilisée par la suite de tests
+      <i>xtrabackup</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="debug~2"><a class="permalink" href="#debug~2"><b>--debug-sync=name</b></a></dt>
+  <dd>Le point de synchronisation de débogage. Cette option n'est utilisée que par
+      la suite de tests <i>xtrabackup</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="decompress"><a class="permalink" href="#decompress"><b>--decompress</b></a></dt>
+  <dd>Décompresse tous les fichiers avec l'extension <b>.qp</b> dans une sauvegarde
+      précédemment effectuée avec l'option <i>--compress</i>. L'option
+      <i>--parallel</i> permettra de déchiffrer plusieurs fichiers simultanément.
+      Pour décompresser, l'utilitaire qpress DOIT être installé et accessible dans
+      le PATH. <i>Percona XtraBackup</i> ne supprime pas automatiquement les
+      fichiers compressés. Pour nettoyer le répertoire de sauvegarde, les
+      utilisateurs doivent utiliser l'option <i>--remove-original</i>.
+    <p class="Pp">L'option <i>--decompress</i> peut être utilisée avec
+        <i>xbstream</i> pour décompresser des fichiers qpress individuels.</p>
+    <p class="Pp">Si vous avez utilisé l'algorithme de compression <b>lz4</b> pour
+        compresser les fichiers (<b>--compress=lz4</b>), modifiez le paramètre
+        <i>--decompress</i> en conséquence : <b>--decompress=lz4</b>.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--decompress-threads=#</b></dt>
+  <dd>Force <i>xbstream</i> à utiliser le nombre spécifié de threads pour la
+      décompression.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="decrypt=ENCRYPTION"><a class="permalink" href="#decrypt=ENCRYPTION"><b>--decrypt=ENCRYPTION-ALGORITHM</b></a></dt>
+  <dd>Déchiffre tous les fichiers avec l'extension <b>.xbcrypt</b> dans une
+      sauvegarde précédemment effectuée avec l'option <i>--encrypt</i>. L'option
+      <i>--parallel</i> permettra de déchiffrer plusieurs fichiers
+      simultanément. <i>Percona XtraBackup</i> ne supprime pas automatiquement
+      les fichiers chiffrés. Pour nettoyer le répertoire de sauvegarde, les
+      utilisateurs doivent utiliser l'option <i>--remove-original</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="defaults"><a class="permalink" href="#defaults"><b>--defaults-extra-file=[MY.CNF]</b></a></dt>
+  <dd>Lit ce fichier après la lecture des fichiers globaux. Doit être donné comme
+      première option sur la ligne de commande.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="defaults~2"><a class="permalink" href="#defaults~2"><b>--defaults-file=[MY.CNF]</b></a></dt>
+  <dd>Ne lit les options par défaut que dans le fichier donné. Doit être donné comme
+      première option sur la ligne de commande. Doit être un fichier réel ; il ne
+      peut pas être un lien symbolique.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="defaults~3"><a class="permalink" href="#defaults~3"><b>--defaults-group=GROUP-NAME</b></a></dt>
+  <dd>Cette option permet de définir le groupe qui doit être lu à partir du fichier
+      de configuration. Elle est utilisée par <i>xtrabackup</i> si vous utilisez
+      l'option <i>--defaults-group</i>. Elle est nécessaire pour les déploiements
+      <b>mysqld_multi</b>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="defaults~4"><a class="permalink" href="#defaults~4"><b>--defaults-group-suffix=#</b></a></dt>
+  <dd>Lit également les groupes avec concat(groupe, suffixe).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="dump"><a class="permalink" href="#dump"><b>--dump-innodb-buffer-pool</b></a></dt>
+  <dd>Cette option contrôle si un nouveau vidage du contenu du pool de tampons doit
+      être effectué.
+    <p class="Pp">Avec <b>--dump-innodb-buffer-pool</b>, <i>xtrabackup</i>
+        envoie une requête au serveur pour démarrer le bu</dd>
+</dl>
+</div>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>$ xtrabackup --backup --dump-innodb-buffer-pool --target-dir=/home/user/backup</pre>
+</div>
+</div>
+<p class="Pp">Par défaut, cette option est définie sur <i>OFF</i>.</p>
+<p class="Pp">Si <b>innodb_buffer_pool_dump_status</b> indique qu'un vidage du pool de tampons est en cours, <i>xtrabackup</i> attend que le vidage soit terminé en utilisant la valeur de <i>--dump-innodb-buffer-pool-timeout</i>.</p>
+<p class="Pp">Le fichier <b>ib_buffer_pool</b> stocke l'ID de l'espace de table et les données de l'ID de page utilisés pour réchauffer le pool de tampons plus rapidement.</p>
+<p class="Pp"><b>VOIR AUSSI :</b></p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="MySQL~2"><a class="permalink" href="#MySQL~2"><b><i>Documentation MySQL : Sauvegarde et restauration de l'état du pool de tampons</b></a></dt>
+  <dd><a href='https://dev.mysql.com/doc/refman/5.7/en/innodb-preload-buffer-pool.html'>https://dev.mysql.com/doc/refman/5.7/en/innodb-preload-buffer-pool.html</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="dump~2"><a class="permalink" href="#dump~2"><b>--dump-innodb-buffer-pool-timeout</b></a></dt>
+  <dd>Cette option contient le nombre de secondes pendant lesquelles <i>xtrabackup</i> doit surveiller la valeur de <b>innodb_buffer_pool_dump_status</b> pour déterminer si le vidage du pool de tampons est terminé.
+    <p class="Pp">Cette option est utilisée en combinaison avec <i>--dump-innodb-buffer-pool</i>. Par défaut, elle est définie sur <i>10</i> secondes.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="dump~3"><a class="permalink" href="#dump~3"><b>--dump-innodb-buffer-pool-pct</b></a></dt>
+  <dd>Cette option contient le pourcentage des pages du pool de tampons les plus récemment utilisées à vider.
+    <p class="Pp">Cette option est effective si l'option <i>--dump-innodb-buffer-pool</i> est définie sur <i>ON</i>. Si cette option contient une valeur, <i>xtrabackup</i> définit la variable système <i>MySQL</i> <b>innodb_buffer_pool_dump_pct</b>. Dès que le vidage du pool de tampons est terminé ou arrêté (voir <i>--dump-innodb-buffer-pool-timeout</i>), la valeur de la variable système <i>MySQL</i> est restaurée.</p>
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Changing"><a class="permalink" href="#Changing"><b>Modification du délai d'attente pour le vidage du pool de tampons</b></a></dt>
+  <dd><i>--dump-innodb-buffer-pool-timeout</i></dd>
+  <dt id="MySQL~3"><a class="permalink" href="#MySQL~3"><b><i>Documentation MySQL : variable système innodb_buffer_pool_dump_pct</i></b></a></dt>
+  <dd><a href='https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_buffer_pool_dump_pct'>https://dev.mysql.com/doc/refman/8.0/en/innodb-parameters.html#sysvar_innodb_buffer_pool_dump_pct</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="encrypt=ENCRYPTION_ALGORITHM"><a class="permalink" href="#encrypt=ENCRYPTION_ALGORITHM"><b>--encrypt=ENCRYPTION_ALGORITHM</b></a></dt>
+  <dd>Cette option indique à xtrabackup de chiffrer les copies de sauvegarde des fichiers de données InnoDB en utilisant l'algorithme spécifié dans ENCRYPTION_ALGORITHM. Les algorithmes actuellement pris en charge sont : <b>AES128</b>, <b>AES192</b> et <b>AES256</b>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="encrypt"><a class="permalink" href="#encrypt"><b>--encrypt-key=ENCRYPTION_KEY</b></a></dt>
+  <dd>Une clé de chiffrement de longueur appropriée à utiliser. Il n'est pas recommandé d'utiliser cette option lorsqu'il y a un accès non contrôlé à la machine, car la ligne de commande et donc la clé peuvent être vues dans le cadre des informations du processus.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="encrypt~2"><a class="permalink" href="#encrypt~2"><b>--encrypt-key-file=ENCRYPTION_KEY_FILE</b></a></dt>
+  <dd>Le nom d'un fichier où la clé brute de la longueur appropriée peut être lue. Le fichier doit être un fichier binaire (ou texte) simple contenant exactement la clé à utiliser.
+    <p class="Pp">Il est passé directement au processus enfant de xtrabackup. Voir la documentation de <b>xtrabackup</b> pour plus de détails.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="encrypt~3"><a class="permalink" href="#encrypt~3"><b>--encrypt-threads=#</b></a></dt>
+  <dd>Cette option spécifie le nombre de threads de travail qui seront utilisés pour le chiffrement/déchiffrement parallèle. Voir la documentation de <b>xtrabackup</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="encrypt~4"><a class="permalink" href="#encrypt~4"><b>--encrypt-chunk-size=#</b></a></dt>
+  <dd>Cette option spécifie la taille du tampon de travail interne pour chaque thread de chiffrement, mesurée en octets. Elle est passée directement au processus enfant de xtrabackup. Voir la documentation de <b>xtrabackup</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="export"><a class="permalink" href="#export"><b>--export</b></a></dt>
+  <dd>Crée les fichiers nécessaires à l'exportation des tables. Voir Restauration de tables individuelles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="extra"><a class="permalink" href="#extra"><b>--extra-lsndir=DIRECTORY</b></a></dt>
+  <dd>(pour --backup) : enregistre une copie supplémentaire des fichiers <b>xtrabackup_checkpoints</b> et <b>xtrabackup_info</b> dans ce répertoire.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="force"><a class="permalink" href="#force"><b>--force-non-empty-directories</b></a></dt>
+  <dd>Lorsqu'elle est spécifiée, cette option permet aux options <i>--copy-back</i> et <i>--move-back</i> de transférer des fichiers vers des répertoires non vides. Aucun fichier existant ne sera écrasé. Si des fichiers qui doivent être copiés/déplacés du répertoire de sauvegarde existent déjà dans le répertoire de destination, cela échouera toujours avec une erreur.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ftwrl"><a class="permalink" href="#ftwrl"><b>--ftwrl-wait-timeout=SECONDS</b></a></dt>
+  <dd>Cette option spécifie le temps en secondes pendant lequel xtrabackup doit attendre les requêtes qui bloqueraient <b>FLUSH TABLES WITH READ LOCK</b> avant de l'exécuter. S'il reste de telles requêtes lorsque le délai d'attente expire, xtrabackup se termine avec une erreur. La valeur par défaut est <b>0</b>, auquel cas il n'attend pas la fin des requêtes et lance immédiatement <b>FLUSH TABLES WITH READ LOCK</b>. Lorsque cela est pris en charge, <i>xtrabackup</i> utilise automatiquement les <i>verrous de sauvegarde</i> comme alternative légère à <b>FLUSH TABLES WITH READ LOCK</b> pour copier les données non-InnoDB afin d'éviter de bloquer les requêtes DML qui modifient les tables InnoDB.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ftwrl~2"><a class="permalink" href="#ftwrl~2"><b>--ftwrl-wait-threshold=SECONDS</b></a></dt>
+  <dd>Cette option spécifie le seuil de temps d'exécution des requêtes utilisé par xtrabackup pour détecter les requêtes de longue durée avec une valeur non nulle de <i>--ftwrl-wait-timeout</i>. <b>FLUSH TABLES WITH READ LOCK</b> n'est pas démarré tant que de telles requêtes de longue durée n'existent pas. Cette option n'a aucun effet si <i>--ftwrl-wait-timeout</i> est <b>0</b>. La valeur par défaut est <b>60</b> secondes. Lorsque cela est pris en charge, xtrabackup utilise automatiquement les <i>verrous de sauvegarde</i> comme alternative légère à <b>FLUSH TABLES WITH READ LOCK</b> pour copier les données non-InnoDB afin d'éviter de bloquer les requêtes DML qui modifient les tables InnoDB.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ftwrl~3"><a class="permalink" href="#ftwrl~3"><b>--ftwrl-wait-query-type=all|update</b></a></dt>
+  <dd>Cette option spécifie quels types de requêtes sont autorisés à se terminer avant que xtrabackup n'émette le verrou global. La valeur par défaut est <b>all</b>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="galera"><a class="permalink" href="#galera"><b>--galera-info</b></a></dt>
+  <dd>Cette option crée le fichier <b>xtrabackup_galera_info</b> qui contient l'état du nœud local au moment de la sauvegarde. L'option doit être utilisée lors de la sauvegarde de <i>Percona XtraDB Cluster</i>. Elle n'a aucun effet lorsque les verrous de sauvegarde sont utilisés pour créer la sauvegarde.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="generate"><a class="permalink" href="#generate"><b>--generate-new-master-key</b></a></dt>
+  <dd>Génère une nouvelle clé maître lors d'une opération de copie de retour.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="generate~2"><a class="permalink" href="#generate~2"><b>--generate-transition-key</b></a></dt>
+  <dd><i>xtrabackup</i> doit accéder au même fichier keyring ou serveur vault pendant la phase de <i>préparation</i> et de <i>copie de retour</i>, mais il ne doit pas dépendre du fait que les clés du serveur aient été purgées.
+    <p class="Pp"><i>--generate-transition-key</i> crée et ajoute au keyring une clé de transition que <i>xtrabackup</i> utilisera si la clé maître utilisée pour le chiffrement n'est pas trouvée parce qu'elle a été tournée et purgée.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="get"><a class="permalink" href="#get"><b>--get-server-public-key</b></a></dt>
+  <dd>Obtient la clé publique du serveur.
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Documentation <i>MySQL</i> : Option --get-server-public-key
+<div class="Bd-indent">
+<div class="Bd-indent"><a href='https://dev.mysql.com/doc/refman/5.7/en/connection-options.html#option_general_get-server-public-key'>https://dev.mysql.com/doc/refman/5.7/en/connection-options.html#option_general_get-server-public-key</a></div>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="help"><a class="permalink" href="#help"><b>--help</b></a></dt>
+  <dd>Lorsqu'il est exécuté avec cette option ou sans aucune option, <i>xtrabackup</i> affiche des informations sur la manière d'exécuter le programme en ligne de commande, ainsi que toutes les options et variables prises en charge avec leurs valeurs par défaut le cas échéant.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="history=NAME"><a class="permalink" href="#history=NAME"><b>--history=NAME</b></a></dt>
+  <dd>Cette option active le suivi de l'historique des sauvegardes dans la table <b>PERCONA_SCHEMA.xtrabackup_history</b>. Un nom de série d'historique optionnel peut être spécifié et sera associé à l'enregistrement d'historique de la sauvegarde actuelle.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="host=HOST"><a class="permalink" href="#host=HOST"><b>--host=HOST</b></a></dt>
+  <dd>Cette option accepte un argument de chaîne de caractères qui spécifie l'hôte à utiliser lors de la connexion au serveur de base de données via TCP/IP. Il est passé au processus enfant mysql sans modification. Voir <b>mysql --help</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="incremental"><a class="permalink" href="#incremental"><b>--incremental</b></a></dt>
+  <dd>Cette option indique à <i>xtrabackup</i> de créer une sauvegarde incrémentielle. Elle est passée au processus enfant <i>xtrabackup</i>. Lorsque cette option est spécifiée, soit <i>--incremental-lsn</i> soit <i>--incremental-basedir</i> peuvent également être fournis. Si aucune de ces options n'est fournie, l'option <i>--incremental-basedir</i> est passée à <b>xtrabackup</b> par défaut, définie sur le premier répertoire de sauvegarde horodaté dans le répertoire de base de la sauvegarde.
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="More~2"><a class="permalink" href="#More~2"><b>Plus d'informations sur
+    les sauvegardes incrémentielles</b></a></dt>
+  <dd>Voir la section xb_incremental</dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-basedir=DIRECTORY</b></dt>
+  <dd>Lors de la création d'une sauvegarde incrémentielle, il s'agit du répertoire contenant
+      la sauvegarde complète qui constitue le jeu de données de base pour les sauvegardes incrémentielles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-dir=DIRECTORY</b></dt>
+  <dd>Lors de la préparation d'une sauvegarde incrémentielle, il s'agit du répertoire où la
+      sauvegarde incrémentielle est combinée avec la sauvegarde complète pour créer une nouvelle sauvegarde complète.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-force-scan</b></dt>
+  <dd>Lors de la création d'une sauvegarde incrémentielle, force une analyse complète des pages de données
+      de l'instance en cours de sauvegarde, même si les données complètes du bitmap des pages modifiées
+      sont disponibles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-history-name=name</b></dt>
+  <dd>Cette option spécifie le nom de la série de sauvegardes stockée dans l'enregistrement d'historique
+      <b>PERCONA_SCHEMA.xtrabackup_history</b> sur lequel baser une sauvegarde incrémentielle.
+      <i>xtrabackup</i> recherchera dans la table d'historique la sauvegarde réussie la plus récente (avec le
+      <b>innodb_to_lsn</b> le plus élevé) de la série et utilisera la valeur to_lsn comme <b>lsn</b> de départ
+      pour la sauvegarde incrémentielle. Ceci sera mutuellement exclusif avec
+      <i>--incremental-history-uuid</i>, <i>--incremental-basedir</i> et
+      <i>--incremental-lsn</i>. Si aucun lsn valide ne peut être trouvé (aucune série portant ce nom,
+      aucune sauvegarde réussie portant ce nom), <i>xtrabackup</i> retournera une erreur. Il est utilisé
+      avec l'option <i>--incremental</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-history-uuid=name</b></dt>
+  <dd>Cette option spécifie l' <i>UUID</i> de l'enregistrement d'historique spécifique stocké dans
+      <b>PERCONA_SCHEMA.xtrabackup_history</b> sur lequel baser une sauvegarde incrémentielle.
+      Ceci est mutuellement exclusif avec <i>--incremental-history-name</i>,
+      <i>--incremental-basedir</i> et <i>--incremental-lsn</i>. Si aucun lsn valide ne peut être trouvé
+      (aucun enregistrement de succès avec cet <i>UUID</i>), <i>xtrabackup</i> retournera une erreur.
+      Il est utilisé avec l'option --incremental.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--incremental-lsn=LSN</b></dt>
+  <dd>Lors de la création d'une sauvegarde incrémentielle, vous pouvez spécifier le numéro de séquence
+      du journal (LSN) au lieu de spécifier <i>--incremental-basedir</i>. Pour les bases de données créées
+      dans les versions 5.1 et ultérieures, spécifiez le LSN sous la forme d'un entier unique de 64 bits.
+      <b>ATTENTION</b>: Si une valeur LSN incorrecte est spécifiée (une erreur utilisateur que
+      <i>Percona XtraBackup</i> ne peut pas détecter), la sauvegarde sera inutilisable. Soyez prudent !</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="innodb_=name_"><a class="permalink" href="#innodb_=name_"><b>--innodb[=name]</b></a></dt>
+  <dd>Cette option est ignorée pour la compatibilité avec les options MySQL.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="innodb"><a class="permalink" href="#innodb"><b>--innodb-miscellaneous</b></a></dt>
+  <dd>Il existe un grand groupe d'options InnoDB qui sont normalement lues à partir du fichier de configuration
+      <b>my.cnf</b>, de sorte que <i>xtrabackup</i> démarre son InnoDB embarqué dans la même configuration que
+      votre serveur actuel. Vous n'avez normalement pas besoin de les spécifier explicitement. Ces options ont
+      le même comportement dans InnoDB et XtraDB :</dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>--innodb-adaptive-hash-index</li>
+  <li>--innodb-additional-mem-pool-size</li>
+  <li>--innodb-autoextend-increment</li>
+  <li>--innodb-buffer-pool-size</li>
+  <li>--innodb-buffer-pool-filename</li>
+  <li>--innodb-checksum-algorithm</li>
+  <li>--innodb-checksums</li>
+  <li>--innodb-data-file-path</li>
+  <li>--innodb-data-home-dir</li>
+  <li>--innodb-directories</li>
+  <li>--innodb-doublewrite-file</li>
+  <li>--innodb-doublewrite</li>
+  <li>--innodb-extra-undoslots</li>
+  <li>--innodb-fast-checksum</li>
+  <li>--innodb-file-io-threads</li>
+  <li>--innodb-file-per-table</li>
+  <li>--innodb-flush-log-at-trx-commit</li>
+  <li>--innodb-flush-method</li>
+</ul>
+</div>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>--innodb-io-capacity</li>
+  <li>--innodb-lock-wait-timeout</li>
+  <li>--innodb-log-block-size</li>
+  <li>--innodb-log-buffer-size</li>
+  <li>--innodb-log-checksums</li>
+  <li>--innodb-log-files-in-group</li>
+  <li>--innodb-log-file-size</li>
+  <li>--innodb-log-group-home-dir</li>
+  <li>--innodb-max-dirty-pages-pct</li>
+  <li>--innodb-open-files</li>
+  <li>--innodb-page-size</li>
+  <li>--innodb-read-io-threads</li>
+  <li>--innodb-redo-log-encrypt</li>
+  <li>--innodb-undo-directory</li>
+  <li>--innodb-undo-log-encrypt</li>
+  <li>--innodb-undo-tablespaces`</li>
+  <li>--innodb-use-native-aio</li>
+  <li>--innodb-write-io-threads</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="keyring"><a class="permalink" href="#keyring"><b>--keyring-file-data=FILENAME</b></a></dt>
+  <dd>Le chemin d'accès au fichier keyring. Combinez cette option avec
+      <i>--xtrabackup-plugin-dir</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="kill"><a class="permalink" href="#kill"><b>--kill-long-queries-timeout=SECONDS</b></a></dt>
+  <dd>Cette option spécifie le nombre de secondes pendant lesquelles <i>xtrabackup</i> attend entre le démarrage
+      de <b>FLUSH TABLES WITH READ LOCK</b> et l'arrêt des requêtes qui le bloquent. La valeur par défaut est 0 seconde,
+      ce qui signifie que <i>xtrabackup</i> ne tentera pas d'arrêter de requêtes. Pour utiliser cette option, l'utilisateur
+      xtrabackup doit avoir les privilèges <b>PROCESS</b> et <b>SUPER</b>. Lorsque cela est pris en charge,
+      <i>xtrabackup</i> utilise automatiquement les <i>Verrous de Sauvegarde</i> comme alternative légère à
+      <b>FLUSH TABLES WITH READ LOCK</b> pour copier les données non-InnoDB afin d'éviter de bloquer les requêtes DML
+      qui modifient les tables InnoDB.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="kill~2"><a class="permalink" href="#kill~2"><b>--kill-long-query-type=all|select</b></a></dt>
+  <dd>Cette option spécifie quels types de requêtes doivent être arrêtés pour débloquer le verrou global. La valeur par défaut est "select".</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="lock"><a class="permalink" href="#lock"><b>--lock-ddl</b></a></dt>
+  <dd>Émet <b>LOCK TABLES FOR BACKUP</b> si cela est pris en charge par le serveur
+      (sinon utilise <b>LOCK INSTANCE FOR BACKUP</b>) au début de la sauvegarde pour bloquer toutes les opérations DDL.
+    <p class="Pp"><b>REMARQUE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">Avant <i>Percona XtraBackup</i> 8.0.22-15.0, l'utilisation de
+    <i>safe-slave-backup</i> arrête le thread répliquant les requêtes SQL après les tables InnoDB
+    et avant les tables non-InnoDB.
+<p class="Pp">À partir de <i>Percona XtraBackup</i> 8.0.22-15.0, l'utilisation de l'option
+    <i>safe-slave-backup</i> arrête le thread répliquant les requêtes SQL avant la copie
+    des fichiers InnoDB.</p>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="lock~2"><a class="permalink" href="#lock~2"><b>--lock-ddl-per-table</b></a></dt>
+  <dd>Verrouille les DDL pour chaque table avant que xtrabackup ne commence à la copier et jusqu'à ce que
+      la sauvegarde soit terminée.
+    <p class="Pp"><b>REMARQUE :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">À partir de <i>Percona XtraBackup</i> 8.0.15, l'option
+    <i>--lock-ddl-per-table</i> est dépréciée. Utilisez plutôt l'option <i>--lock-ddl</i>.</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="lock~3"><a class="permalink" href="#lock~3"><b>--lock-ddl-timeout</b></a></dt>
+  <dd>Si <b>LOCK TABLES FOR BACKUP</b> ou <b>LOCK INSTANCE FOR BACKUP</b> ne renvoie pas
+      dans le délai imparti, la sauvegarde est abandonnée.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="log"><a class="permalink" href="#log"><b>--log</b></a></dt>
+  <dd>Cette option est ignorée pour <i>MySQL</i></dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--log-bin</b></dt>
+  <dd>Le nom de base pour la séquence de journaux.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--log-bin-index=name</b></dt>
+  <dd>Fichier contenant les noms des fichiers de journal binaire.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--log-copy-interval=#</b></dt>
+  <dd>Cette option spécifie l'intervalle de temps entre les vérifications effectuées par le thread de copie
+      de journaux en millisecondes (la valeur par défaut est 1 seconde).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="login"><a class="permalink" href="#login"><b>--login-path</b></a></dt>
+  <dd>Lit le chemin donné dans le fichier de connexion.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="move"><a class="permalink" href="#move"><b>--move-back</b></a></dt>
+  <dd>Déplace tous les fichiers d'une sauvegarde précédemment effectuée du répertoire de sauvegarde
+      vers leurs emplacements d'origine. Comme cette option supprime les fichiers de sauvegarde, elle doit
+      être utilisée avec prudence.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="no"><a class="permalink" href="#no"><b>--no-backup-locks</b></a></dt>
+  <dd>Désactive explicitement l'option <i>--backup-locks</i> qui est activée par défaut.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="no~2"><a class="permalink" href="#no~2"><b>--no-defaults</b></a></dt>
+  <dd>Les options par défaut ne sont lues qu'à partir du fichier de connexion.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="no~3"><a class="permalink" href="#no~3"><b>--no-lock</b></a></dt>
+  <dd>Utilisez cette option pour désactiver le verrouillage des tables avec
+      <b>FLUSH TABLES WITH READ LOCK</b>. Utilisez-la uniquement si TOUTES vos tables sont InnoDB et si vous
+      ne vous souciez PAS de la position du journal binaire de la sauvegarde. Cette option ne doit pas être utilisée
+      s'il y a des instructions <b>DDL</b> en cours d'exécution ou si des mises à jour ont lieu sur des tables non-InnoDB
+      (cela inclut les tables MyISAM système dans la base de données <i>mysql</i>), sinon cela pourrait entraîner
+      une sauvegarde incohérente. Lorsque cela est pris en charge, <i>xtrabackup</i> utilise automatiquement les
+      <i>Verrous de Sauvegarde</i> comme alternative légère à <b>FLUSH TABLES WITH READ LOCK</b> pour copier les données
+      non-InnoDB afin d'éviter de bloquer les requêtes DML qui modifient les tables InnoDB. Si vous envisagez d'utiliser
+      cette option parce que vos sauvegardes échouent à acquérir le verrou, cela peut être dû à des événements de réplication
+      entrants qui empêchent le verrou de réussir. Veuillez essayer d'utiliser
+      <i>--safe-slave-backup</i> pour arrêter momentanément le thread répliquant les requêtes esclaves, cela pourrait
+      aider la sauvegarde à réussir et vous n'aurez pas besoin d'utiliser cette option.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="no~4"><a class="permalink" href="#no~4"><b>--no-server-version-check</b></a></dt>
+  <dd>Implémenté dans <i>Percona XtraBackup</i> 8.0.21.
+    <p class="Pp">L'option <b>--no-server-version-check</b> désactive la vérification de la version du serveur.</p>
+    <p class="Pp">Le comportement par défaut exécute une vérification qui compare la version du système source à la
+        version de <i>Percona XtraBackup</i>. Si la version du système source est supérieure à la version XtraBackup,
+        la sauvegarde est abandonnée avec un message.</p>
+    <p class="Pp">L'ajout de l'option remplace cette vérification, et la sauvegarde se poursuit, mais il peut y avoir
+        des problèmes avec la sauvegarde.</p>
+    <p class="Pp">Voir comparaison pour plus d'informations.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="no~5"><a class="permalink" href="#no~5"><b>--no-version-check<
+/b></a></dt>
+  <dd>Cette option désactive la vérification de version. Si vous ne passez pas cette option,
+      la vérification automatique de version est implicitement activée lorsque <i>xtrabackup</i>
+      s'exécute en mode <b>--backup</b>. Pour désactiver la vérification de version, vous devez
+      passer explicitement l'option <b>--no-version-check</b> lors de l'invocation de
+      <i>xtrabackup</i>.
+    <p class="Pp">Lorsque la vérification automatique de version est activée, <i>xtrabackup</i>
+        effectue une vérification de version par rapport au serveur lors de l'étape de sauvegarde après
+        la création d'une connexion serveur. <i>xtrabackup</i> envoie les informations suivantes au
+        serveur :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Type et version de MySQL</li>
+  <li>Nom du système d'exploitation</li>
+  <li>Version de Percona Toolkit</li>
+  <li>Version de Perl</li>
+</ul>
+</div>
+<p class="Pp">Chaque information possède un identifiant unique. Il s'agit d'une valeur de hachage MD5 que Percona Toolkit utilise pour obtenir des statistiques sur son utilisation. Il s'agit d'un UUID aléatoire ; aucune information client n'est collectée ni stockée.</p>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="open"><a class="permalink" href="#open"><b>--open-files-limit=#</b></a></dt>
+  <dd>Le nombre maximum de descripteurs de fichiers à réserver avec setrlimit().</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="parallel=_"><a class="permalink" href="#parallel=_"><b>--parallel=#</b></a></dt>
+  <dd>Cette option spécifie le nombre de threads à utiliser pour copier plusieurs fichiers de données simultanément lors de la création d'une sauvegarde. La valeur par défaut est 1 (c'est-à-dire, pas de transfert simultané). Dans <i>Percona XtraBackup</i> 2.3.10 et versions plus récentes, cette option peut être utilisée avec l'option <i>--copy-back</i> pour copier les fichiers de données utilisateur en parallèle (les journaux redo et les tablespaces système sont copiés dans le thread principal).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="password=PASSWORD"><a class="permalink" href="#password=PASSWORD"><b>--password=PASSWORD</b></a></dt>
+  <dd>Cette option spécifie le mot de passe à utiliser lors de la connexion à la base de données.
+      Elle accepte un argument de type chaîne. Voir <b>mysql --help</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="plugin"><a class="permalink" href="#plugin"><b>--plugin-load</b></a></dt>
+  <dd>Liste des plugins à charger.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="port=PORT"><a class="permalink" href="#port=PORT"><b>--port=PORT</b></a></dt>
+  <dd>Cette option accepte un argument de type chaîne qui spécifie le port à utiliser lors de la connexion au serveur de base de données via TCP/IP. Il est transmis au processus enfant <b>mysql</b> sans modification. Voir <b>mysql</b> <b>--help</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="prepare"><a class="permalink" href="#prepare"><b>--prepare</b></a></dt>
+  <dd>Fait en sorte que <b>xtrabackup</b> effectue une récupération sur une sauvegarde créée avec <i>--backup</i>, afin qu'elle soit prête à être utilisée. Voir préparation d'une sauvegarde.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="print"><a class="permalink" href="#print"><b>--print-defaults</b></a></dt>
+  <dd>Affiche la liste des arguments du programme et quitte. Doit être la première option sur la ligne de commande.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="print~2"><a class="permalink" href="#print~2"><b>--print-param</b></a></dt>
+  <dd>Fait en sorte que <b>xtrabackup</b> affiche les paramètres qui peuvent être utilisés pour copier les fichiers de données vers leurs emplacements d'origine afin de les restaurer.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="read"><a class="permalink" href="#read"><b>--read-buffer-size</b></a></dt>
+  <dd>Définit la taille du tampon de lecture des fichiers de données, la valeur donnée est mise à l'échelle jusqu'à la taille de page. La valeur par défaut est 10 Mo.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rebuild"><a class="permalink" href="#rebuild"><b>--rebuild-indexes</b></a></dt>
+  <dd>Reconstruit les index dans une sauvegarde compacte. Cette option n'a d'effet que lorsque les options <i>--prepare</i> et <i>--rebuild-threads</i> sont fournies.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rebuild~2"><a class="permalink" href="#rebuild~2"><b>--rebuild-threads=#</b></a></dt>
+  <dd>Utilise le nombre de threads donné pour reconstruire les index dans une sauvegarde compacte.
+      Cette option n'a d'effet qu'avec les options <i>--prepare</i> et
+      <i>--rebuild-indexes</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="remove"><a class="permalink" href="#remove"><b>--remove-original</b></a></dt>
+  <dd>Implémentée dans <i>Percona XtraBackup</i> 2.4.6, cette option, lorsqu'elle est spécifiée, supprimera les fichiers <b>.qp</b>, <b>.xbcrypt</b> et <b>.qp.xbcrypt</b> après le déchiffrement et la décompression.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rocksdb"><a class="permalink" href="#rocksdb"><b>--rocksdb-datadir</b></a></dt>
+  <dd>Répertoire de données RocksDB</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rocksdb~2"><a class="permalink" href="#rocksdb~2"><b>--rocksdb-wal-dir</b></a></dt>
+  <dd>Répertoire WAL de RocksDB.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rocksdb~3"><a class="permalink" href="#rocksdb~3"><b>--rocksdb-checkpoint-max-age</b></a></dt>
+  <dd>Le checkpoint ne peut pas être plus ancien que ce nombre de secondes lorsque la sauvegarde
+      se termine.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rocksdb~4"><a class="permalink" href="#rocksdb~4"><b>--rocksdb-checkpoint-max-count</b></a></dt>
+  <dd>Terminer la sauvegarde même si l'exigence d'âge du checkpoint n'a pas été satisfaite
+      après ce nombre de checkpoints.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rollback"><a class="permalink" href="#rollback"><b>--rollback-prepared-trx</b></a></dt>
+  <dd>Forcer le rollback des transactions InnoDB préparées.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="rsync"><a class="permalink" href="#rsync"><b>--rsync</b></a></dt>
+  <dd>Utilise l'utilitaire <b>rsync</b> pour optimiser les transferts de fichiers locaux. Lorsque cette
+      option est spécifiée, <i>xtrabackup</i> utilise <b>rsync</b> pour copier tous les fichiers
+      non-InnoDB au lieu de lancer un <b>cp</b> séparé pour chaque fichier, ce qui peut être beaucoup
+      plus rapide pour les serveurs avec un grand nombre de bases de données ou de tables. Cette option ne peut pas être utilisée avec <i>--stream</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="safe"><a class="permalink" href="#safe"><b>--safe-slave-backup</b></a></dt>
+  <dd>Lorsqu'elle est spécifiée, xtrabackup arrêtera le thread SQL du réplica juste avant d'exécuter
+      <b>FLUSH TABLES WITH READ LOCK</b> et attendra pour démarrer la sauvegarde jusqu'à ce que
+      <b>Slave_open_temp_tables</b> dans <b>SHOW STATUS</b> soit zéro. S'il n'y a pas de tables temporaires ouvertes, la sauvegarde aura lieu, sinon le thread SQL sera démarré et arrêté jusqu'à ce qu'il n'y ait plus de tables temporaires ouvertes. La sauvegarde échouera si <b>Slave_open_temp_tables</b> ne devient pas zéro après <i>--safe-slave-backup-timeout</i> secondes. Le thread SQL de réplication sera redémarré lorsque la sauvegarde sera terminée. Cette option est implémentée afin de gérer les <i>tables temporaires répliquées</i> et n'est pas nécessaire avec la réplication basée sur les lignes.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="safe~2"><a class="permalink" href="#safe~2"><b>--safe-slave-backup-timeout=SECONDS</b></a></dt>
+  <dd>Combien de secondes <i>--safe-slave-backup</i> attendra pour que
+      <b>Slave_open_temp_tables</b> devienne zéro. Par défaut, 300 secondes.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="secure"><a class="permalink" href="#secure"><b>--secure-auth</b></a></dt>
+  <dd>Refuse la connexion du client au serveur s'il utilise un ancien protocole (avant 4.1.1).
+      (Activé par défaut ; utilisez --skip-secure-auth pour désactiver.)</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="server"><a class="permalink" href="#server"><b>--server-id=#</b></a></dt>
+  <dd>L'instance serveur en cours de sauvegarde.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="server~2"><a class="permalink" href="#server~2"><b>--server-public-key-path</b></a></dt>
+  <dd>Le chemin d'accès au fichier de la clé publique RSA du serveur au format PEM.
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="MySQL~4"><a class="permalink" href="#MySQL~4"><b><i>Documentation MySQL : L'option --server-public-key-path</i></b></a></dt>
+  <dd><a href='https://dev.mysql.com/doc/refman/8.0/en/connection-options.html#option_general_server-public-key-path'>https://dev.mysql.com/doc/refman/8.0/en/connection-options.html#option_general_server-public-key-path</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="skip"><a class="permalink" href="#skip"><b>--skip-tables-compatibility-check</b></a></dt>
+  <dd>Voir <i>--tables-compatibility-check</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="slave"><a class="permalink" href="#slave"><b>--slave-info</b></a></dt>
+  <dd>Cette option est utile lors de la sauvegarde d'un serveur réplica de réplication. Elle
+      affiche la position du journal binaire du serveur source. Elle écrit également les
+      coordonnées du journal binaire dans le fichier <b>xtrabackup_slave_info</b> sous forme de
+      commande <b>CHANGE MASTER</b>. Un nouveau réplica pour cette source peut être configuré en démarrant un
+      serveur réplica sur cette sauvegarde et en émettant une commande <b>CHANGE MASTER</b> avec la
+      position du journal binaire enregistrée dans le fichier <b>xtrabackup_slave_info</b>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="socket"><a class="permalink" href="#socket"><b>--socket</b></a></dt>
+  <dd>Cette option accepte un argument de type chaîne qui spécifie le socket à utiliser
+      lors de la connexion au serveur de base de données local avec un socket UNIX. Il est transmis au processus enfant <b>mysql</b> sans modification. Voir <b>mysql</b> <b>--help</b> pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="ssl"><a class="permalink" href="#ssl"><b>--ssl</b></a></dt>
+  <dd>Active la connexion sécurisée. Plus d'informations peuvent être trouvées dans la
+      documentation du serveur MySQL concernant <i>--ssl</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-ca</b></dt>
+  <dd>Chemin du fichier contenant la liste des CA SSL de confiance. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-ca</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-capath</b></dt>
+  <dd>Chemin du répertoire contenant les certificats CA SSL de confiance au format PEM.
+      Plus d'informations peuvent être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-capath</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-cert</b></dt>
+  <dd>Chemin du fichier contenant le certificat X509 au format PEM. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-cert</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-cipher</b></dt>
+  <dd>Liste des chiffrements autorisés à utiliser pour le chiffrement de la connexion. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-cipher</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-crl</b></dt>
+  <dd>Chemin du fichier contenant les listes de révocation de certificats. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-crl</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-crlpath</b></dt>
+  <dd>Chemin du répertoire contenant les fichiers de listes de révocation de certificats. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-crlpath</i>.</dd>
+</dl>
+</div></div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-fips-mode</b></dt>
+  <dd>Mode FIPS SSL (s'applique uniquement à OpenSSL) ; valeurs autorisées :
+      <i>OFF</i>, <i>ON</i>, <i>STRICT</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-key</b></dt>
+  <dd>Chemin du fichier contenant la clé X509 au format PEM. Plus d'informations
+      peuvent être trouvées dans la documentation du serveur MySQL concernant
+      <i>--ssl-key</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-mode</b></dt>
+  <dd>État de sécurité de la connexion au serveur. Plus d'informations peuvent être
+      trouvées dans la documentation du serveur MySQL concernant <i>--ssl-mode</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt><b>--ssl-verify-server-cert</b></dt>
+  <dd>Vérifie la valeur du nom commun du certificat serveur par rapport au nom
+      d'hôte utilisé lors de la connexion au serveur. Plus d'informations peuvent
+      être trouvées dans la documentation du serveur MySQL concernant <i>--ssl-verify-server-cert</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="stats"><a class="permalink" href="#stats"><b>--stats</b></a></dt>
+  <dd>Demande à <b>xtrabackup</b> d'analyser les fichiers de données spécifiés et
+      d'afficher les statistiques d'index.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="stream=FORMAT"><a class="permalink" href="#stream=FORMAT"><b>--stream=FORMAT</b></a></dt>
+  <dd>Diffuse tous les fichiers de sauvegarde vers la sortie standard dans le
+      format spécifié. Actuellement, cette option ne prend en charge que le
+      format <i>xbstream</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="strict"><a class="permalink" href="#strict"><b>--strict</b></a></dt>
+  <dd>Si cette option est spécifiée, <i>xtrabackup</i> échoue avec une erreur
+      lorsque des paramètres invalides sont passés.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tables=name"><a class="permalink" href="#tables=name"><b>--tables=name</b></a></dt>
+  <dd>Une expression régulière par rapport à laquelle le nom de table complet, au
+      format <b>nom_base_de_données.nom_table</b>, est mis en correspondance. Si le
+      nom correspond, la table est sauvegardée. Voir sauvegardes partielles.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tables"><a class="permalink" href="#tables"><b>--tables-compatibility-check</b></a></dt>
+  <dd>Active l'avertissement de compatibilité des moteurs. La valeur par défaut est
+      ON. Pour désactiver l'avertissement de compatibilité des moteurs, utilisez
+      <i>--skip-tables-compatibility-check</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tables~2"><a class="permalink" href="#tables~2"><b>--tables-exclude=name</b></a></dt>
+  <dd>Filtrage par expression régulière pour les noms de table. Fonctionne de la
+      même manière que <i>--tables</i>, mais les noms mis en correspondance sont
+      exclus de la sauvegarde. Notez que cette option a une priorité plus élevée
+      que <i>--tables</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tables~3"><a class="permalink" href="#tables~3"><b>--tables-file=name</b></a></dt>
+  <dd>Un fichier contenant un nom de table par ligne, au format
+      nom_base_de_données.nom_table. La sauvegarde sera limitée aux tables
+      spécifiées.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="target"><a class="permalink" href="#target"><b>--target-dir=DIRECTORY</b></a></dt>
+  <dd>Cette option spécifie le répertoire de destination pour la sauvegarde. Si le
+      répertoire n'existe pas, <b>xtrabackup</b> le crée. Si le répertoire
+      existe et est vide, <b>xtrabackup</b> réussira. <b>xtrabackup</b> n'écrasera
+      pas les fichiers existants ; il échouera avec l'erreur système 17,
+      <b>file exists</b>.
+    <p class="Pp">Si cette option est un chemin relatif, elle est interprétée comme
+        étant relative au répertoire de travail actuel à partir duquel
+        <b>xtrabackup</b> est exécuté.</p>
+    <p class="Pp">Pour effectuer une sauvegarde, vous avez besoin des permissions
+        <b>LECTURE</b>, <b>ÉCRITURE</b> et <b>EXÉCUTION</b> au niveau du système de
+        fichiers pour le répertoire que vous fournissez comme valeur de
+        <i>--target-dir</i>.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="innodb~2"><a class="permalink" href="#innodb~2"><b>--innodb-temp-tablespaces-dir=DIRECTORY</b></a></dt>
+  <dd>Répertoire où se trouvent les fichiers d'espace de table temporaire, ce chemin
+      peut être absolu.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="throttle=_"><a class="permalink" href="#throttle=_"><b>--throttle=#</b></a></dt>
+  <dd>Cette option limite le nombre de blocs copiés par seconde. La taille du bloc
+      est de <i>10 Mo</i>. Pour limiter la bande passante à <i>10 Mo/s</i>, définissez
+      l'option à <i>1</i> : <i>--throttle=1</i>.
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="More~3"><a class="permalink" href="#More~3"><b>Plus d'informations sur la
+    limitation d'une sauvegarde</b></a></dt>
+  <dd>throttling_backups</dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tls"><a class="permalink" href="#tls"><b>--tls-ciphersuites</b></a></dt>
+  <dd>Chiffrement TLS v1.3 à utiliser.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tls~2"><a class="permalink" href="#tls~2"><b>--tls-version</b></a></dt>
+  <dd>Version TLS à utiliser, valeurs autorisées : <i>TLSv1</i>, <i>TLSv1.1</i>,
+      <i>TLSv1.2</i>, <i>TLSv1.3</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="tmpdir=name"><a class="permalink" href="#tmpdir=name"><b>--tmpdir=name</b></a></dt>
+  <dd>Spécifie le répertoire qui sera utilisé pour stocker les fichiers temporaires
+      pendant la sauvegarde.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="transition"><a class="permalink" href="#transition"><b>--transition-key=name</b></a></dt>
+  <dd>Cette option est utilisée pour activer le traitement de la sauvegarde sans
+      accéder au serveur de coffre-fort de clés (keyring). Dans ce cas,
+      <b>xtrabackup</b> dérive la clé de chiffrement AES de la phrase secrète
+      spécifiée et l'utilise pour chiffrer les clés des espaces de table (tablespaces)
+      en cours de sauvegarde.
+    <p class="Pp">Si <i>--transition-key</i> n'a pas de valeur,
+        <b>xtrabackup</b> vous la demandera. La même phrase secrète doit être
+        spécifiée pour la commande <i>--prepare</i>.</p>
+  </dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="use"><a class="permalink" href="#use"><b>--use-memory</b></a></dt>
+  <dd>Cette option affecte la quantité de mémoire allouée pour préparer une
+      sauvegarde avec <i>--prepare</i>, ou pour analyser les statistiques avec
+      <i>--stats</i>. Son objectif est similaire à celui de innodb_buffer_pool_size.
+      Elle ne fait pas la même chose que l'option du même nom dans l'outil InnoDB
+      Hot Backup d'Oracle. La valeur par défaut est 100 Mo, et si vous avez
+      suffisamment de mémoire disponible, 1 Go à 2 Go est une bonne valeur
+      recommandée. Les multiples sont pris en charge en fournissant l'unité (par
+      exemple, 1MB, 1M, 1GB, 1G).</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="user=USERNAME"><a class="permalink" href="#user=USERNAME"><b>--user=USERNAME</b></a></dt>
+  <dd>Cette option spécifie le nom d'utilisateur MySQL utilisé lors de la connexion
+      au serveur, si ce n'est pas l'utilisateur actuel. L'option accepte un argument
+      de type chaîne. Voir mysql --help pour plus de détails.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="v"><a class="permalink" href="#v"><b>-v</b></a></dt>
+  <dd>Voir <i>--version</i>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="version"><a class="permalink" href="#version"><b>--version</b></a></dt>
+  <dd>Cette option affiche la version de <i>xtrabackup</i> et quitte.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="xtrabackup"><a class="permalink" href="#xtrabackup"><b>--xtrabackup-plugin-dir=DIRNAME</b></a></dt>
+  <dd>Le chemin absolu vers le répertoire contenant le plugin <b>keyring</b>.
+    <p class="Pp"><b>VOIR AUSSI :</b></p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="Percona"><a class="permalink" href="#Percona"><b>Documentation <i>Percona Server for
+    MySQL</i> : plugin keyring_vault avec chiffrement des données au repos</b></a></dt>
+  <dd><a href='https://www.percona.com/doc/percona-server/LATEST/management/data_at_rest_encryption.html#keyring-vault-plugin'>https://www.percona.com/doc/percona-server/LATEST/management/data_at_rest_encryption.html#keyring-vault-plugin</a></dd>
+  <dt id="MySQL~5"><a class="permalink" href="#MySQL~5"><b>Documentation <i>MySQL</i> : Utilisation du plugin keyring_file basé sur un fichier</b></a></dt>
+  <dd><a href='https://dev.mysql.com/doc/refman/5.7/en/keyring-file-plugin.html'>https://dev.mysql.com/doc/refman/5.7/en/keyring-file-plugin.html</a></dd>
+</dl>
+</div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Percona LLC et/ou ses affiliés</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>DROITS D'AUTEUR</a></h1>
+<p class="Pp">2009-2022, Percona LLC et/ou ses affiliés</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">10 août 2025</td>
+    <td class="foot-os">8.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/xtrabackup/">extra/xtrabackup</a></dd>
+        <dt>Version :</dt>
+        <dd>8.4.0_4-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.percona.com/software/mysql-database/percona-xtrabackup">https://www.percona.com/software/mysql-database/percona-xtrabackup</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/xtrabackup/">/listing/extra/xtrabackup/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#OTHER_TYPES_OF_BACKUPS">AUTRES TYPES DE SAUVEGARDES</a></li>
+        
+            <li><a href="#ADVANCED_FEATURES">FONCTIONNALITÉS AVANCÉES</a></li>
+        
+            <li><a href="#FOOTNOTES">NOTES DE BAS DE PAGE</a></li>
+        
+            <li><a href="#IMPLEMENTATION">IMPLÉMENTATION</a></li>
+        
+            <li><a href="#REFERENCES">RÉFÉRENCES</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#COPYRIGHT">DROITS D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/xtrabackup.1.en.txt">txt</a>, 
+        
+            <a href="/man/xtrabackup.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

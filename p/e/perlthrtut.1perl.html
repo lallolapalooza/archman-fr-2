@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlthrtut(1perl) — Pages du manuel Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlthrtut.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLTHRTUT(1perl)</td>
+    <td class="head-vol">Guide de référence des programmeurs Perl</td>
+    <td class="head-rtitle">PERLTHRTUT(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlthrtut - Tutoriel sur les threads en Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce tutoriel décrit l'utilisation des threads de l'interpréteur Perl
+    (parfois appelés <i>ithreads</i>). Dans ce modèle, chaque thread s'exécute dans
+    son propre interpréteur Perl, et tout partage de données entre les threads doit
+    être explicite. L'interface utilisateur pour les <i>ithreads</i> utilise la
+    classe <span class="Li">threads</span>.</p>
+<p class="Pp"><b>NOTE</b> : Il existait une ancienne variante de threading Perl
+    appelée modèle 5.005 qui utilisait la classe <span class="Li">Thread</span>.
+    Ce vieux modèle était connu pour avoir des problèmes, a été déprécié et a été
+    supprimé dans la version 5.10. Il est fortement recommandé de migrer tout code
+    existant basé sur les threads 5.005 vers le nouveau modèle dès que possible.</p>
+<p class="Pp">Vous pouvez voir quel modèle de threading (ou aucun) est présent en
+    exécutant <span class="Li">&quot;perl -V&quot;</span> et en regardant la section
+    <span class="Li">&quot;Platform&quot;</span>. Si vous avez
+    <span class="Li">&quot;useithreads=define&quot;</span>, vous avez les ithreads ;
+    si vous avez <span class="Li">&quot;use5005threads=define&quot;</span>, vous avez
+    les threads 5.005. Si vous n'avez aucun des deux, vous n'avez pas de support
+    de threading intégré. Si vous avez les deux, vous avez un problème.</p>
+<p class="Pp">Plus récemment, les termes <span class="Li">&quot;ithreads&quot;</span>
+    et <span class="Li">&quot;threads&quot;</span> sont synonymes et utilisés de manière
+    interchangeable. La meilleure pratique est d'utiliser
+    <span class="Li">&quot;useithreads&quot;</span> si votre code dépend de quelque
+    chose de spécifique à cette implémentation, et d'utiliser
+    <span class="Li">&quot;usethreads&quot;</span> si ce n'est pas le cas. De cette
+    façon, dans le cas très improbable où un nouveau modèle de threading
+    apparaîtrait, votre code serait plus protégé contre les modifications
+    nécessaires. (Les symboles correspondants au niveau du langage C sont
+    <span class="Li">&quot;USE_ITHREADS&quot;</span> et
+    <span class="Li">&quot;USE_THREADS&quot;</span> ; ils sont actuellement totalement
+    synonymes, mais rien ne garantit absolument qu'ils le resteront.)</p>
+<p class="Pp">Les modules <span class="Li">threads</span> et
+    <span class="Li">threads::shared</span> sont inclus dans la distribution Perl
+    principale. De plus, ils sont maintenus en tant que modules distincts sur CPAN,
+    vous pouvez donc vérifier là-bas pour toute mise à jour.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Qu'est-ce_qu'un_thread_en_fait?'><a class='permalink' href='#Qu'est-ce_qu'un_thread_en_fait?'>Qu'est-ce   qu'un thread en fait?</a></h1>
+<p class="Pp">Un thread est un flux de contrôle à travers un programme, avec un point
+    d'exécution unique.</p>
+<p class="Pp">Cela ressemble beaucoup à un processus, n'est-ce pas? Eh bien, ça
+    devrait. Les threads sont l'une des composantes d'un processus. Chaque processus
+    a au moins un thread et, jusqu'à présent, chaque processus exécutant Perl n'avait
+    qu'un seul thread. Avec la version 5.8, cependant, vous pouvez créer des threads
+    supplémentaires. Nous allons vous montrer comment, quand et pourquoi.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Modèles_de_programmes_threadés'><a class='permalink' href='#Modèles_de_programmes_threadés'>Modèles   de programmes threadés</a></h1>
+<p class="Pp">Il existe trois modèles principaux pour structurer un programme threadé.
+    Le modèle que vous choisissez dépend de ce que vous voulez que votre programme
+    fasse. Pour de nombreux programmes threadés non triviaux, vous devrez choisir
+    différents modèles pour différentes parties de votre programme.</p>
+<section class="Ss">
+<h2 class="Ss" id='Boss/Worker'><a class='permalink' href='#Boss/Worker'>Boss/Worker</a></h2>
+<p class="Pp">Le modèle boss/worker a généralement un thread <i>boss</i> et un ou
+    plusieurs threads <i>worker</i>. Le thread boss collecte ou génère les tâches
+    qui doivent être effectuées, puis distribue ces tâches au thread worker
+    approprié.</p>
+<p class="Pp">Ce modèle est courant dans les programmes d'interface graphique et
+    les serveurs, où un thread principal attend un événement, puis transmet cet
+    événement aux threads workers appropriés pour traitement. Une fois l'événement
+    transmis, le thread boss retourne à l'attente d'un nouvel événement.</p>
+<p class="Pp">Le thread boss effectue relativement peu de travail. Bien que les
+    tâches ne soient pas nécessairement effectuées plus rapidement qu'avec toute
+    autre méthode, ce modèle tend à offrir les meilleurs temps de réponse pour
+    l'utilisateur.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Équipe_de_travail'><a class='permalink' href='#Équipe_de_travail'>Équipe   de travail</a></h2>
+<p class="Pp">Dans le modèle de l'équipe de travail, plusieurs threads sont créés
+    qui effectuent essentiellement la même chose sur différentes données. Il reflète
+    étroitement le traitement parallèle classique et les processeurs vectoriels, où
+    un grand nombre de processeurs effectuent exactement la même chose sur de
+    nombreuses données.</p>
+<p class="Pp">Ce modèle est particulièrement utile si le système exécutant le
+    programme distribue plusieurs threads sur différents processeurs. Il peut
+    également être utile dans les moteurs de lancer de rayons ou de rendu, où les
+    threads individuels peuvent transmettre des résultats intermédiaires pour donner
+    un retour visuel à l'utilisateur.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Pipeline'><a class='permalink' href='#Pipeline'>Pipeline</a></h2>
+<p class="Pp">Le modèle pipeline divise une tâche en une série d'étapes et transmet
+    les résultats d'une étape au thread traitant l'étape suivante. Chaque thread
+    effectue une opération sur chaque élément de données et transmet les résultats
+    au thread suivant dans la chaîne.</p>
+<p class="Pp">Ce modèle est le plus pertinent si vous disposez de plusieurs processeurs,
+    afin que deux threads ou plus s'exécutent en parallèle, bien qu'il puisse
+    souvent avoir du sens dans d'autres contextes également. Il tend à garder les
+    tâches individuelles petites et simples, et permet à certaines parties du
+    pipeline de bloquer (sur des I/O ou des appels système, par exemple) pendant
+    que d'autres parties continuent. Si vous exécutez différentes parties du pipeline
+    sur différents processeurs, vous pouvez également tirer parti des caches de
+    chaque processeur.</p>
+<p class="Pp">Ce modèle est également utile pour une forme de programmation récursive
+    où, au lieu d'avoir une sous-routine qui s'appelle elle-même, elle crée plutôt
+    un autre thread. Les générateurs de nombres premiers et de Fibonacci correspondent
+    bien à cette forme de modèle pipeline. (Une version d'un générateur de nombres
+    premiers est présentée plus loin.)</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Quel_genre_de_threads_sont_les_threads_Perl?'><a class='permalink' href='#Quel_genre_de_threads_sont_les_threads_Perl?'>Quel   genre de threads sont les threads Perl?</a></h1>
+<p class="Pp">Si vous avez de l'expérience avec d'autres implémentations de threads,
+    vous pourriez trouver que les choses ne sont pas tout à fait ce que vous attendez.
+    Il est très important de se rappeler lorsque l'on traite des threads Perl que
+    <i>les threads Perl ne sont pas des threads X</i> pour toutes les valeurs de
+    X. Ce ne sont pas des threads POSIX, ni des DecThreads, ni des threads Green de
+    Java, ni des threads Win32. Il y a des similitudes, et les concepts généraux
+    sont les mêmes, mais si vous commencez à chercher des détails d'implémentation,
+    vous serez soit déçu, soit confus. Probablement les deux.</p>
+<p class="Pp">Cela ne veut pas dire que les threads Perl sont complètement différents
+    de tout ce qui a existé auparavant. Ils ne le sont pas. Le modèle de threading de
+    Perl doit beaucoup à d'autres modèles de threads, en particulier POSIX. Tout
+    comme Perl n'est pas du C, les threads Perl ne sont pas des threads POSIX. Donc,
+    si vous vous retrouvez à chercher des mutex, ou des priorités de thread, il est
+    temps de prendre du recul et de réfléchir à ce que vous voulez faire et comment
+    Perl peut le faire.</p>
+<p class="Pp">Cependant, il est important de se rappeler que les threads Perl ne
+    peuvent pas faire des choses par magie à moins que les threads de votre système
+    d'exploitation ne le permettent. Donc, si votre système bloque l'ensemble du processus
+    sur <span class="Li">sleep()</span>, Perl le fera généralement aussi.</p>
+<p class="Pp"><b>Les threads Perl sont différents.</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Modules_thread-safe'><a class='permalink' href='#Modules_thread-safe'>Modules   thread-safe</a></h1>
+<p class="Pp">L'ajout de threads a considérablement modifié les internes de Perl.
+    Il y a des implications pour les personnes qui écrivent des modules avec du code
+    XS ou des bibliothèques externes. Cependant, comme les données Perl ne sont pas
+    partagées entre les threads par défaut, les modules Perl ont une forte probabilité
+    d'être thread-safe ou peuvent être rendus thread-safe facilement. Les modules
+    qui ne sont pas marqués comme thread-safe doivent être testés ou leur code
+    revu avant d'être utilisés dans du code de production.</p>
+<p class="Pp">Tous les modules que vous pourriez utiliser ne sont pas thread-safe,
+    et vous devriez toujours supposer qu'un module est dangereux à moins que sa
+    documentation n'indique le contraire. Cela inclut les modules distribués dans
+    le cadre du noyau. Les threads sont une fonctionnalité relativement nouvelle, et
+    même certains modules standard ne sont pas thread-safe.</p>
+<p class="Pp">Même si un module est thread-safe, cela ne signifie pas que le module
+    est optimisé pour fonctionner correctement avec les threads. Un module pourrait
+    potentiellement être réécrit pour utiliser les nouvelles fonctionnalités de Perl
+    threadé afin d'augmenter les performances dans un environnement threadé.</p>
+<p class="Pp">Si vous utilisez un module qui n'est pas thread-safe pour une raison
+    quelconque, vous pouvez vous protéger en l'utilisant à partir d'un seul thread,
+    et un seul à la fois. Si vous avez besoin que plusieurs threads accèdent à un tel
+    module, vous pouvez utiliser des sémaphores et beaucoup de discipline de
+    programmation pour contrôler l'accès à celui-ci. Les sémaphores sont abordés
+    dans &quot;Sémaphores de base&quot;.</p>
+<p class="Pp">Voir aussi &quot;Thread-Safety des bibliothèques système&quot;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Bases_des_threads'><a class='permalink' href='#Bases_des_threads'>Bases   des threads</a></h1>
+<p class="Pp">Le module <span class="Li">threads</span> fournit les fonctions de
+    base dont vous avez besoin pour écrire des programmes threadés. Dans les sections
+    suivantes, nous aborderons les bases,</p>
+</div>
+</section>
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+montrant ce qu'il faut faire pour créer un programme multithreadé. Ensuite,
+nous examinerons certaines des fonctionnalités du module threads qui facilitent la programmation multithreadée.</p>
+<section class="Ss">
+<h2 class="Ss" id='Support_de_base_des_threads'><a class='permalink' href='#Support_de_base_des_threads'>Support de base des threads</a></h2>
+<p class="Pp">Le support des threads est une option de compilation de Perl. C'est quelque chose qui est activé ou désactivé lors de la compilation de Perl sur votre site, plutôt que lors de la compilation de vos programmes. Si votre Perl n'a pas été compilé avec le support des threads activé, toute tentative d'utilisation de threads échouera.</p>
+<p class="Pp">Vos programmes peuvent utiliser le module Config pour vérifier si les threads sont activés. Si votre programme ne peut pas s'exécuter sans eux, vous pouvez écrire quelque chose comme ceci :</p>
+<pre>use Config;
+$Config{useithreads} or
+    die('Recompilez Perl avec le support des threads pour exécuter ce programme.');</pre>
+<p class="Pp">Un programme potentiellement multithreadé utilisant un module potentiellement multithreadé pourrait contenir du code comme celui-ci :</p>
+<pre>use Config;
+use MyMod;
+BEGIN {
+    if ($Config{useithreads}) {
+        # Nous avons des threads
+        require MyMod_threaded;
+        MyMod_threaded-&gt;import();
+    } else {
+        require MyMod_unthreaded;
+        MyMod_unthreaded-&gt;import();
+    }
+}</pre>
+<p class="Pp">Comme le code qui s'exécute avec et sans threads est généralement assez désordonné, il est préférable d'isoler le code spécifique aux threads dans son propre module. Dans notre exemple ci-dessus, c'est ce que fait <span class="Li">&quot;MyMod_threaded&quot;</span>, et il n'est importé que si nous exécutons sur un Perl multithreadé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Une_note_sur_les_exemples'><a class='permalink' href='#Une_note_sur_les_exemples'>Une note sur les exemples</a></h2>
+<p class="Pp">Dans une situation réelle, il faut veiller à ce que tous les threads aient fini leur exécution avant que le programme ne se termine. Ce soin n'a pas été pris dans ces exemples dans un souci de simplicité. L'exécution de ces exemples *tels quels* produira des messages d'erreur, généralement causés par le fait qu'il reste des threads en cours d'exécution lorsque le programme se termine. Vous ne devriez pas être alarmé par cela.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Création_de_threads'><a class='permalink' href='#Création_de_threads'>Création de threads</a></h2>
+<p class="Pp">Le module threads fournit les outils dont vous avez besoin pour créer de nouveaux threads. Comme pour tout autre module, vous devez indiquer à Perl que vous souhaitez l'utiliser ; <span class="Li">&quot;use threads;&quot;</span> importe toutes les pièces dont vous avez besoin pour créer des threads de base.</p>
+<p class="Pp">La manière la plus simple et la plus directe de créer un thread est d'utiliser <span class="Li">create()</span> :</p>
+<pre>use threads;
+my $thr = threads-&gt;create(\&amp;sub1);
+sub sub1 {
+    print(&quot;Dans le thread\n&quot;);
+}</pre>
+<p class="Pp">La méthode <span class="Li">create()</span> prend une référence à une sous-routine et crée un nouveau thread qui commence à s'exécuter dans la sous-routine référencée. Le contrôle passe ensuite à la fois à la sous-routine et à l'appelant.</p>
+<p class="Pp">Si nécessaire, votre programme peut passer des paramètres à la sous-routine lors du démarrage du thread. Il suffit d'inclure la liste des paramètres dans l'appel <span class="Li">&quot;threads-&gt;create()&quot;</span>, comme ceci :</p>
+<pre>use threads;
+my $Param3 = 'foo';
+my $thr1 = threads-&gt;create(\&amp;sub1, 'Param 1', 'Param 2', $Param3);
+my @ParamList = (42, 'Hello', 3.14);
+my $thr2 = threads-&gt;create(\&amp;sub1, @ParamList);
+my $thr3 = threads-&gt;create(\&amp;sub1, qw(Param1 Param2 Param3));
+sub sub1 {
+    my @InboundParameters = @_;
+    print(&quot;Dans le thread\n&quot;);
+    print('Paramètres reçus &gt;', join('&lt;&gt;',@InboundParameters), &quot;&lt;\n&quot;);
+}</pre>
+<p class="Pp">Le dernier exemple illustre une autre caractéristique des threads. Vous pouvez lancer plusieurs threads en utilisant la même sous-routine. Chaque thread exécute la même sous-routine, mais dans un thread séparé avec un environnement séparé et potentiellement des arguments séparés.</p>
+<p class="Pp"><span class="Li">new()</span> est un synonyme de <span class="Li">create()</span>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Attendre_la_fin_d_un_thread'><a class='permalink' href='#Attendre_la_fin_d_un_thread'>Attendre la fin d'un thread</a></h2>
+<p class="Pp">Puisque les threads sont aussi des sous-routines, ils peuvent retourner des valeurs. Pour attendre qu'un thread se termine et récupérer les valeurs qu'il pourrait retourner, vous pouvez utiliser la méthode <span class="Li">join()</span> :</p>
+<pre>use threads;
+my ($thr) = threads-&gt;create(\&amp;sub1);
+my @ReturnData = $thr-&gt;join();
+print('Le thread a retourné ', join(', ', @ReturnData), &quot;\n&quot;);
+sub sub1 { return ('Cinquante-six', 'foo', 2); }</pre>
+<p class="Pp">Dans l'exemple ci-dessus, la méthode <span class="Li">join()</span> retourne dès que le thread se termine. En plus d'attendre qu'un thread se termine et de rassembler les valeurs que le thread pourrait avoir retournées, <span class="Li">join()</span> effectue également tout nettoyage du système d'exploitation nécessaire pour le thread. Ce nettoyage peut être important, en particulier pour les programmes de longue durée qui lancent de nombreux threads. Si vous ne voulez pas des valeurs de retour et que vous ne voulez pas attendre la fin du thread, vous devriez appeler la méthode <span class="Li">detach()</span> à la place, comme décrit ci-dessous.</p>
+<p class="Pp">NOTE : Dans l'exemple ci-dessus, le thread retourne une liste, ce qui nécessite que l'appel de création de thread soit fait dans un contexte de liste (c'est-à-dire <span class="Li">&quot;my ($thr)&quot;</span>). Voir &quot;$thr-&gt;<b>join()</b>&quot; dans threads et &quot;CONTEXTE DES THREADS&quot; dans threads pour plus de détails sur le contexte des threads et les valeurs de retour.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Ignorer_un_thread'><a class='permalink' href='#Ignorer_un_thread'>Ignorer un thread</a></h2>
+<p class="Pp"><span class="Li">join()</span> fait trois choses : il attend qu'un thread se termine, le nettoie et retourne les données que le thread a pu produire. Mais que se passe-t-il si vous ne vous intéressez pas aux valeurs de retour du thread et que vous ne vous souciez pas vraiment de savoir quand le thread se termine ? Tout ce que vous voulez, c'est que le thread soit nettoyé une fois qu'il est terminé.</p>
+<p class="Pp">Dans ce cas, vous utilisez la méthode <span class="Li">detach()</span>. Une fois qu'un thread est détaché, il s'exécute jusqu'à ce qu'il soit terminé ; ensuite, Perl le nettoie automatiquement.</p>
+<pre>use threads;
+my $thr = threads-&gt;create(\&amp;sub1);   # Lance le thread
+$thr-&gt;detach();   # Désormais, nous ne nous en soucions plus officiellement
+sleep(15);        # Laisse le thread s'exécuter pendant un certain temps
+sub sub1 {
+    my $count = 0;
+    while (1) {
+        $count++;
+        print(&quot;\$count est $count\n&quot;);
+        sleep(1);
+    }
+}</pre>
+<p class="Pp">Une fois qu'un thread est détaché, il ne peut pas être joint, et toutes les données de retour qu'il aurait pu produire (s'il était terminé et en attente d'un join) sont perdues.</p>
+<p class="Pp"><span class="Li">detach()</span> peut également être appelé en tant que méthode de classe pour permettre à un thread de se détacher lui-même :</p>
+<pre>use threads;
+my $thr = threads-&gt;create(\&amp;sub1);
+sub sub1 {
+    threads-&gt;detach();
+    # Faire plus de travail
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Terminaison_de_processus_et_de_threads'><a class='permalink' href='#Terminaison_de_processus_et_de_threads'>Terminaison de processus et de threads</a></h2>
+<p class="Pp">Avec les threads, il faut veiller à leur donner une chance de s'exécuter jusqu'à leur complétion, en supposant que c'est ce que vous voulez.</p>
+<p class="Pp">Une action qui termine un processus terminera *tous* les threads en cours d'exécution. <span class="Li">die()</span> et <span class="Li">exit()</span> ont cette propriété, et Perl effectue une sortie lorsque le thread principal se termine, peut-être implicitement en sortant du code, même si ce n'est pas ce que vous voulez.</p>
+<p class="Pp">À titre d'exemple de ce cas, ce code affiche le message &quot;Perl s'est terminé avec des threads actifs : 2 en cours d'exécution et non joints&quot; :</p>
+<pre>use threads;
+my $thr1 = threads-&gt;new(\&amp;thrsub, &quot;test1&quot;);
+my $thr2 = threads-&gt;new(\&amp;thrsub, &quot;test2&quot;);
+sub thrsub {
+   my ($message) = @_;
+   sleep 1;
+   print &quot;thread $message\n&quot;;
+}</pre>
+<p class="Pp">Mais lorsque les lignes suivantes sont ajoutées à la fin :</p>
+<pre>$thr1-&gt;join();
+$thr2-&gt;join();</pre>
+<p class="Pp">il affiche deux lignes de sortie, un résultat peut-être plus utile.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Threads_et_données'><a class='permalink' href='#Threads_et_données'>Threads et données</a></h1>
+<p class="Pp">Maintenant que nous avons couvert les bases des threads, passons à notre prochain sujet : les données. Le multithreading introduit quelques complications dans l'accès aux données que les programmes non multithreadés n'ont jamais à considérer.</p>
+<section class="Ss">
+<h2 class="Ss" id='Données_partagées_et_non_partagées'><a class='permalink' href='#Données_partagées_et_non_partagées'>Données partagées et non partagées</a></h2>
+<p class="Pp">La plus grande différence entre les *ithreads* de Perl et le vieux threading style 5.005, ou pour autant, pour la plupart des autres systèmes de threading existants, est qu'en règle générale, aucune donnée n'est partagée. Lorsqu'un nouveau thread Perl est créé, toutes les données associées au thread actuel sont copiées dans le nouveau thread, et sont ensuite privées à ce nouveau thread ! C'est similaire à ce qui se passe lorsqu'un processus Unix effectue un fork, sauf que dans ce cas, les données sont simplement copiées dans une partie différente de la mémoire au sein du même processus plutôt qu'un véritable fork.</p>
+<p class="Pp">Pour utiliser le multithreading, cependant, on souhaite généralement que les threads partagent au moins certaines données entre eux. Ceci est fait avec le module threads::shared et l'attribut <span class="Li">&quot;:shared&quot;</span> :</p>
+<pre>use threads;
+use threads::shared;
+my $foo :shared = 1;
+my $bar = 1;
+threads-&gt;create(sub { $foo++; $bar++; })-&gt;join();
+print(&quot;$foo\n&quot;);  # Affiche 2 car $foo est partagé
+print(&quot;$bar\n&quot;);  # Affiche 1 car $bar n'est pas partagé</pre>
+<p class="Pp">Dans le cas d'un tableau partagé, tous les éléments du tableau sont partagés, et pour une hash partagée, toutes les clés et valeurs sont partagées. Cela impose des restrictions sur ce qui peut être assigné aux éléments de tableaux et de hash partagés : seules des valeurs simples ou des références à des variables partagées sont autorisées - ceci afin qu'une variable privée ne devienne pas accidentellement partagée. Une mauvaise assignation fera mourir le thread. Par exemple :</p>
+<pre>use threads;
+use threads::shared;
+my $var          = 1;
+my $svar :shared = 2;
+my %hash :shared;
+... créer quelques threads ...
+$hash{a} = 1;       # Tous les threads voient exists($hash{a})
+                    # et $hash{a} == 1
+$hash{a} = $var;    # ok - copie par valeur : même effet que précédemment
+$hash{a} = $svar;   # ok - copie par valeur : même effet que précédemment
+$hash{a} = \$svar;  # ok - une référence à une variable partagée
+$hash{a} = \$var;   # Cela échouera
+delete($hash{a});   # ok - tous les threads verront !exists($hash{a})</pre>
+<p class="Pp">Notez qu'une variable partagée garantit que si deux threads ou plus essaient de la modifier en même temps, l'état interne de la variable ne sera pas corrompu. Cependant, il n'y a aucune garantie au-delà de cela, comme expliqué dans la section suivante.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Pièges_des_threads_:_les_courses_de_condition'><a class='permalink' href='#Pièges_des_threads_:_les_courses_de_condition'>Pièges des threads : les courses de condition</a></h2>
+<p class="Pp">Si les threads apportent un nouvel ensemble d'outils utiles, ils apportent également un certain nombre de pièges. Un piège est la condition de concurrence (race condition) :</p>
+<pre>use threads;
+use threads::shared;
+my $x :shared = 1;
+my $thr1 = threads-&gt;create(\&amp;sub1);
+my $thr2 = threads-&gt;create(\&amp;sub2);
+$thr1-&gt;join();
+$thr2-&gt;join();
+print(&quot;$x\n&quot;);
+sub sub1 { my $foo = $x; $x = $foo + 1; }
+sub sub2 { my $bar = $x; $x = $bar + 1; }</pre>
+<p class="Pp">Que pensez-vous que sera <span class="Li">$x</span> ? La réponse, malheureusement, est *ça* <i</p>
+</section>
+</section>
+>dépend</i>. Les deux
+    <span class="Li">sub1()</span> et <span class="Li">sub2()</span> accèdent à la
+    variable globale <span class="Li">$x</span>, une fois pour lire et une fois pour écrire.
+    Selon des facteurs allant de l'algorithme de planification de votre implémentation
+    de threads à la phase de la lune, <span class="Li">$x</span> peut être 2 ou
+    3.</p>
+<p class="Pp">Les conditions de concurrence sont causées par un accès non synchronisé
+    à des données partagées. Sans synchronisation explicite, il n'y a aucun moyen d'être
+    sûr que rien n'est arrivé aux données partagées entre le moment où vous y accédez
+    et le moment où vous les mettez à jour. Même ce simple fragment de code a une
+    possibilité d'erreur :</p>
+<pre>use threads;
+my $x :shared = 2;
+my $y :shared;
+my $z :shared;
+my $thr1 = threads-&gt;create(sub { $y = $x; $x = $y + 1; });
+my $thr2 = threads-&gt;create(sub { $z = $x; $x = $z + 1; });
+$thr1-&gt;join();
+$thr2-&gt;join();</pre>
+<p class="Pp">Deux threads accèdent tous deux à <span class="Li">$x</span>. Chaque thread
+    peut potentiellement être interrompu à tout moment, ou être exécuté dans n'importe quel
+    ordre. À la fin, <span class="Li">$x</span> pourrait être 3 ou 4, et <span class="Li">$y</span>
+    et <span class="Li">$z</span> pourraient être 2 ou 3.</p>
+<p class="Pp">Même <span class="Li">&quot;$x += 5&quot;</span> ou
+    <span class="Li">&quot;$x++&quot;</span> ne sont pas garantis d'être
+    atomiques.</p>
+<p class="Pp">Chaque fois que votre programme accède à des données ou à des ressources
+    qui peuvent être accessibles par d'autres threads, vous devez prendre des mesures pour
+    coordonner l'accès ou risquer une incohérence des données et des conditions de
+    concurrence. Notez que Perl protégera ses internes de vos conditions de concurrence,
+    mais il ne vous protégera pas de vous-même.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Synchronisation_et_contrôle'><a class='permalink' href='#Synchronisation_et_contrôle'>Synchronisation et contrôle</a></h1>
+<p class="Pp">Perl fournit un certain nombre de mécanismes pour coordonner les
+    interactions entre les threads et leurs données, afin d'éviter les conditions
+    de concurrence et autres problèmes similaires. Certains sont conçus pour ressembler aux
+    techniques courantes utilisées dans les bibliothèques de threads telles que
+    <span class="Li">&quot;pthreads&quot;</span> ; d'autres sont spécifiques à
+    Perl. Souvent, les techniques standard sont maladroites et difficiles à mettre en œuvre
+    correctement (comme les attentes sur condition). Dans la mesure du possible, il est
+    généralement plus facile d'utiliser des techniques à la Perl comme les files d'attente,
+    qui éliminent une partie du travail difficile.</p>
+<section class="Ss">
+<h2 class="Ss" id='Contrôle_d_accès_:_<b>lock()</b>'><a class='permalink' href='#Contrôle_d_accès_:_<b>lock()</b>'>Contrôle d'accès : <b>lock()</b></a></h2>
+<p class="Pp">La fonction <span class="Li">lock()</span> prend une variable partagée
+    et y place un verrou. Aucun autre thread ne peut verrouiller la variable tant que la
+    variable n'est pas déverrouillée par le thread qui détient le verrou. Le déverrouillage
+    se produit automatiquement lorsque le thread de verrouillage quitte le bloc qui
+    contient l'appel à la fonction <span class="Li">lock()</span>. L'utilisation de
+    <span class="Li">lock()</span> est simple : cet exemple comporte plusieurs threads
+    effectuant des calculs en parallèle et mettant à jour occasionnellement un total courant :</p>
+<pre>use threads;
+use threads::shared;
+my $total :shared = 0;
+sub calc {
+    while (1) {
+        my $result;
+        # (... faire des calculs et définir $result ...)
+        {
+            lock($total);  # Bloquer jusqu'à l'obtention du verrou
+            $total += $result;
+        } # Le verrou est implicitement libéré à la fin de la portée
+        last if $result == 0;
+    }
+}
+my $thr1 = threads-&gt;create(\&amp;calc);
+my $thr2 = threads-&gt;create(\&amp;calc);
+my $thr3 = threads-&gt;create(\&amp;calc);
+$thr1-&gt;join();
+$thr2-&gt;join();
+$thr3-&gt;join();
+print(&quot;total=$total\n&quot;);</pre>
+<p class="Pp"><span class="Li">lock()</span> bloque le thread jusqu'à ce que la
+    variable verrouillée soit disponible. Lorsque <span class="Li">lock()</span>
+    revient, votre thread peut être sûr qu'aucun autre thread ne peut verrouiller cette
+    variable tant que le bloc contenant le verrou ne sort pas de portée.</p>
+<p class="Pp">Il est important de noter que les verrous n'empêchent pas l'accès
+    à la variable en question, seulement les tentatives de verrouillage. Ceci est conforme à la
+    longue tradition de programmation courtoise de Perl, et au verrouillage de fichier
+    advisory que <span class="Li">flock()</span> vous fournit.</p>
+<p class="Pp">Vous pouvez verrouiller des tableaux et des hachages ainsi que des scalaires.
+    Cependant, le verrouillage d'un tableau n'empêchera pas les verrous ultérieurs sur les
+    éléments du tableau, seulement les tentatives de verrouillage sur le tableau lui-même.</p>
+<p class="Pp">Les verrous sont récursifs, ce qui signifie qu'il est possible pour un
+    thread de verrouiller une variable plus d'une fois. Le verrou durera jusqu'à ce que le
+    <span class="Li">lock()</span> le plus externe sur la variable sorte de portée. Par
+    exemple :</p>
+<pre>my $x :shared;
+doit();
+sub doit {
+    {
+        {
+            lock($x); # Attendre le verrou
+            lock($x); # NOOP - nous avons déjà le verrou
+            {
+                lock($x); # NOOP
+                {
+                    lock($x); # NOOP
+                    lockit_some_more();
+                }
+            }
+        } # *** Déverrouillage implicite ici ***
+    }
+}
+sub lockit_some_more {
+    lock($x); # NOOP
+} # Rien ne se passe ici</pre>
+<p class="Pp">Notez qu'il n'y a pas de fonction <span class="Li">unlock()</span> - la
+    seule façon de déverrouiller une variable est de la laisser sortir de portée.</p>
+<p class="Pp">Un verrou peut soit être utilisé pour protéger les données contenues
+    dans la variable verrouillée, soit pour protéger autre chose, comme une section de
+    code. Dans ce dernier cas, la variable en question ne contient aucune donnée utile,
+    et n'existe que dans le but d'être verrouillée. À cet égard, la variable se comporte
+    comme les mutex et les sémaphores de base des bibliothèques de threads traditionnelles.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Un_piège_des_threads_:_Les_interblocages'><a class='permalink' href='#Un_piège_des_threads_:_Les_interblocages'>Un Piège des Threads : Les Interblocages</a></h2>
+<p class="Pp">Les verrous sont un outil pratique pour synchroniser l'accès aux données,
+    et leur utilisation correcte est la clé pour des données partagées sûres. Malheureusement,
+    les verrous ne sont pas sans danger, surtout lorsqu'il s'agit de plusieurs verrous.
+    Considérez le code suivant :</p>
+<pre>use threads;
+use threads::shared;
+my $x :shared = 4;
+my $y :shared = 'foo';
+my $thr1 = threads-&gt;create(sub {
+    lock($x);
+    sleep(20);
+    lock($y);
+});
+my $thr2 = threads-&gt;create(sub {
+    lock($y);
+    sleep(20);
+    lock($x);
+});
+$thr1-&gt;join();
+$thr2-&gt;join();</pre>
+<p class="Pp">Ce programme va probablement se bloquer jusqu'à ce que vous l'arrêtiez.
+    La seule façon pour qu'il ne se bloque pas est si l'un des deux threads acquiert les
+    deux verrous en premier. Une version garantissant le blocage est plus compliquée,
+    mais le principe est le même.</p>
+<p class="Pp">Le premier thread acquiert un verrou sur <span class="Li">$x</span>, puis,
+    après une pause pendant laquelle le second thread a probablement eu le temps de faire
+    quelques travaux, essaie d'acquérir un verrou sur <span class="Li">$y</span>. Pendant
+    ce temps, le second thread acquiert un verrou sur <span class="Li">$y</span>, puis plus
+    tard essaie d'acquérir un verrou sur <span class="Li">$x</span>. La deuxième tentative
+    de verrouillage pour les deux threads va bloquer, chacun attendant que l'autre libère son
+    verrou.</p>
+<p class="Pp">Cette condition est appelée un interblocage, et elle se produit chaque
+    fois que deux threads ou plus tentent d'obtenir des verrous sur des ressources que les
+    autres possèdent. Chaque thread va bloquer, attendant que l'autre libère un verrou
+    sur une ressource. Cela n'arrive jamais, cependant, puisque le thread qui détient la
+    ressource attend lui-même qu'un verrou soit libéré.</p>
+<p class="Pp">Il existe un certain nombre de façons de gérer ce type de problème. La
+    meilleure façon est de toujours faire en sorte que tous les threads acquièrent les
+    verrous dans le même ordre exact. Si, par exemple, vous verrouillez les variables
+    <span class="Li">$x</span>, <span class="Li">$y</span>, et <span class="Li">$z</span>,
+    verrouillez toujours <span class="Li">$x</span> avant <span class="Li">$y</span>,
+    et <span class="Li">$y</span> avant <span class="Li">$z</span>. Il est également préférable
+    de conserver les verrous pendant la période la plus courte possible afin de minimiser les
+    risques d'interblocage.</p>
+<p class="Pp">Les autres primitives de synchronisation décrites ci-dessous peuvent
+    souffrir de problèmes similaires.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Files_d_attente_:_Passer_des_données'><a class='permalink' href='#Files_d_attente_:_Passer_des_données'>Files d'attente : Passer des Données</a></h2>
+<p class="Pp">Une file d'attente est un objet spécial thread-safe qui vous permet de mettre
+    des données à une extrémité et de les retirer de l'autre sans avoir à vous soucier des
+    problèmes de synchronisation. Elles sont assez simples et se présentent comme suit :</p>
+<pre>use threads;
+use Thread::Queue;
+my $DataQueue = Thread::Queue-&gt;new();
+my $thr = threads-&gt;create(sub {
+    while (my $DataElement = $DataQueue-&gt;dequeue()) {
+        print(&quot;Popped $DataElement off the queue\n&quot;);
+    }
+});
+$DataQueue-&gt;enqueue(12);
+$DataQueue-&gt;enqueue(&quot;A&quot;, &quot;B&quot;, &quot;C&quot;);
+sleep(10);
+$DataQueue-&gt;enqueue(undef);
+$thr-&gt;join();</pre>
+<p class="Pp">Vous créez la file d'attente avec
+    <span class="Li">&quot;Thread::Queue-&gt;new()&quot;</span>. Ensuite, vous pouvez
+    ajouter des listes de scalaires à la fin avec <span class="Li">enqueue()</span>,
+    et retirer des scalaires du début avec <span class="Li">dequeue()</span>. Une file
+    d'attente n'a pas de taille fixe et peut croître selon les besoins pour contenir tout ce
+    qui y est ajouté.</p>
+<p class="Pp">Si une file d'attente est vide, <span class="Li">dequeue()</span> se
+    bloque jusqu'à ce qu'un autre thread y ajoute quelque chose. Cela rend les files d'attente
+    idéales pour les boucles d'événements et autres communications entre threads.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sémaphores_:_Synchronisation_d_accès_aux_données'><a class='permalink' href='#Sémaphores_:_Synchronisation_d_accès_aux_données'>Sémaphores : Synchronisation d'Accès aux Données</a></h2>
+<p class="Pp">Les sémaphores sont une sorte de mécanisme de verrouillage générique. Dans
+    leur forme la plus basique, ils se comportent de manière très similaire aux scalaires
+    verrouillables, à la seule différence qu'ils ne peuvent pas contenir de données et qu'ils
+    doivent être explicitement déverrouillés. Dans leur forme avancée, ils agissent comme
+    une sorte de compteur, et peuvent permettre à plusieurs threads d'avoir le
+    *verrou* à un moment donné.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sémaphores_de_base'><a class='permalink' href='#Sémaphores_de_base'>Sémaphores de base</a></h2>
+<p class="Pp">Les sémaphores ont deux méthodes, <span class="Li">down()</span> et
+    <span class="Li">up()</span> : <span class="Li">down()</span> décrémente le compteur
+    de ressources, tandis que <span class="Li">up()</span> l'incrémente. Les appels à
+    <span class="Li">down()</span> se bloqueront si le compte actuel du sémaphore
+    devient négatif lors de la décrémentation. Ce programme donne une démonstration rapide :</p>
+<pre>use threads;
+use Thread::Semaphore;
+my $semaphore = Thread::Semaphore-&gt;new();
+my $GlobalVariable :shared = 0;
+$thr1 = threads-&gt;create(\&amp;sample_sub, 1);
+$thr2 = threads-&gt;create(\&amp;sample_sub, 2);
+$thr3 = threads-&gt;create(\&amp;sample_sub, 3);
+sub sample_sub {
+    my $SubNumber = shift(@_);
+    my $TryCount = 10;
+    my $LocalCopy;
+    sleep(1);
+    while ($TryCount--) {
+        $semaphore-&gt;down();
+        $LocalCopy = $GlobalVariable;
+        print(&quot;$TryCount tries left for sub $SubNumber &quot;
+             .&quot;(\$GlobalVariable is $GlobalVariable)\n&quot;);
+        sleep(2);
+        $LocalCopy++;
+        $GlobalVariable = $LocalCopy;
+        $semaphore-&gt;up();
+    }
+}
+$thr1-&gt;join();
+$thr2-&gt;join();
+$thr3-&gt;join();</pre>
+<p class="Pp">Les trois invocations de la sous-routine fonctionnent de manière synchronisée.
+    Le sémaphore, cependant, s'assure qu'un seul thread accède à la variable globale à la
+    fois.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Sémaphores_avancés'><a class='permalink' href='#Sémaphores_avancés'>Sémaphores avancés</a></h2>
+<p class="Pp">Par défaut, les sémaphores se comportent comme des verrous, ne permettant
+    à un seul thread de les <span class="Li">down()</span> à la fois. Ho</p><section class="Sh">
+<h1 class="Sh" id='Advanced_Semaphores'><a class='permalink' href='#Advanced_Semaphores'>Semaphores avancés</a></h1>
+<p class="Pp">Cependant, il existe d'autres utilisations pour les sémaphores.</p>
+<p class="Pp">Chaque sémaphore a un compteur attaché. Par défaut, les sémaphores
+    sont créés avec le compteur défini à un, <span class="Li">down()</span>
+    décrémente le compteur de un, et <span class="Li">up()</span> l'incrémente
+    de un. Cependant, nous pouvons outrepasser l'un ou l'ensemble de ces valeurs
+    par défaut en passant simplement des valeurs différentes :</p>
+<pre>use threads;
+use Thread::Semaphore;
+my $semaphore = Thread::Semaphore-&gt;new(5);
+                # Crée un sémaphore avec le compteur défini à cinq
+my $thr1 = threads-&gt;create(\&amp;sub1);
+my $thr2 = threads-&gt;create(\&amp;sub1);
+sub sub1 {
+    $semaphore-&gt;down(5); # Décrémente le compteur de cinq
+    # Faire des choses ici
+    $semaphore-&gt;up(5); # Incrémente le compteur de cinq
+}
+$thr1-&gt;detach();
+$thr2-&gt;detach();</pre>
+<p class="Pp">Si <span class="Li">down()</span> tente de décrémenter le compteur
+    en dessous de zéro, il se bloque jusqu'à ce que le compteur soit suffisamment
+    grand. Notez que bien qu'un sémaphore puisse être créé avec un compte initial
+    de zéro, tout <span class="Li">up()</span> ou <span class="Li">down()</span>
+    change toujours le compteur d'au moins un, et donc
+    <span class="Li">&quot;$semaphore-&gt;down(0)&quot;</span> est identique à
+    <span class="Li">&quot;$semaphore-&gt;down(1)&quot;</span>.</p>
+<p class="Pp">La question, bien sûr, est de savoir pourquoi feriez-vous quelque
+    chose comme ça ? Pourquoi créer un sémaphore avec un compte initial qui n'est
+    pas un, ou pourquoi le décrémenter ou l'incrémenter de plus d'un ? La réponse
+    est la disponibilité des ressources. De nombreuses ressources dont vous voulez
+    gérer l'accès peuvent être utilisées en toute sécurité par plusieurs threads à
+    la fois.</p>
+<p class="Pp">Par exemple, prenons un programme piloté par une interface graphique.
+    Il a un sémaphore qu'il utilise pour synchroniser l'accès à l'affichage, de sorte
+    qu'un seul thread dessine à la fois. Pratique, mais bien sûr, vous ne voulez
+    pas qu'un thread commence à dessiner avant que les choses ne soient correctement
+    configurées. Dans ce cas, vous pouvez créer un sémaphore avec un compteur défini
+    à zéro, et l'incrémenter lorsque les choses sont prêtes pour le dessin.</p>
+<p class="Pp">Les sémaphores avec des compteurs supérieurs à un sont également utiles
+    pour établir des quotas. Disons, par exemple, que vous avez un certain nombre de
+    threads qui peuvent effectuer des opérations d'E/S simultanément. Vous ne voulez
+    pas que tous les threads lisent ou écrivent en même temps, car cela peut potentiellement
+    surcharger vos canaux d'E/S, ou épuiser le quota de descripteurs de fichiers de votre
+    processus. Vous pouvez utiliser un sémaphore initialisé au nombre de requêtes
+    d'E/S concurrentes (ou de fichiers ouverts) que vous souhaitez à tout moment, et
+    laisser vos threads se bloquer et se débloquer tranquillement.</p>
+<p class="Pp">Les incrémentations ou décrémentations plus importantes sont utiles
+    dans les cas où un thread doit retirer ou restituer plusieurs ressources à la
+    fois.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Waiting_for_a_Condition'><a class='permalink' href='#Waiting_for_a_Condition'>Attente d'une condition</a></h2>
+<p class="Pp">Les fonctions <span class="Li">cond_wait()</span> et
+    <span class="Li">cond_signal()</span> peuvent être utilisées conjointement avec
+    des verrous pour notifier des threads coopératifs qu'une ressource est devenue
+    disponible. Elles sont très similaires dans leur utilisation aux fonctions
+    trouvées dans <span class="Li">&quot;pthreads&quot;</span>. Cependant, pour la
+    plupart des usages, les files d'attente sont plus simples à utiliser et plus
+    intuitives. Voir threads::shared pour plus de détails.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Giving_up_control'><a class='permalink' href='#Giving_up_control'>Abandon du contrôle</a></h2>
+<p class="Pp">Il y aura des moments où vous trouverez utile qu'un thread abandonne
+    explicitement le CPU à un autre thread. Vous pourriez faire quelque chose d'intensif
+    en processeur et vouloir vous assurer que le thread de l'interface utilisateur
+    est appelé fréquemment. Quoi qu'il en soit, il y aura des moments où vous voudrez
+    qu'un thread cède le processeur.</p>
+<p class="Pp">Le package de threading de Perl fournit la fonction
+    <span class="Li">yield()</span> qui fait cela.
+    <span class="Li">yield()</span> est assez simple et fonctionne comme suit :</p>
+<pre>use threads;
+sub loop {
+    my $thread = shift;
+    my $foo = 50;
+    while($foo--) { print(&quot;Dans le thread $thread\n&quot;); }
+    threads-&gt;yield();
+    $foo = 50;
+    while($foo--) { print(&quot;Dans le thread $thread\n&quot;); }
+}
+my $thr1 = threads-&gt;create(\&amp;loop, 'premier');
+my $thr2 = threads-&gt;create(\&amp;loop, 'deuxième');
+my $thr3 = threads-&gt;create(\&amp;loop, 'troisième');</pre>
+<p class="Pp">Il est important de se rappeler que <span class="Li">yield()</span>
+    n'est qu'un indice pour céder le CPU, cela dépend de votre matériel, de votre
+    système d'exploitation et de vos bibliothèques de threading de ce qui se passe
+    réellement. **Sur de nombreux systèmes d'exploitation, yield() est une opération
+    nulle.** Il est donc important de noter qu'il ne faut pas construire la planification
+    des threads autour des appels à
+    <span class="Li">yield()</span>. Cela pourrait fonctionner sur votre
+    plateforme, mais cela ne fonctionnera pas sur une autre.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='General_Thread_Utility_Routines'><a class='permalink' href='#General_Thread_Utility_Routines'>Routines utilitaires générales des threads</a></h1>
+<p class="Pp">Nous avons couvert les éléments essentiels du package de threading de
+    Perl, et avec ces outils, vous devriez être bien avancé dans l'écriture de code et
+    de packages multi-threads. Il y a quelques petites pièces utiles qui ne
+    rentraient pas vraiment ailleurs.</p>
+<section class="Ss">
+<h2 class="Ss" id='What_Thread_Am_I_In?'><a class='permalink' href='#What_Thread_Am_I_In?'>Dans quel thread suis-je ?</a></h2>
+<p class="Pp">La méthode de classe <span class="Li">&quot;threads-&gt;self()&quot;</span>
+    fournit à votre programme un moyen d'obtenir un objet représentant le thread
+    dans lequel il se trouve actuellement. Vous pouvez utiliser cet objet de la même
+    manière que ceux retournés par la création de thread.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Thread_IDs'><a class='permalink' href='#Thread_IDs'>Identifiants de thread</a></h2>
+<p class="Pp"><span class="Li">tid()</span> est une méthode d'objet thread qui
+    retourne l'identifiant du thread que représente l'objet. Les identifiants de
+    thread sont des entiers, le thread principal d'un programme étant 0. Actuellement,
+    Perl attribue un TID unique à chaque thread jamais créé dans votre programme,
+    attribuant au premier thread créé un TID de 1, et augmentant le TID de 1 pour
+    chaque nouveau thread créé. Lorsqu'il est utilisé comme méthode de classe,
+    <span class="Li">&quot;threads-&gt;tid()&quot;</span> peut être utilisé par un
+    thread pour obtenir son propre TID.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Are_These_Threads_The_Same?'><a class='permalink' href='#Are_These_Threads_The_Same?'>Ces threads sont-ils les mêmes ?</a></h2>
+<p class="Pp">La méthode <span class="Li">equal()</span> prend deux objets thread
+    et retourne vrai si les objets représentent le même thread, et faux s'ils ne le
+    font pas.</p>
+<p class="Pp">Les objets thread ont également une comparaison
+    <span class="Li">&quot;==&quot;</span> surchargée afin que vous puissiez effectuer
+    des comparaisons sur eux comme vous le feriez avec des objets normaux.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='What_Threads_Are_Running?'><a class='permalink' href='#What_Threads_Are_Running?'>Quels threads sont en cours d'exécution ?</a></h2>
+<p class="Pp"><span class="Li">&quot;threads-&gt;list()&quot;</span> retourne une
+    liste d'objets thread, un pour chaque thread en cours d'exécution et non détaché.
+    Pratique pour un certain nombre de choses, y compris le nettoyage à la fin de votre
+    programme (depuis le thread Perl principal, bien sûr) :</p>
+<pre># Boucler à travers tous les threads
+foreach my $thr (threads-&gt;list()) {
+    $thr-&gt;join();
+}</pre>
+<p class="Pp">Si certains threads n'ont pas fini de s'exécuter lorsque le thread
+    Perl principal se termine, Perl vous avertira et mourra, car il est impossible
+    pour Perl de se nettoyer pendant que d'autres threads s'exécutent.</p>
+<p class="Pp">NOTE : Le thread Perl principal (thread 0) est en état <i>détaché</i>,
+    et n'apparaît donc pas dans la liste retournée par
+    <span class="Li">&quot;threads-&gt;list()&quot;</span>.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='A_Complete_Example'><a class='permalink' href='#A_Complete_Example'>Un exemple complet</a></h1>
+<p class="Pp">Confus encore ? Il est temps d'un exemple de programme pour montrer
+    certaines des choses que nous avons couvertes. Ce programme trouve des nombres
+    premiers en utilisant des threads.</p>
+<pre> 1 #!/usr/bin/perl
+ 2 # prime-pthread, avec l'aimable autorisation de Tom Christiansen
+ 3
+ 4 use v5.36;
+ 5
+ 6 use threads;
+ 7 use Thread::Queue;
+ 8
+ 9 sub check_num ($upstream, $cur_prime) {
+10     my $kid;
+11     my $downstream = Thread::Queue-&gt;new();
+12     while (my $num = $upstream-&gt;dequeue()) {
+13         next unless ($num % $cur_prime);
+14         if ($kid) {
+15             $downstream-&gt;enqueue($num);
+16         } else {
+17             print(&quot;Trouvé premier : $num\n&quot;);
+18             $kid = threads-&gt;create(\&amp;check_num, $downstream, $num);
+19             if (! $kid) {
+20                 warn(&quot;Désolé. Manque de threads.\n&quot;);
+21                 last;
+22             }
+23         }
+24     }
+25     if ($kid) {
+26         $downstream-&gt;enqueue(undef);
+27         $kid-&gt;join();
+28     }
+29 }
+30
+31 my $stream = Thread::Queue-&gt;new(3..1000, undef);
+32 check_num($stream, 2);</pre>
+<p class="Pp">Ce programme utilise le modèle de pipeline pour générer des nombres
+    premiers. Chaque thread du pipeline a une file d'attente d'entrée qui alimente les
+    nombres à vérifier, un nombre premier dont il est responsable, et une file d'attente
+    de sortie dans laquelle il dirige les nombres qui ont échoué à la vérification. Si le
+    thread a un nombre qui a échoué à sa vérification et qu'il n'y a pas de thread enfant,
+    alors le thread doit avoir trouvé un nouveau nombre premier. Dans ce cas, un nouveau
+    thread enfant est créé pour ce premier et ajouté à la fin du pipeline.</p>
+<p class="Pp">Cela semble probablement un peu plus déroutant que cela ne l'est
+    en réalité, alors examinons ce programme morceau par morceau et voyons ce qu'il
+    fait. (Pour ceux d'entre vous qui pourraient essayer de se souvenir exactement de ce
+    qu'est un nombre premier, c'est un nombre qui n'est divisible que par lui-même et
+    par 1.)</p>
+<p class="Pp">La majeure partie du travail est effectuée par la sous-routine
+    <span class="Li">check_num()</span>, qui prend une référence à sa file d'attente
+    d'entrée et un nombre premier dont elle est responsable. Nous créons une nouvelle
+    file d'attente (ligne 11) et réservons un scalaire pour le thread que nous allons
+    probablement créer plus tard (ligne 10).</p>
+<p class="Pp">La boucle while des lignes 12 à 24 récupère un scalaire de la file
+    d'attente d'entrée et vérifie par rapport au premier dont ce thread est
+    responsable. La ligne 13 vérifie s'il y a un reste lorsque nous divisons le
+    nombre à vérifier par notre premier. S'il y en a un, le nombre ne doit pas être
+    divisible par notre premier, nous devons donc soit le passer au thread suivant si
+    nous en avons créé un (ligne 15), soit créer un nouveau thread si nous n'en avons
+    pas.</p>
+<p class="Pp">La création d'un nouveau thread se fait à la ligne 18. Nous lui
+    passons une référence à la file d'attente que nous avons créée et le nombre premier
+    que nous avons trouvé. Aux lignes 19 à 22, nous vérifions si notre nouveau thread
+    a été créé, et sinon, nous arrêtons de vérifier les nombres restants dans la file
+    d'attente.</p>
+<p class="Pp">Enfin, une fois que la boucle se termine (parce que nous avons obtenu
+    un 0 ou <span class="Li">&quot;undef&quot;</span> dans la file d'attente, ce qui
+    sert de signal pour terminer), nous transmettons l'avis à notre enfant et attendons
+    qu'il se termine si nous en avons créé un (lignes 25 et 28).</p>
+<p class="Pp">Pendant ce temps, dans le thread principal, nous créons d'abord une
+    file d'attente (ligne 31) et mettons en file d'attente tous les nombres de 3 à 1000
+    pour vérification, plus une notification de fin. Ensuite, tout ce que nous avons à
+    faire pour lancer le processus est de passer la file d'attente et le premier premier
+    à la sous-routine <span class="Li">check_num()</span> (ligne 32).</p>
+<p class="Pp">Voilà comment ça marche. C'est assez simple ; comme pour de nombreux
+    programmes Perl, l'explication est beaucoup plus longue que le programme.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Further_Reading'><a class='permalink' href='#Further_Reading'>Lecture supplémentaire</a></h1>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Different_implementations_of_threads'><a class='permalink' href='#Different_implementations_of_threads'>Différentes implémentations de threads</a></h1>
+<p class="Pp">Quelques informations sur les implémentations de threads du point de vue du système d'exploitation. Il existe trois catégories principales de threads : les threads en mode utilisateur, les threads noyau et les threads noyau multiprocesseurs.</p>
+<p class="Pp">Les threads en mode utilisateur sont des threads qui résident entièrement dans un programme et ses bibliothèques. Dans ce modèle, le SE ne sait rien des threads. Pour lui, votre processus est juste un processus.</p>
+<p class="Pp">C'est la manière la plus simple d'implémenter les threads, et celle par laquelle la plupart des SE commencent. Le principal inconvénient est que, puisque le SE ne sait rien des threads, si un thread se bloque, ils se bloquent tous. Les activités de blocage typiques incluent la plupart des appels système, la plupart des E/S, et des choses comme <span class="Li">sleep()</span>.</p>
+<p class="Pp">Les threads noyau sont l'étape suivante dans l'évolution des threads. Le SE connaît les threads noyau et en tient compte. La principale différence entre un thread noyau et un thread en mode utilisateur est le blocage. Avec les threads noyau, les choses qui bloquent un seul thread ne bloquent pas les autres threads. Ce n'est pas le cas des threads en mode utilisateur, où le noyau bloque au niveau du processus et non au niveau du thread.</p>
+<p class="Pp">C'est un grand pas en avant, et cela peut donner un coup de pouce de performance considérable à un programme multithread par rapport aux programmes non multithread. Les threads qui se bloquent lors des E/S, par exemple, ne bloqueront pas les threads qui font d'autres choses. Chaque processus n'a toujours qu'un seul thread en cours d'exécution à la fois, cependant, quel que soit le nombre de CPU qu'un système peut avoir.</p>
+<p class="Pp">Étant donné que le threading noyau peut interrompre un thread à tout moment, il révélera certaines des hypothèses de verrouillage implicites que vous pourriez faire dans votre programme. Par exemple, quelque chose d'aussi simple que <span class="Li">&quot;$x = $x + 2&quot;</span> peut se comporter de manière imprévisible avec les threads noyau si <span class="Li">$x</span> est visible par d'autres threads, car un autre thread peut avoir modifié <span class="Li">$x</span> entre le moment où il a été récupéré du côté droit et le moment où la nouvelle valeur est stockée.</p>
+<p class="Pp">Les threads noyau multiprocesseurs sont l'étape finale du support des threads. Avec les threads noyau multiprocesseurs sur une machine avec plusieurs CPU, le SE peut planifier l'exécution de deux threads ou plus simultanément sur différents CPU.</p>
+<p class="Pp">Cela peut donner un sérieux coup de pouce de performance à votre programme multithread, car plus d'un thread sera en cours d'exécution en même temps. En contrepartie, cependant, tous ces problèmes de synchronisation gênants qui n'auraient peut-être pas été révélés avec les threads noyau de base apparaîtront avec une vengeance.</p>
+<p class="Pp">En plus des différents niveaux d'implication du SE dans les threads, différents SE (et différentes implémentations de threads pour un SE particulier) allouent les cycles CPU aux threads de différentes manières.</p>
+<p class="Pp">Les systèmes multitâche coopératifs font en sorte que les threads en cours cèdent le contrôle si l'une des deux conditions suivantes se produit. Si un thread appelle une fonction de céder le contrôle, il cède le contrôle. Il cède également le contrôle si le thread fait quelque chose qui le bloquerait, comme effectuer des E/S. Dans une implémentation multitâche coopérative, un thread peut affamer tous les autres de temps CPU s'il le choisit.</p>
+<p class="Pp">Les systèmes multitâche préemptifs interrompent les threads à intervalles réguliers pendant que le système décide quel thread doit s'exécuter ensuite. Dans un système multitâche préemptif, un thread ne monopolisera généralement pas le CPU.</p>
+<p class="Pp">Sur certains systèmes, des threads coopératifs et préemptifs peuvent s'exécuter simultanément. (Par exemple, les threads s'exécutant avec des priorités temps réel se comportent souvent de manière coopérative, tandis que les threads s'exécutant à des priorités normales se comportent de manière préemptive.)</p>
+<p class="Pp">La plupart des systèmes d'exploitation modernes prennent en charge le multitâche préemptif de nos jours.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Performance_considerations'><a class='permalink' href='#Performance_considerations'>Considérations de performance</a></h1>
+<p class="Pp">La chose principale à garder à l'esprit lors de la comparaison des <i>ithreads</i> de Perl avec d'autres modèles de threading est le fait que pour chaque nouveau thread créé, une copie complète de toutes les variables et données du thread parent doit être effectuée. Ainsi, la création de threads peut être assez coûteuse, tant en termes d'utilisation de la mémoire que de temps passé à la création. La manière idéale de réduire ces coûts est d'avoir un nombre relativement faible de threads à longue durée de vie, tous créés assez tôt (avant que le thread de base n'ait accumulé trop de données). Bien sûr, cela n'est pas toujours possible, il faut donc faire des compromis. Cependant, une fois qu'un thread a été créé, ses performances et son utilisation supplémentaire de la mémoire devraient être peu différentes de celles d'un code ordinaire.</p>
+<p class="Pp">Notez également que dans l'implémentation actuelle, les variables partagées utilisent un peu plus de mémoire et sont un peu plus lentes que les variables ordinaires.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Process-scope_Changes'><a class='permalink' href='#Process-scope_Changes'>Changements de portée de processus</a></h1>
+<p class="Pp">Notez que si les threads eux-mêmes sont des threads d'exécution distincts et que les données Perl sont privées au thread sauf si elles sont explicitement partagées, les threads peuvent affecter l'état de portée du processus, affectant tous les threads.</p>
+<p class="Pp">L'exemple le plus courant est de changer le répertoire de travail actuel à l'aide de <span class="Li">chdir()</span>. Un thread appelle <span class="Li">chdir()</span>, et le répertoire de travail de tous les threads change.</p>
+<p class="Pp">Un exemple encore plus drastique de changement de portée de processus est <span class="Li">chroot()</span> : le répertoire racine de tous les threads change, et aucun thread ne peut l'annuler (contrairement à <span class="Li">chdir()</span>).</p>
+<p class="Pp">D'autres exemples de changements de portée de processus incluent <span class="Li">umask()</span> et le changement des UID et GID.</p>
+<p class="Pp">Vous pensez mélanger <span class="Li">fork()</span> et threads ? Veuillez vous allonger et attendre que la sensation passe. Sachez que la sémantique de <span class="Li">fork()</span> varie selon les plateformes. Par exemple, certains systèmes Unix copient tous les threads actuels dans le processus enfant, tandis que d'autres ne copient que le thread qui a appelé <span class="Li">fork()</span>. Vous avez été prévenu !</p>
+<p class="Pp">De même, mélanger signaux et threads peut être problématique. Les implémentations dépendent de la plateforme, et même la sémantique POSIX peut ne pas être celle que vous attendez (et Perl ne vous donne même pas l'API POSIX complète). Par exemple, il n'y a aucun moyen de garantir qu'un signal envoyé à une application Perl multithread sera intercepté par un thread particulier. (Cependant, une fonctionnalité récemment ajoutée fournit la capacité d'envoyer des signaux entre threads. Voir "THREAD SIGNALLING" dans threads pour plus de détails.)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Thread-Safety_of_System_Libraries'><a class='permalink' href='#Thread-Safety_of_System_Libraries'>Sécurité des threads des bibliothèques système</a></h1>
+<p class="Pp">La sécurité des threads des appels de bibliothèque C est hors du contrôle de Perl. Un comportement indéfini se produira si des appels non sécurisés sont utilisés pendant le fonctionnement multithread. Voir "Dealing with embedded perls and threads" dans perlclib.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Conclusion'><a class='permalink' href='#Conclusion'>Conclusion</a></h1>
+<p class="Pp">Un tutoriel complet sur les threads pourrait remplir un livre (et l'a fait, plusieurs fois), mais avec ce que nous avons couvert dans cette introduction, vous devriez être sur la bonne voie pour devenir un expert en threading Perl.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR AUSSI</a></h1>
+<p class="Pp">POD annoté pour threads : &lt;<a href='https://web.archive.org/web/20171028020148/http://annocpan.org/?mode=search'>https://web.archive.org/web/20171028020148/http://annocpan.org/?mode=search</a>&amp;field=Module&amp;name=threads&gt;</p>
+<p class="Pp">Dernière version de threads sur CPAN : <a href='https://metacpan.org/pod/threads'>https://metacpan.org/pod/threads</a></p>
+<p class="Pp">POD annoté pour threads::shared : &lt;<a href='https://web.archive.org/web/20171028020148/http://annocpan.org/?mode=search'>https://web.archive.org/web/20171028020148/http://annocpan.org/?mode=search</a>&amp;field=Module&amp;name=threads%3A%3Ashared&gt;</p>
+<p class="Pp">Dernière version de threads::shared sur CPAN : <a href='https://metacpan.org/pod/threads::shared'>https://metacpan.org/pod/threads::shared</a></p>
+<p class="Pp">Liste de diffusion Perl threads : <a href='https://lists.perl.org/list/ithreads.html'>https://lists.perl.org/list/ithreads.html</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Bibliography'><a class='permalink' href='#Bibliography'>Bibliographie</a></h1>
+<p class="Pp">Voici une courte bibliographie gracieuseté de Jürgen Christoffel :</p>
+<section class="Ss">
+<h2 class="Ss" id='Introductory_Texts'><a class='permalink' href='#Introductory_Texts'>Textes d'introduction</a></h2>
+<p class="Pp">Birrell, Andrew D. An Introduction to Programming with Threads. Digital Equipment Corporation, 1989, DEC-SRC Research Report #35 en ligne sous <a href='https://www.hpl.hp.com/techreports/Compaq-DEC/SRC-RR-35.pdf'>https://www.hpl.hp.com/techreports/Compaq-DEC/SRC-RR-35.pdf</a> (fortement recommandé)</p>
+<p class="Pp">Robbins, Kay. A., et Steven Robbins. Practical Unix Programming: A Guide to Concurrency, Communication, and Multithreading. Prentice-Hall, 1996.</p>
+<p class="Pp">Lewis, Bill, et Daniel J. Berg. Multithreaded Programming with Pthreads. Prentice Hall, 1997, ISBN 0-13-443698-9 (une introduction bien écrite aux threads).</p>
+<p class="Pp">Nelson, Greg (éditeur). Systems Programming with Modula-3. Prentice Hall, 1991, ISBN 0-13-590464-1.</p>
+<p class="Pp">Nichols, Bradford, Dick Buttlar, et Jacqueline Proulx Farrell. Pthreads Programming. O'Reilly &amp; Associates, 1996, ISBN 156592-115-1 (couvre les threads POSIX).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OS-Related_References'><a class='permalink' href='#OS-Related_References'>Références relatives au SE</a></h2>
+<p class="Pp">Boykin, Joseph, David Kirschen, Alan Langerman, et Susan LoVerso. Programming under Mach. Addison-Wesley, 1994, ISBN 0-201-52739-1.</p>
+<p class="Pp">Tanenbaum, Andrew S. Distributed Operating Systems. Prentice Hall, 1995, ISBN 0-13-219908-4 (excellent manuel).</p>
+<p class="Pp">Silberschatz, Abraham, et Peter B. Galvin. Operating System Concepts, 4e éd. Addison-Wesley, 1995, ISBN 0-201-59292-4</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Other_References'><a class='permalink' href='#Other_References'>Autres références</a></h2>
+<p class="Pp">Arnold, Ken et James Gosling. The Java Programming Language, 2e éd. Addison-Wesley, 1998, ISBN 0-201-31006-6.</p>
+<p class="Pp">comp.programming.threads FAQ, <a href='http://www.serpentine.com/~bos/threads-faq/'>http://www.serpentine.com/~bos/threads-faq/</a></p>
+<p class="Pp">Le Sergent, T. et B. Berthomieu. "Incremental MultiThreaded Garbage Collection on Virtually Shared Memory Architectures" dans Memory Management: Proc. of the International Workshop IWMM 92, St. Malo, France, Septembre 1992, Yves Bekkers et Jacques Cohen, éds. Springer, 1992, ISBN 3540-55940-X (applications de threads réelles).</p>
+<p class="Pp">Artur Bergman, "Where Wizards Fear To Tread", 11 juin 2002, <a href='http://www.perl.com/pub/a/2002/06/11/threads.html'>http://www.perl.com/pub/a/2002/06/11/threads.html</a></p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Acknowledgements'><a class='permalink' href='#Acknowledgements'>Remerciements</a></h1>
+<p class="Pp">Merci (en</p>
+(pas d'ordre particulier) à Chaim Frenkel, Steve Fink,
+    Gurusamy Sarathy, Ilya Zakharevich, Benjamin Sugars, J&#x00FC;rgen
+    Christoffel, Joshua Pritikin et Alan Burlison, pour leur aide dans la
+    vérification de la réalité et le polissage de cet article. Un grand merci à Tom Christiansen
+    pour sa réécriture du générateur de nombres premiers.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Dan Sugalski &lt;dan@sidhe.org&gt;</p>
+<p class="Pp">Légèrement modifié par Arthur Bergman pour s'adapter au nouveau modèle/module de fils.</p>
+<p class="Pp">Relaboré légèrement par J&#x00F6;rg Walter &lt;jwalt@cpan.org&gt; pour être plus concis sur la sécurité des fils du code Perl.</p>
+<p class="Pp">Réorganisé légèrement par Elizabeth Mattijsen &lt;liz@dijkmat.nl&gt; pour mettre moins l'accent sur <b>yield()</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Copyrights'><a class='permalink' href='#Copyrights'>Copyrights</a></h1>
+<p class="Pp">La version originale de cet article est parue dans The
+    Perl Journal #10, et est copyright 1998 The Perl Journal. Il apparaît
+    avec la permission de Jon Orwant et The Perl Journal. Ce document peut être
+    distribué sous les mêmes termes que Perl lui-même.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Aller" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#Qu'est-ce_qu'un_fil_au_juste?">Qu'est-ce qu'un fil au juste?</a></li>
+        
+            <li><a href="#Modèles_de_programmes_avec_fils">Modèles de programmes avec fils</a></li>
+        
+            <li><a href="#Quel_genre_de_fils_sont_les_fils_Perl?">Quel genre de fils sont les fils Perl?</a></li>
+        
+            <li><a href="#Modules_sûrs_pour_les_fils">Modules sûrs pour les fils</a></li>
+        
+            <li><a href="#Bases_des_fils">Bases des fils</a></li>
+        
+            <li><a href="#Fils_et_données">Fils et données</a></li>
+        
+            <li><a href="#Synchronisation_et_contrôle">Synchronisation et contrôle</a></li>
+        
+            <li><a href="#Routines_utilitaires_générales_pour_les_fils">Routines utilitaires générales pour les fils</a></li>
+        
+            <li><a href="#Un_exemple_complet">Un exemple complet</a></li>
+        
+            <li><a href="#Différentes_implémentations_de_fils">Différentes implémentations de fils</a></li>
+        
+            <li><a href="#Considérations_de_performance">Considérations de performance</a></li>
+        
+            <li><a href="#Changements_à_la_portée_du_processus">Changements à la portée du processus</a></li>
+        
+            <li><a href="#Sécurité_des_bibliothèques_système_pour_les_fils">Sécurité des bibliothèques système pour les fils</a></li>
+        
+            <li><a href="#Conclusion">Conclusion</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#Bibliographie">Bibliographie</a></li>
+        
+            <li><a href="#Remerciements">Remerciements</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#Copyrights">Copyrights</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlthrtut.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlthrtut.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

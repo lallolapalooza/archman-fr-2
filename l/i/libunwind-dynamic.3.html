@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libunwind-dynamic(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">libunwind-dynamic(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libunwind/">libunwind</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBUNWIND-DYNAMIC(3libunwind)</td>
+    <td class="head-vol">Bibliothèque de programmation </td>
+    <td class="head-rtitle">LIBUNWIND-DYNAMIC(3libunwind)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">libunwind-dynamic -- support de libunwind pour le code généré à l'exécution</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTRODUCTION'><a class='permalink' href='#INTRODUCTION'>INTRODUCTION</a></h1>
+<p class="Pp">Pour que libunwind puisse faire son travail, elle doit être capable de
+    reconstruire l'<i>état de la pile d'appels</i> de chaque trame dans une chaîne
+    d'appels. L'état de la pile d'appels décrit le sous-ensemble de l'état de la machine
+    qui consiste en les <i>registres de trame</i> (typiquement le pointeur d'instruction
+    et le pointeur de pile) et tous les registres sauvegardés par l'appelé (registres
+    préservés). L'état de la trame décrit chaque registre soit en fournissant sa valeur
+    actuelle (pour les registres de trame), soit en fournissant l'emplacement où la valeur
+    actuelle est stockée (registres sauvegardés par l'appelé).</p>
+<p class="Pp">Pour le code généré statiquement, le compilateur s'occupe normalement
+    d'émettre des <i>informations de déroulement</i> qui fournissent le minimum d'informations
+    nécessaires pour reconstruire l'état de la trame pour chaque instruction d'une procédure.
+    Pour le code généré dynamiquement, le générateur de code d'exécution doit utiliser
+    l'interface d'informations de déroulement dynamique fournie par libunwind pour fournir
+    les informations équivalentes. Cette page de manuel décrit le format de ces informations
+    en détail.</p>
+<p class="Pp">Aux fins de cette discussion, une <i>procédure</i> est définie comme une
+    pièce arbitraire de code <i>contigu</i>. Normalement, chaque procédure correspond
+    directement à une fonction dans le langage source, mais ce n'est pas strictement requis.
+    Par exemple, un générateur de code d'exécution pourrait traduire une fonction donnée en
+    deux procédures distinctes (non contiguës) : une pour le code fréquemment exécuté (chaud)
+    et une pour le code rarement exécuté (froid). De même, des fonctions simples du langage source
+    (généralement des fonctions feuilles) peuvent être traduites en code pour lequel les conventions
+    de déroulement par défaut s'appliquent, et pour un tel code, il n'est pas strictement nécessaire
+    d'enregistrer les informations de déroulement dynamiques.</p>
+<p class="Pp">Une procédure est logiquement composée d'une séquence de <i>régions</i>.
+    Les régions sont imbriquées dans le sens où l'état de la trame à la fin d'une région est, par
+    défaut, supposé être l'état de la trame pour la région suivante. Chaque région est considérée
+    comme étant divisée en un <i>prologue</i>, un <i>corps</i>, et un <i>épilogue</i>. Chacun d'eux peut être vide. S'il n'est pas vide, le prologue met en place l'état de la trame pour le corps. Par exemple, le prologue peut devoir allouer de l'espace sur la pile et sauvegarder certains registres sauvegardés par l'appelé. Le corps effectue le travail réel de la procédure mais ne modifie en aucun cas l'état de la trame. S'il n'est pas vide, l'épilogue restaure l'état de la trame précédent et, ce faisant, annule l'effet des prologues. En fait, un seul épilogue peut annuler l'effet des prologues de plusieurs régions (imbriquées).</p>
+<p class="Pp">Nous tenons à souligner que même si le prologue, le corps et l'épilogue
+    sont des entités logiquement distinctes, les générateurs de code optimisants entrelaceront
+    généralement les instructions des trois entités. Pour cette raison, l'interface d'informations
+    de déroulement dynamique de libunwind ne fait aucune distinction quelconque entre le prologue
+    et le corps. De même, l'ensemble exact d'instructions qui composent un épilogue est également
+    sans importance. Le seul point de l'épilogue qui doit être décrit explicitement par les
+    informations de déroulement dynamiques est le point auquel le pointeur de pile est restauré.
+    La raison pour laquelle ce point doit être décrit est qu'une fois que le pointeur de pile est
+    restauré, toutes les valeurs sauvegardées dans la partie désallouée de la trame de pile deviennent
+    invalides et libunwind a donc besoin de le savoir. La partie de l'état de la trame non sauvegardée
+    sur la pile est supposée rester valide jusqu'à la fin de la région. Pour cette raison, il n'est
+    généralement pas nécessaire de décrire les instructions qui restaurent le contenu des registres
+    sauvegardés par l'appelé.</p>
+<p class="Pp">Au sein d'une région, chaque instruction qui affecte l'état de la trame d'une manière
+    ou d'une autre doit être décrite avec un descripteur d'opération. À cette fin, chaque instruction
+    de la région se voit attribuer un index unique. La manière exacte dont cet index est dérivé dépend
+    de l'architecture. Par exemple, sur les architectures de type RISC et EPIC, les instructions ont une
+    taille fixe, il est donc possible de simplement numéroter les instructions. En revanche, la plupart
+    des architectures CISC utilisent des encodages d'instructions de longueur variable, il est donc
+    généralement nécessaire d'utiliser un décalage d'octet comme index. Étant donné l'index de l'instruction,
+    le descripteur d'opération spécifie l'effet de l'instruction de manière abstraite. Par exemple,
+    il peut exprimer que l'instruction stocke le registre sauvegardé par l'appelé r1 au décalage 16
+    dans la trame de pile.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PROCEDURES'><a class='permalink' href='#PROCEDURES'>PROCÉDURES</a></h1>
+<p class="Pp">Le générateur de code d'exécution enregistre les informations de déroulement
+    dynamiques d'une procédure en configurant une structure de type <code class="Li">unw_dyn_info_t</code>
+    et en appelant <code class="Li">_U_dyn_register()</code>, en passant l'adresse de la structure
+    comme seul argument. Les membres de la structure <code class="Li">unw_dyn_info_t</code> sont décrits
+    ci-dessous :</p>
+<dl class="Bl-tag">
+  <dt id="void"><a class="permalink" href="#void">void *next</a></dt>
+  <dd>
+    <br/>
+     Privé à libunwind. Ne doit pas être utilisé par l'application.</dd>
+  <dt id="void~2"><a class="permalink" href="#void~2">void *prev</a></dt>
+  <dd>
+    <br/>
+     Privé à libunwind. Ne doit pas être utilisé par l'application.</dd>
+  <dt id="unw_word_t"><a class="permalink" href="#unw_word_t">unw_word_t
+    start_ip</a></dt>
+  <dd>
+    <br/>
+     L'adresse de début des instructions de la procédure (rappelez-vous : les procédures
+      sont définies comme des morceaux de code contigus, donc une seule plage de code
+      suffit).</dd>
+  <dt id="unw_word_t~2"><a class="permalink" href="#unw_word_t~2">unw_word_t
+    end_ip</a></dt>
+  <dd>
+    <br/>
+     L'adresse de fin des instructions de la procédure (non inclusive, c'est-à-dire que
+      end_ip-start_ip est la taille de la procédure en octets).</dd>
+  <dt id="unw_word_t~3"><a class="permalink" href="#unw_word_t~3">unw_word_t
+    gp</a></dt>
+  <dd>
+    <br/>
+     La valeur du pointeur global utilisée pour cette procédure. La signification exacte
+      du pointeur global est spécifique à l'architecture et sur certaines architectures,
+      il n'est pas utilisé du tout.</dd>
+  <dt id="int32_t"><a class="permalink" href="#int32_t">int32_t format</a></dt>
+  <dd>
+    <br/>
+     Le format des informations de déroulement. Ce membre peut être l'un des
+      <code class="Li">UNW_INFO_FORMAT_DYNAMIC</code>, <code class="Li">UNW_INFO_FORMAT_TABLE</code>, ou
+      <code class="Li">UNW_INFO_FORMAT_REMOTE_TABLE</code>.</dd>
+  <dt id="union"><a class="permalink" href="#union">union u</a></dt>
+  <dd>
+    <br/>
+     Cette union contient une sous-structure pour chaque format d'informations de déroulement
+      possible :</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="unw_dyn_proc_info_t"><a class="permalink" href="#unw_dyn_proc_info_t">unw_dyn_proc_info_t
+    pi</a></dt>
+  <dd>
+    <br/>
+     Ce membre est utilisé pour le format <code class="Li">UNW_INFO_FORMAT_DYNAMIC</code>.</dd>
+  <dt id="unw_dyn_table_info_t"><a class="permalink" href="#unw_dyn_table_info_t">unw_dyn_table_info_t
+    ti</a></dt>
+  <dd>
+    <br/>
+     Ce membre est utilisé pour le format <code class="Li">UNW_INFO_FORMAT_TABLE</code>.</dd>
+  <dt id="unw_dyn_remote_table_info_t"><a class="permalink" href="#unw_dyn_remote_table_info_t">unw_dyn_remote_table_info_t
+    rti</a></dt>
+  <dd>
+    <br/>
+     Ce membre est utilisé pour le format <code class="Li">UNW_INFO_FORMAT_REMOTE_TABLE</code>.</dd>
+</dl>
+</div>
+<div class="Bd-indent">
+<p class="Pp">Le format de ces sous-membres est décrit en détail ci-dessous.</p>
+</div>
+<section class="Ss">
+<h2 class="Ss" id='PROC-INFO_FORMAT'><a class='permalink' href='#PROC-INFO_FORMAT'>FORMAT PROC-INFO</a></h2>
+<p class="Pp">C'est le format préféré pour les informations de déroulement dynamiques et
+    il est généralement celui utilisé par les générateurs de code d'exécution complets.
+    Dans ce format, les détails d'une procédure sont décrits par une structure de type
+    <code class="Li">unw_dyn_proc_info_t</code>. Cette structure contient les membres suivants :</p>
+<dl class="Bl-tag">
+  <dt id="unw_word_t~4"><a class="permalink" href="#unw_word_t~4">unw_word_t
+    name_ptr</a></dt>
+  <dd>
+    <br/>
+     L'adresse d'un nom (lisible par l'homme) de la procédure ou 0 si aucun nom de ce
+      type n'est disponible. S'il est non nul, la chaîne stockée à cette adresse doit
+      se terminer par un caractère NUL ASCII. Pour les langages source qui utilisent
+      le renommage de noms (tels que C++ ou Java), la chaîne stockée à cette adresse
+      devrait être la version <i>démanglée</i> du nom.</dd>
+  <dt id="unw_word_t~5"><a class="permalink" href="#unw_word_t~5">unw_word_t
+    handler</a></dt>
+  <dd>
+    <br/>
+     L'adresse de la routine de personnalité pour cette procédure. Les routines de personnalité
+      sont utilisées conjointement avec la gestion des exceptions. Voir le projet ABI C++
+      (<a href='http://www.codesourcery.com/cxx-abi/'>http://www.codesourcery.com/cxx-abi/</a>)
+      pour un aperçu et une description de la routine de personnalité. Si la procédure n'a
+      pas de routine de personnalité, <code class="Li">handler</code> doit être défini à 0.</dd>
+  <dt id="uint32_t"><a class="permalink" href="#uint32_t">uint32_t
+    flags</a></dt>
+  <dd>
+    <br/>
+     Un masque de bits d'indicateurs. Pour le moment, aucun indicateur n'a été défini et
+      ce membre doit être défini à 0.</dd>
+  <dt id="unw_dyn_region_info_t"><a class="permalink" href="#unw_dyn_region_info_t">unw_dyn_region_info_t
+    *regions</a></dt>
+  <dd>
+    <br/>
+     Une liste chaînée de descripteurs de régions se terminant par NULL. Voir la section
+      ``Descripteurs de régions'' ci-dessous pour plus de détails.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='TABLE-INFO_FORMAT'><a class='permalink' href='#TABLE-INFO_FORMAT'>FORMAT TABLE-INFO</a></h2>
+<p class="Pp">Ce format</p>
+</div>
+</section>
+</section>
+</div>
+</article>
+
+            </section>
+        </main>
+    </body>
+</html>
+est généralement utilisé lorsque le code généré dynamiquement
+    a été dérivé de code statique et que les informations de déroulement (unwind-info)
+    pour les versions dynamique et statique sont identiques. Par exemple, ce format
+    peut être utile lors du chargement de code généré statiquement dans un espace
+    d'adressage d'une manière non standard (c'est-à-dire, par un moyen autre que dlopen()).
+    Dans ce format, les détails d'un groupe de procédures sont décrits par une structure
+    de type unw_dyn_table_info. Cette structure contient les membres suivants :</p>
+<dl class="Bl-tag">
+  <dt id="unw_word_t~6"><a class="permalink" href="#unw_word_t~6">unw_word_t
+    name_ptr</a></dt>
+  <dd>
+    <br/>
+     L'adresse d'un nom (lisible par l'homme) de la procédure ou 0 s'il n'y a pas de tel
+      nom disponible. S'il est non nul, la chaîne stockée à cette adresse doit être terminée
+      par un caractère NUL ASCII. Pour les langages sources qui utilisent la décoration
+      de nom (comme C++ ou Java), la chaîne stockée à cette adresse doit être la version
+      <i>démanglée</i> du nom.</dd>
+  <dt id="unw_word_t~7"><a class="permalink" href="#unw_word_t~7">unw_word_t
+    segbase</a></dt>
+  <dd>
+    <br/>
+     La valeur de base du segment qui doit être ajoutée aux valeurs relatives au segment
+      stockées dans les informations de déroulement. La signification exacte de cette valeur
+      est spécifique à l'architecture.</dd>
+  <dt id="unw_word_t~8"><a class="permalink" href="#unw_word_t~8">unw_word_t
+    table_len</a></dt>
+  <dd>
+    <br/>
+     La longueur des informations de déroulement (table_data) comptée en unités de mots
+      (unw_word_t).</dd>
+  <dt id="unw_word_t~9"><a class="permalink" href="#unw_word_t~9">unw_word_t
+    table_data</a></dt>
+  <dd>
+    <br/>
+     Un pointeur vers les données réelles encodant les informations de déroulement. Le format
+      exact est spécifique à l'architecture (voir les sections spécifiques à l'architecture
+      ci-dessous).</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='FORMAT_DE_TABLE_INFO_À_DISTANCE'><a class='permalink' href='#FORMAT_DE_TABLE_INFO_À_DISTANCE'>FORMAT   DE TABLE INFO À DISTANCE</a></h2>
+<p class="Pp">Le format de table-info à distance a le même objectif de base que le
+    format de table-info régulier. La seule différence est que lorsque libunwind utilise
+    les informations de déroulement, il conservera les données de la table dans l'espace
+    d'adressage cible (qui peut être distant). Par conséquent, le type du membre
+    table_data est unw_word_t plutôt qu'un pointeur. Cela implique que libunwind devra
+    accéder aux données de la table via la fonction de rappel access_mem() de l'espace
+    d'adressage, plutôt que par une référence mémoire directe.</p>
+<p class="Pp">Du point de vue d'un générateur de code d'exécution, le format de
+    table-info à distance n'offre aucun avantage et on s'attend à ce que de tels
+    générateurs décrivent leurs procédures soit avec le format proc-info, soit avec
+    le format table-info normal. La raison principale de l'existence du format de
+    table-info à distance est de permettre au rappel find_proc_info() spécifique
+    à l'espace d'adressage (voir unw_create_addr_space(3libunwind)) de retourner
+    des tables de déroulement dont les données restent en mémoire distante. Cela peut
+    accélérer le déroulement (par exemple, pour un débogueur) car cela réduit la
+    quantité de données qui doivent être chargées depuis la mémoire distante.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTEURS_DE_RÉGIONS'><a class='permalink' href='#DESCRIPTEURS_DE_RÉGIONS'>DESCRIPTEURS   DE RÉGIONS</a></h1>
+<p class="Pp">Un descripteur de région est une structure de longueur variable qui décrit
+    comment chaque instruction de la région affecte l'état de la pile (frame state).
+    Bien sûr, la plupart des instructions d'une région ne modifient pas l'état de la pile
+    et pour celles-ci, rien ne doit être enregistré dans le descripteur de région.
+    Un descripteur de région est une structure de type unw_dyn_region_info_t et possède
+    les membres suivants :</p>
+<dl class="Bl-tag">
+  <dt id="unw_dyn_region_info_t~2"><a class="permalink" href="#unw_dyn_region_info_t~2">unw_dyn_region_info_t
+    *next</a></dt>
+  <dd>
+    <br/>
+     Un pointeur vers la région suivante. Si c'est la dernière région, next est NULL.</dd>
+  <dt id="int32_t~2"><a class="permalink" href="#int32_t~2">int32_t
+    insn_count</a></dt>
+  <dd>
+    <br/>
+     La longueur de la région en instructions. Chaque instruction est supposée avoir une
+      taille fixe (voir les sections spécifiques à l'architecture pour plus de détails).
+      La valeur de insn_count peut être négative dans la dernière région d'une procédure
+      (c'est-à-dire qu'elle ne peut être négative que si next est NULL). Une valeur négative
+      indique que la région couvre les <i>N</i> dernières instructions de la procédure,
+      où <i>N</i> est la valeur absolue de insn_count.</dd>
+  <dt id="uint32_t~2"><a class="permalink" href="#uint32_t~2">uint32_t
+    op_count</a></dt>
+  <dd>
+    <br/>
+     La longueur (allouée) du tableau op_count.</dd>
+  <dt id="unw_dyn_op_t"><a class="permalink" href="#unw_dyn_op_t">unw_dyn_op_t
+    op</a></dt>
+  <dd>
+    <br/>
+     Un tableau de directives de déroulement dynamique. Voir la Section « Directives
+      de déroulement dynamique » pour une description des directives.</dd>
+</dl>
+<p class="Pp">Un descripteur de région avec une valeur insn_count de zéro est une
+    <i>région vide</i> et de telles régions sont parfaitement légales. En fait, les
+    régions vides peuvent être utiles pour établir un état de pile particulier avant
+    le début d'une autre région.</p>
+<p class="Pp">Une seule liste de régions peut être partagée entre plusieurs procédures
+    à condition que ces procédures partagent un prologue et un épilogue communs (leurs
+    corps peuvent différer, bien sûr). Normalement, de telles procédures consistent
+    en un prologue pré-établi, le corps, et un épilogue pré-établi. Cela pourrait être
+    décrit par deux régions : une couvrant le prologue et une couvrant l'épilogue.
+    Comme la longueur du corps est variable, la dernière région devrait spécifier une
+    valeur négative dans insn_count afin que libunwind sache que la région couvre
+    la fin de la procédure (jusqu'à l'adresse spécifiée par end_ip).</p>
+<p class="Pp">Le descripteur de région est une structure de longueur variable pour
+    rendre possible l'allocation de toute la mémoire nécessaire avec une seule
+    demande d'allocation mémoire. Pour faciliter l'allocation des descripteurs de
+    régions, libunwind fournit une routine d'assistance dont la synopsis est la
+    suivante :</p>
+<p class="Pp">size_t _U_dyn_region_size(int op_count);</p>
+<p class="Pp">Cette routine renvoie le nombre d'octets nécessaires pour contenir un
+    descripteur de région avec de l'espace pour op_count directives de déroulement.
+    Notez que la longueur du tableau op n'a pas besoin de correspondre exactement au
+    nombre de directives dans une région. Au lieu de cela, il suffit que le tableau
+    op contienne au moins autant d'entrées qu'il y a de directives, car la fin des
+    directives peut toujours être indiquée avec la directive UNW_DYN_STOP.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DIRECTIVES_DE_DÉROULEMENT_DYNAMIQUE'><a class='permalink' href='#DIRECTIVES_DE_DÉROULEMENT_DYNAMIQUE'>DIRECTIVES   DE DÉROULEMENT DYNAMIQUE</a></h1>
+<p class="Pp">Une directive de déroulement dynamique décrit comment l'état de la pile
+    change à un point particulier dans une région. La description est sous forme d'une
+    structure de type unw_dyn_op_t. Cette structure possède les membres suivants :</p>
+<dl class="Bl-tag">
+  <dt id="int8_t"><a class="permalink" href="#int8_t">int8_t tag</a></dt>
+  <dd>
+    <br/>
+     L'étiquette de l'opération. Doit être l'une des valeurs unw_dyn_operation_t décrites
+      ci-dessous.</dd>
+  <dt id="int8_t~2"><a class="permalink" href="#int8_t~2">int8_t qp</a></dt>
+  <dd>
+    <br/>
+     Le prédicat qualifiant qui contrôle si cette directive est active ou non. Ceci est utile
+      pour les architectures prédiquées telles que IA-64 ou ARM, où le contenu d'un autre
+      registre (préservé par l'appelé) détermine si une instruction est exécutée (prend
+      effet) ou non. Si la directive est toujours active, ce membre doit être défini sur la
+      constante manifeste _U_QP_TRUE (cette constante est définie pour toutes les architectures,
+      prédiquées ou non).</dd>
+  <dt id="int16_t"><a class="permalink" href="#int16_t">int16_t reg</a></dt>
+  <dd>
+    <br/>
+     Le numéro du registre affecté par l'instruction.</dd>
+  <dt id="int32_t~3"><a class="permalink" href="#int32_t~3">int32_t
+    when</a></dt>
+  <dd>
+    <br/>
+     Le numéro relatif à la région de l'instruction à laquelle cette directive s'applique.
+      Par exemple, une valeur de 0 signifie que l'effet décrit par cette directive a eu lieu
+      une fois la première instruction de la région exécutée.</dd>
+  <dt id="unw_word_t~10"><a class="permalink" href="#unw_word_t~10">unw_word_t
+    val</a></dt>
+  <dd>
+    <br/>
+     La valeur à appliquer par l'étiquette de l'opération. La signification exacte de cette
+      valeur varie selon l'étiquette. Voir la Section « Étiquettes d'opération » ci-dessous.</dd>
+</dl>
+<p class="Pp">Il est tout à fait légitime de spécifier plusieurs directives de déroulement
+    dynamique avec la même valeur de `when`, si une instruction particulière a un effet complexe
+    sur l'état de la pile.</p>
+<p class="Pp">Les régions vides, par définition, ne contiennent aucune instruction réelle et,
+    en tant que telles, les directives ne sont pas liées à une instruction particulière.
+    Par convention, le membre `when` doit être défini sur 0, cependant.</p>
+<p class="Pp">Il n'est pas nécessaire que les directives de déroulement dynamique apparaissent
+    par ordre croissant de valeurs `when`. Si les directives sont triées dans cet ordre,
+    cela peut entraîner une exécution légèrement plus rapide, mais un générateur de code
+    d'exécution ne devrait pas faire d'efforts supplémentaires juste pour s'assurer que
+    les directives sont triées.</p>
+<p class="Pp">NOTE D'IMPLÉMENTATION : si les implémentations de libunwind pour certaines
+    architectures préfèrent que la liste des directives de déroulement soit triée, il est
+    recommandé que ces implémentations vérifient d'abord si la liste est déjà triée et, si ce
+    n'est pas le cas, trient explicitement les directives avant la première utilisation.
+    Avec cette approche, le surcoût du tri explicite n'est payé que lorsqu'il y a un réel
+    avantage et si le générateur de code d'exécution génère naturellement des listes triées,
+    la pénalité de performance se limite à une simple vérification O(N).</p>
+<section class="Ss">
+<h2 class="Ss" id='ETIQUETTES_D_OPÉRATIONS'><a class='permalink' href='#ETIQUETTES_D_OPÉRATIONS'>ÉTIQUETTES   D'OPÉRATIONS</a></h2>
+<p class="Pp">Les étiquettes d'opération possibles sont définies par le type d'énumération
+    unw_dyn_operation_t qui définit les valeurs suivantes :</p>
+<dl class="Bl-tag">
+  <dt id="UNW_DYN_STOP"><a class="permalink" href="#UNW_DYN_STOP">UNW_DYN_STOP</a></dt>
+  <dd>
+    <br/>
+     Marque la fin de la liste des directives de déroulement dynamique. Toutes les entrées
+      restantes dans le tableau `op` du descripteur de région sont ignorées. Cette étiquette
+      a une valeur garantie de 0.</dd>
+  <dt id="UNW_DYN_SAVE_REG"><a class="permalink" href="#UNW_DYN_SAVE_REG">UNW_DYN_SAVE_REG</a></dt>
+  <dd>
+    <br/>
+     Marque une instruction qui sauvegarde le registre `reg` dans le registre `val`.</dd>
+  <dt id="UNW_DYN_SPILL_FP_REL"><a class="permalink" href="#UNW_DYN_SPILL_FP_REL">UNW_DYN_SPILL_FP_REL</a></dt>
+  <dd>
+    <br/>
+     Marque une instruction qui "spille" (sauvegarde sur la pile) le registre `reg` vers un
+      emplacement relatif au pointeur de cadre (frame pointer). L'offset relatif au pointeur
+      de cadre est donné par la valeur stockée dans le membre `val`. Voir les sections
+      spécifiques à l'architecture pour une description de la disposition de la pile.</dd>
+  <dt id="UNW_DYN_SPILL_SP_REL"><a class="permalink" href="#UNW_DYN_SPILL_SP_REL">UNW_DYN_SPILL_SP_REL</a></dt>
+  <dd>
+    <br/>
+     Marque une instruction qui "spille" (sauvegarde sur la pile) le registre `reg` vers un
+      emplacement relatif au pointeur de pile (stack pointer). L'offset relatif au pointeur
+      de pile est donné par la valeur stockée dans le membre `val`. Voir les sections
+      spécifiques à l'architecture pour une description de la disposition de la pile.</dd>
+  <dt id="UNW_DYN_ADD"><a class="permalink" href="#UNW_DYN_ADD">UNW_DYN_ADD</a></dt>
+  <dd>
+    <br/>
+     Marque une instruction qui ajoute la valeur constante `val` au registre `reg`. Pour ajouter
+      ou soustraire une valeur constante, stockez le complément à deux de la valeur dans `val`.
+      L'ensemble des registres pouvant être spécifiés pour cette étiquette est décrit dans les
+      sections spécifiques à l'architecture ci-dessous.</dd>
+  <dt id="UNW_DYN_POP_FRAMES"><a class="permalink" href="#UNW_DYN_POP_FRAMES">UNW_DYN_POP_FRAMES</a></dt>
+  <dd>
+    <br/>
+     .PP</dd>
+  <dt id="UNW_DYN_LABEL"><a class="permalink" href="#UNW_DYN_LABEL">UNW_DYN_LABEL</a></dt>
+</dl>_STATE"><a class="permalink" href="#UNW_DYN_LABEL_STATE">UNW_DYN_LABEL_STATE</a></dt>
+  <dd>
+    <br/>
+     .PP</dd>
+  <dt id="UNW_DYN_COPY_STATE"><a class="permalink" href="#UNW_DYN_COPY_STATE">UNW_DYN_COPY_STATE</a></dt>
+  <dd>
+    <br/>
+     .PP</dd>
+  <dt id="UNW_DYN_ALIAS"><a class="permalink" href="#UNW_DYN_ALIAS">UNW_DYN_ALIAS</a></dt>
+  <dd>
+    <br/>
+     .PP unw_dyn_op_t</dd>
+</dl>
+<p class="Pp">_U_dyn_op_save_reg(); _U_dyn_op_spill_fp_rel();
+    _U_dyn_op_spill_sp_rel(); _U_dyn_op_add(); _U_dyn_op_pop_frames();
+    _U_dyn_op_label_state(); _U_dyn_op_copy_state(); _U_dyn_op_alias();
+    _U_dyn_op_stop();</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='IA-64_SPÉCIFIQUES'><a class='permalink' href='#IA-64_SPÉCIFIQUES'>SPÉCIFIQUES IA-64</a></h1>
+<p class="Pp">- signification du membre segbase dans le format table-info/table-remote-info
+    - format de table_data dans le format table-info/table-remote-info - taille d'instruction : chaque paquet est compté comme 3 instructions, quel que soit le modèle (MLX)
+    - décrire la disposition de la pile, en particulier en ce qui concerne l'adressage relatif à sp et relatif à fp - UNW_DYN_ADD ne peut ajouter qu'à ``sp'' (toujours une valeur négative) ; utiliser POP_FRAMES sinon</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp">libunwind(3libunwind), _U_dyn_register(3libunwind),
+    _U_dyn_cancel(3libunwind)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">David Mosberger-Tang
+  <br/>
+  E-mail : <b>dmosberger@gmail.com</b>
+  <br/>
+  WWW : <a href='http://www.nongnu.org/libunwind/'>http://www.nongnu.org/libunwind/</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">29 août 2023</td>
+    <td class="foot-os">Bibliothèque de programmation </td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libunwind/">extra/libunwind</a></dd>
+        <dt>Version :</dt>
+        <dd>1.8.2-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.nongnu.org/libunwind/">https://www.nongnu.org/libunwind/</a></dd>
+        <dt>Licences :</dt>
+        <dd>MIT</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libunwind/">/listing/extra/libunwind/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#INTRODUCTION">INTRODUCTION</a></li>
+        
+            <li><a href="#PROCÉDURES">PROCÉDURES</a></li>
+        
+            <li><a href="#DESCRIPTEURS_DE_RÉGIONS">DESCRIPTEURS DE RÉGIONS</a></li>
+        
+            <li><a href="#DIRECTIVES_DE_DÉSEMPİLAGE_DYNAMIQUES">DIRECTIVES DE DÉSEMPİLAGE DYNAMIQUES</a></li>
+        
+            <li><a href="#IA-64_SPÉCIFIQUES">SPÉCIFIQUES IA-64</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/libunwind-dynamic.3.fr.txt">txt</a>, 
+        
+            <a href="/man/libunwind-dynamic.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

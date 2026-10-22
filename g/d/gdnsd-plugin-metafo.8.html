@@ -1,0 +1,450 @@
+
+
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gdnsd-plugin-metafo(8) — Pages manuelles d'Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">gdnsd-plugin-metafo(8)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/gdnsd/">gdnsd</a></p>
+<p class="lic">Licences: GPL3</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">GDNSD-PLUGIN-METAFO(8)</td>
+    <td class="head-vol">gdnsd</td>
+    <td class="head-rtitle">GDNSD-PLUGIN-METAFO(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">gdnsd-plugin-metafo - plugin gdnsd pour le méta-basculement d'adresses</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp">Exemple minimal de fichier de configuration gdnsd utilisant ce plugin :</p>
+<pre>plugins =&gt; {
+  metafo =&gt; {
+    resources =&gt; {
+      prod_www =&gt; {
+        datacenters =&gt; [ dc-01, dc-02, dc-03 ]
+        dcmap =&gt; {
+          dc-01 =&gt; 192.0.2.1
+          dc-02 =&gt; { lb01 =&gt; 192.0.2.2, lb02 =&gt; 192.0.2.3 }
+          dc-03 =&gt; [ 192.0.2.4, 192.0.2.5, 192.0.2.6 ]
+        }
+      },
+      prod_foo =&gt; {
+        datacenters =&gt; [ dc-01, dc-02, dc-bk ]
+        dcmap =&gt; {
+          dc-01 =&gt; { lb01 =&gt; 192.0.1.1, lb02 =&gt; 192.0.1.2 }
+          dc-02 =&gt; [ 192.0.5.1, 192.0.5.2, 192.0.5.3 ]
+          dc-bk =&gt; fallback.static.cname.example.org.
+        }
+      }
+    }
+  }
+}</pre>
+<p class="Pp">Exemple d'enregistrements RR de zone dans la zone example.com :</p>
+<pre>www      600 DYNA metafo!prod_www
+www-dc01 600 DYNA metafo!prod_www/dc-01
+foo      700 DYNC metafo!prod_foo</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><b>gdnsd-plugin-metafo</b> est un méta-plugin. Il effectue un basculement d'adresses ordonné statiquement entre plusieurs
+    <span class="Li">« datacenters »</span> (qui peuvent correspondre ou non à de vrais centres de données, il s'agit simplement d'une étiquette pratique). Chaque centre de données est défini en termes d'autres plugins tels que
+    <span class="Li">« multifo »</span>,
+    <span class="Li">« weighted »</span>, etc, comme décrit ci-dessous.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_TOP-LEVEL'><a class='permalink' href='#CONFIGURATION_-_TOP-LEVEL'>CONFIGURATION   - NIVEAU SUPÉRIEUR</a></h1>
+<p class="Pp">Le niveau supérieur de la configuration du plugin metafo (c'est-à-dire
+    <span class="Li">« plugins =&gt; {</span> <span class="Li">metafo =&gt;
+    { ... } } »</span>) ne prend en charge qu'une seule clé fixe et obligatoire,
+    <span class="Li">« resources »</span>, dont la valeur doit être un hash.
+    Le contenu de <span class="Li">« resources »</span> est une clé par ressource nommée, la valeur définissant cette ressource.</p>
+<p class="Pp">Toute autre clé présente au niveau supérieur sera héritée à l'intérieur de chaque hash par ressource à l'intérieur de la section
+    <span class="Li">« resources »</span> , servant de valeurs par défaut pour chaque ressource pour tout ce qui n'est pas défini explicitement là-bas, comme expliqué ci-dessous.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_RESOURCES'><a class='permalink' href='#CONFIGURATION_-_RESOURCES'>CONFIGURATION   - RESSOURCES</a></h1>
+<p class="Pp">Toutes les clés à l'intérieur de la section resources représentent des ressources nommées, qui peuvent être référencées par des RR <span class="Li">« DYNA »</span> dans les fichiers de zone (par exemple <span class="Li">« www DYNA</span>
+    <span class="Li">metafo!resource_name »</span>). La valeur de chaque ressource doit être un hash clé-valeur configurant la ressource elle-même. Exemple structurel léger :</p>
+<pre>plugins =&gt; {
+  metafo =&gt; {
+    resources =&gt; { resA =&gt; { ... }, resB =&gt; { ... } }
+  }
+}</pre>
+<p class="Pp">Au sein d'une ressource, il n'y a que trois clés spécifiquement significatives :</p>
+<dl class="Bl-tag">
+  <dt>« datacenters = [ A, B, C, ... ] »</dt>
+  <dd>Tableau de noms de centres de données, requis. C'est l'ensemble des étiquettes de noms de centres de données utilisés pour cette ressource, dans l'ordre dans lequel ils seront vérifiés pour le basculement.</dd>
+  <dt>« dcmap = { ... } »</dt>
+  <dd>Hash, requis. Le <span class="Li">« dcmap »</span> est un hash clé-valeur où les clés doivent être exactement la liste des centres de données définis dans la liste <span class="Li">« datacenters »</span>
+      de cette ressource, et les valeurs définissent la configuration d'adresse de chaque centre de données. Un autre exemple structurel minimal jusqu'à ce niveau :
+        <pre>plugins =&gt; {
+  metafo =&gt; {
+    resources =&gt; {
+      resA =&gt; {
+        datacenters =&gt; [ dc01, dc02 ],
+        dcmap =&gt; {
+          dc01 =&gt; ???
+          dc02 =&gt; ???
+        }
+      }
+    }
+  }
+}
+</pre>
+    <p class="Pp">Il existe plusieurs formes que les valeurs par centre de données (<span class="Li">« ??? »</span> ci-dessus) peuvent prendre, documentées dans la section suivante.</p>
+  </dd>
+  <dt>« skip_first = true »</dt>
+  <dd>Si ce drapeau de configuration booléen est défini, le code du résolveur ignorera le premier centre de données lors de la résolution de cette ressource. C'est principalement utile dans le contexte du plugin geoip, et est discuté plus en détail là-bas.</dd>
+</dl>
+<p class="Pp">Toutes les clés autres que
+    <span class="Li">« datacenters »</span> et
+    <span class="Li">« dcmap »</span> au niveau par ressource servent de valeurs par défaut héritées pour chaque configuration par centre de données à l'intérieur du
+    <span class="Li">« dcmap »</span>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PER-DATACENTER_RESOLUTION'><a class='permalink' href='#PER-DATACENTER_RESOLUTION'>RÉSOLUTION   PAR CENTRE DE DONNÉES</a></h1>
+<p class="Pp">La valeur des datacenters dans la section
+    <span class="Li">« dcmap »</span> d'une ressource peut prendre plusieurs formes. Il est important de comprendre que, pour la plupart, plugin_metafo ne traite pas lui-même ce niveau de résultats, mais délègue plutôt le travail dans cette portée à d'autres plugins. Ces sous-plugins, à leur tour, notifient également metafo d'un échec complet à leur niveau, ce qui est l'information que metafo utilise pour savoir qu'il faut basculer vers le centre de données suivant dans la liste.</p>
+<p class="Pp">La manière la plus directe et évidente de faire cela est avec une référence directe de la forme <span class="Li">« %plugin!resource »</span>, comme montré ici :</p>
+<pre>plugins =&gt; {
+  metafo =&gt; {
+    resources =&gt; {
+      resA =&gt; {
+        datacenters =&gt; [ dc1, dc2 ],
+        dcmap =&gt; {
+          dc1 =&gt; %multifo!res_mfo1
+          dc2 =&gt; %multifo!res_mfo2
+        }
+      }
+    }
+  }
+  multifo =&gt; {
+    res_mfo1 =&gt; { lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3 }
+    res_mfo2 =&gt; { lb01 =&gt; 192.0.2.111, lb02 =&gt; 192.0.2.113 }
+  }
+}</pre>
+<p class="Pp">Cependant, pour simplifier les choses dans les cas simples, plugin_metafo peut synthétiser la configuration du plugin de niveau inférieur à partir d'un hash, comme ceci :</p>
+<pre>plugins =&gt; {
+  metafo =&gt; {
+    resources =&gt; {
+      resA =&gt; {
+        datacenters =&gt; [ dc1, dc2 ],
+        dcmap =&gt; {
+          dc1 =&gt; { plugin =&gt; multifo, lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3 }
+          dc2 =&gt; { lb01 =&gt; 192.0.2.111, lb02 =&gt; 192.0.2.113 }
+          # the above are effectively treated as:
+          # dc1 =&gt; %multifo!metafo_resA_dc1
+          # dc2 =&gt; %multifo!metafo_resA_dc2
+        }
+      }
+    }
+  }
+  # below does not exist in your configfile, but is what plugin_metafo
+  #   synthesizes to support the above:
+  #multifo =&gt; {
+  #  metafo_resA_dc1 =&gt; { lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3 }
+  #  metafo_resA_dc2 =&gt; { lb01 =&gt; 192.0.2.111, lb02 =&gt; 192.0.2.113 }
+  #}
+}</pre>
+<p class="Pp">Au sein d'un hash comme ci-dessus, la clé spéciale
+    <span class="Li">« plugin »</span> sera extraite en interne et utilisée pour nommer le plugin pour lequel nous synthétisons la configuration.
+    <span class="Li">« plugin »</span> vaut par défaut
+    <span class="Li">« multifo »</span> s'il n'est pas spécifié. Notez que
+    <span class="Li">« plugin »</span> pourrait aussi être spécifié au niveau de la ressource (juste à l'intérieur de la section <span class="Li">« resA »</span>
+    ) pour changer la valeur par défaut pour toutes les entrées
+    <span class="Li">« dcmap »</span> d'une ressource, et pourrait aussi être spécifié au niveau le plus externe (juste à l'intérieur de la section
+    <span class="Li">« metafo »</span> ) pour changer la valeur par défaut pour toutes les ressources.</p>
+<p class="Pp">Le <span class="Li">« plugin »</span> hérité est aussi la valeur par défaut pour la forme de référence directe
+    <span class="Li">« %plugin!resource »</span> discutée précédemment. Avec le bon nom de plugin par défaut, elle peut être raccourcie à simplement
+    <span class="Li">« !resource »</span>.</p>
+<p class="Pp">Le même schéma d'héritage clé-valeur (niveau supérieur -&gt; niveau par ressource -&gt; niveau par centre de données) peut aussi être utilisé pour tout autre paramètre dans les configurations de ressources synthétisées spécifiques au(x) plugin(s) par centre de données que vous utilisez. Un exemple courant serait le paramètre
+    <span class="Li">« service_types »</span> que possèdent la plupart des plugins qui prennent en charge les résultats d'adresses surveillées. Notez que ces autres valeurs (par exemple service_types) ne s'appliqueraient qu'aux ressources synthétisées,
+    <b>pas</b> aux références directes comme
+    <span class="Li">« %multifo!foo »</span>, qui doivent être configurées entièrement séparément dans la configuration de ce plugin.</p>
+<p class="Pp">Il existe trois autres valeurs de raccourci possibles pour les datacenters : une adresse directe unique, un tableau d'adresses, ou un nom d'hôte CNAME unique. Si une adresse IP unique ou un tableau d'adresses IP sont spécifiés, plugin_metafo synthétisera un hash à partir d'elles avec le plugin forcé à
+    <span class="Li">« multifo »</span> (puisqu'il ne peut pas connaître la syntaxe des hashes pour tous les autres plugins, qui peuvent différer), et leur donnera les étiquettes d'adresses <span class="Li">1</span>, <span class="Li">2</span>, etc.</p>
+<p class="Pp">Si la valeur d'un centre de données est un nom d'hôte CNAME unique, aucun sous-plugin n'est utilisé, et ce résultat CNAME est retourné directement. Notez <!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gdnsd-plugin-metafo(8)</title>
+        <link rel="stylesheet" href="/assets/style.css" type="text/css">
+        <link rel="stylesheet" href="/assets/man.css" type="text/css">
+        <link rel="icon" type="image/png" href="/favicon.png">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Nd">gdnsd-plugin-metafo - plug-in for meta-level configuration</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="In">gdnsd-plugin-metafo</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">This plugin provides a very simple mechanism for abstracting
+    common configuration elements away from the zonefile, into a per-plugin
+    configuration block.</p>
+<p class="Pp">Its primary purpose is to allow the creation of shared lists of
+    IP addresses to be associated with arbitrary resource names.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_TOP-LEVEL'><a class='permalink' href='#CONFIGURATION_-_TOP-LEVEL'>CONFIGURATION - TOP-LEVEL</a></h1>
+<p class="Pp">The <span class="Li">&quot;metafo&quot;</span> plugin takes no
+    options in the top-level configuration block.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION_-_RESOURCES'><a class='permalink' href='#CONFIGURATION_-_RESOURCES'>CONFIGURATION - RESOURCES</a></h1>
+<p class="Pp">The <span class="Li">&quot;metafo&quot;</span> plugin supports
+    a number of options in the per-resource configuration block. They are all
+    optional:</p>
+<dl class="Bl-tag">
+<dt><code>plugin</code></dt>
+<dd>Allows overriding the default plugin choice for resources synthesized
+        by this plugin. The default is the plugin that is currently being
+        configured.</dd>
+<dt><code>service_types</code></dt>
+<dd>A list of service types to associate with resources synthesized by
+        this plugin. The default is <span class="Li">&quot;up&quot;</span>.</dd>
+<dt><code>datacenters</code></dt>
+<dd>A list of datacenter names to synthesize resources for. For each name in
+        the list, a resource named
+        <span class="Li">&quot;%resource_name%/%datacenter_name%&quot;</span>
+        will be synthesized. This allows you to map abstract resource names
+        to specific datacenter IPs.</dd>
+<dt><code>dcmap</code></dt>
+<dd>A hash mapping datacenter names to resource configurations. The
+        configuration may be any of the formats accepted by
+        <span class="Li">&quot;gdnsd.config(5)&quot;</span>, for instance:</dd>
+</dl>
+<pre>
+          dc1 =&gt; { plugin =&gt; multifo, lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3 }
+          dc2 =&gt; %multifo!bar
+          dc3 =&gt; !foo # this assumes there is a plugin named 'foo'
+          dc4 =&gt; 192.0.2.150
+          dc5 =&gt; [ 192.0.2.180, 192.0.2.181 ]
+          dc6 =&gt; last.resort.example.com.
+</pre>
+<p class="Pp">A resource may have both <span class="Li">&quot;datacenters&quot;</span>
+    and <span class="Li">&quot;dcmap&quot;</span> specified. If so, the
+    <span class="Li">&quot;dcmap&quot;</span> entries take precedence. It is
+    possible to specify a <span class="Li">&quot;plugin&quot;</span> and/or
+    <span class="Li">&quot;service_types&quot;</span> within a <span class="Li">&quot;dcmap&quot;</span>
+    entry. If specified, these override the global settings for that specific
+    datacenter.</p>
+<p class="Pp">Synthesized resources will be configured to use
+    <span class="Li">&quot;DYNC&quot;</span> RRs if the underlying plugin is
+    configured to return dynamic data. Otherwise, they will be configured
+    to use <span class="Li">&quot;DYNA&quot;</span> RRs.</p>
+<p class="Pp">Any resource listed in the <span class="Li">&quot;datacenters&quot;</span>
+    or <span class="Li">&quot;dcmap&quot;</span> options will be implicitly
+    added to the resource's list of <span class="Li">&quot;service_types&quot;</span>.
+    This means that any resource with such an entry can only be used with
+    <span class="Li">&quot;DYNC&quot;</span> RRs, and not
+    <span class="Li">&quot;DYNA&quot;</span> RRs (as is the case if any
+    subplugin's configuration is capable of returning CNAME data).</p>
+<p class="Pp">A much more complete example, showing off most of the features
+    above:</p>
+<pre>plugins =&gt; {
+  metafo =&gt; {
+    plugin =&gt; multifo # change default for all resources
+    service_types =&gt; [ bar ] # default service_types for synthesized below
+    resources =&gt; {
+      resA =&gt; {
+        plugin =&gt; multifo # change default for this resource
+        service_types =&gt; [foo, bar] # services types for synthesized below:
+        datacenters =&gt; [ dc1, dc2, dc3, dc4, dc5, dc6, dc7, dc8 ],
+        dcmap =&gt; {
+          dc1 =&gt; { plugin =&gt; multifo, lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3 }
+          dc2 =&gt; { lb01 =&gt; 192.0.2.111, lb02 =&gt; 192.0.2.113 }
+          dc3 =&gt; %simplefo!foo
+          dc4 =&gt; { plugin =&gt; simplefo, primary =&gt; 192.0.2.100, secondary =&gt; 192.0.2.101 }
+          dc5 =&gt; !bar
+          dc6 =&gt; 192.0.2.150
+          dc7 =&gt; [ 192.0.2.180, 192.0.2.181 ]
+          dc8 =&gt; last.resort.example.com.
+        }
+      }
+    }
+  }
+  # below, commented-out sections show configuration synthesized
+  #   by plugin_metafo, whereas the rest are direct-references that
+  #   had to be manually specified here:
+  multifo =&gt; {
+    # metafo_resA_dc1 =&gt; { lb01 =&gt; 192.0.2.1, lb02 =&gt; 192.0.2.3, service_types =&gt; [foo, bar] }
+    # metafo_resA_dc2 =&gt; { lb01 =&gt; 192.0.2.111, lb02 =&gt; 192.0.2.113, service_types =&gt; [foo, bar] }
+    bar =&gt; { asd =&gt; 192.0.2.77, xyz =&gt; 192.0.2.88 }
+    # metafo_resA_dc6 =&gt; { 1 =&gt; 192.0.2.150, service_types =&gt; [foo, bar] }
+    # metafo_resA_dc7 =&gt; { 1 =&gt; 192.0.2.180, 2 =&gt; 192.0.2.181, service_types =&gt; [foo, bar] }
+  }
+  simplefo =&gt; {
+    foo =&gt; { primary =&gt; 192.0.2.80, secondary =&gt; 192.0.2.81 }
+    # metafo_resA_dc4 =&gt; { primary =&gt; 192.0.2.100, secondary =&gt; 192.0.2.101, service_types =&gt; [foo, bar] }
+  }
+}</pre>
+<p class="Pp">Note in the example above that
+    <span class="Li">&quot;%multifo!bar&quot;</span> and
+    <span class="Li">&quot;%simplefo!foo&quot;</span> would have had their
+    default <span class="Li">&quot;service_types = up&quot;</span> rather than
+    the one specified at the metafo level, because they were not synthesized. It
+    would be up to you to keep all of the service_types in sync when using
+    direct references.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTHETIC_PER-DATACENTER_RESOURCES'><a class='permalink' href='#SYNTHETIC_PER-DATACENTER_RESOURCES'>SYNTHETIC   PER-DATACENTER RESOURCES</a></h1>
+<p class="Pp">This plugin will synthesize additional, per-datacenter resource
+    names from your configuration. They are named as
+    <span class="Li">&quot;resname/dcname&quot;</span>. For example, if you
+    define a metafo resource named <span class="Li">&quot;prodwww&quot;</span>
+    with the datacenter list <span class="Li">&quot;[ pri, sec ]&quot;</span>,
+    the resource names <span class="Li">&quot;prodwww/pri&quot;</span> and
+    <span class="Li">&quot;prodwww/sec&quot;</span> will be sythesized and can
+    be used in zonefile records, e.g.:</p>
+<pre>www-backup 300 DYNA metafo!prodwww/sec</pre>
+<p class="Pp">When used, these per-datacenter synthetic resource names cause a
+    given lookup to skip the normal failover process and directly return results
+    from that particular datacenter.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE   ALSO</a></h1>
+<p class="Pp"><a href='/man/gdnsd.config.5.fr'>gdnsd.config(5)</a>, <a href='/man/gdnsd.zonefile.5.fr'>gdnsd.zonefile(5)</a>,
+  <a href='/man/gdnsd.8.fr'>gdnsd(8)</a></p>
+<p class="Pp">Le manuel gdnsd.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT_AND_LICENSE'><a class='permalink' href='#COPYRIGHT_AND_LICENSE'>COPYRIGHT   AND LICENSE</a></h1>
+<p class="Pp">Copyright (c) 2012 Brandon L Black &lt;blblack@gmail.com&gt;</p>
+<p class="Pp">Ce fichier fait partie de gdnsd.</p>
+<p class="Pp">gdnsd est un logiciel libre: vous pouvez le redistribuer et/ou le
+    modifier sous les termes de la Licence Publique Générale GNU, telle que
+    publiée par la Free Software Foundation, soit la version 3 de la Licence,
+    ou (à votre choix) toute version ultérieure.</p>
+<p class="Pp">gdnsd est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE
+    GARANTIE; sans même la garantie implicite de QUALITÉ MARCHANDE ou d'ADÉQUATION
+    À UN BUT PARTICULIER. Voyez la Licence Publique Générale GNU pour plus
+    de détails.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale
+    GNU avec gdnsd. Sinon, voyez <a href='http://www.gnu.org/licenses/'>http://www.gnu.org/licenses/</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-04-03</td>
+    <td class="foot-os">gdnsd 3.8.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/gdnsd/">extra/gdnsd</a></dd>
+        <dt>Version :</dt>
+        <dd>3.8.2-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://gdnsd.org/">https://gdnsd.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL3</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/gdnsd/">/listing/extra/gdnsd/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#CONFIGURATION_-_TOP-LEVEL">CONFIGURATION - NIVEAU SUPÉRIEUR</a></li>
+        
+            <li><a href="#CONFIGURATION_-_RESOURCES">CONFIGURATION - RESSOURCES</a></li>
+        
+            <li><a href="#SYNTHETIC_PER-DATACENTER_RESOURCES">RESSOURCES SYNTHÉTIQUES PAR DATACENTRE</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT_AND_LICENSE">DROITS D'AUTEUR ET LICENCE</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/gdnsd-plugin-metafo.8.fr.txt">txt</a>, 
+        
+            <a href="/man/gdnsd-plugin-metafo.8.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

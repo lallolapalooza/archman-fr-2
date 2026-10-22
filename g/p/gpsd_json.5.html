@@ -1,0 +1,2745 @@
+
+
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gpsd_json(5) — Pages manuelles de </title>l'Arch wiki
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">gpsd_json(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/gpsd/">gpsd</a></p>
+
+        er
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">GPSD_JSO</td>N(5)
+    <td class="head-vol">Documentation de </td>GPSD
+    <td class="head-rtitle">GPS</td>D_J</tr>SON</table>(5)
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NO</a></h1>M
+<p class="Pp">gpsd_json - pro</p>tocole requête/</section>réponse de gpsd
+<section class="Sh">
+<h1 class="Sh" id='OVERVIEW'><a class='permalink' href='#OVERVIEW'>PRÉSENTATIO</a></h1>N
+<p class="Pp"><b>gpsd </b>est un démon de service qui peut être utilisé pour surveiller des GPS,
+    des récepteurs DGPS, des émissions AIS maritimes et divers autres capteurs
+    liés à la localisation et à la </p>cinématique.
+<p class="Pp">Les clients peuvent communiquer avec <b>gpsd </b>au moyen de requêtes et de réponses textuelles sur un socket. Il est
+    déconseillé aux applications de parler directement le protocole : elles
+    devraient plutôt utiliser la <b>bibliothèque </b>client libgps
+    (pour C ; des liaisons existent également pour d'autres langages) et prendre
+    les précautions appropriées pour vérifier dans leur code les versions
+    majeure et mineure attendues du </p>protocole.
+<p class="Pp">Le protocole GPSD est construit au-dessus de JSON, JavaScript Object
+    Notation, tel que spécifié dans [RFC-7159] : The JavaScript Object Notation
+    (JSON) Data Interchange Format. Similaire à ECMA </p>404.
+<p class="Pp">L'utilisation de JSON par GPSD est restreinte de certaines manières qui
+    facilitent son analyse dans des langages à taille fixe (comme C)</p>.
+<p class="Pp">Une ligne de requête est introduite par "?" et peut inclure plusieurs
+    commandes. Les commandes commencent par un identifiant de commande, suivi
+    soit par un ";" terminal, soit par un signe égal "=" et un objet JSON traité
+    comme argument. Tout ";" ou indication de fin de ligne (LF ou CR-LF) après la
+    fin d'une commande est ignoré. Toutes les lignes de requête doivent être
+    composées de caractères US-ASCII et ne peuvent pas dépasser 80 caractères de
+    longueur, à l'exclusion du retour à la ligne </p>final.
+<p class="Pp">Les réponses sont des objets JSON uniques possédant un attribut "class"
+    dont la valeur est le type d'objet. Les types d'objets incluent, sans s'y
+    limiter : "TPV", "SKY", "DEVICE" et "ERROR". Les objets sont envoyés aussi
+    bien en réponse à des commandes que périodiquement lorsque gpsd envoie des
+    rapports. Chaque objet est terminé par un retour chariot et un nouveau ligne
+    (CR-NL)</p>.
+<p class="Pp">L'ordre des attributs JSON au sein d'un objet de réponse n'est jamais
+    significatif, et vous pouvez spécifier les attributs de commande dans n'importe
+    quel ordre. Les réponses ne contiennent jamais la valeur JSON spéciale null ;
+    à la place, les attributs avec des valeurs vides ou indéfinies sont omis. La
+    limite de longueur pour les réponses et les rapports est actuellement de 10240
+    caractères, y compris le CR-NL final. Les réponses plus longues seront
+    tronquées, le code client doit donc être préparé à la possibilité de fragments
+    JSON </p>invalides.
+<p class="Pp">La longueur maximale par défaut des messages est définie par
+    GPS_JSON_RESPONSE_MAX dans <b>include/gpsd_json.h, au </b>moment de la </p>compilation.
+<p class="Pp">Dans les rapports JSON, si un attribut n'est présent que si l'attribut
+    parent est présent ou a une plage particulière, alors l'attribut parent est
+    émis en </p>premier.
+<p class="Pp">Il existe une contrainte sur l'ordre dans lequel les attributs seront
+    omis. Si un attribut optionnel n'est présent que lorsque l'attribut parent a
+    une valeur ou une plage de valeurs spécifiée, l'attribut parent sera émis en
+    premier pour faciliter </p>l'analyse.
+<p class="Pp">La section suivante documente le protocole GPSD de base. Les extensions sont
+    documentées dans les sections suivantes. Les extensions peuvent ne pas être
+    prises en charge dans votre <b>instance </b>de gpsd si elle a été compilée avec un ensemble de
+    fonctionnalités </p>restreint.
+<p class="Pp">Le protocole a été </p>conçu et documenté p</section>ar Eric S. Raymond.
+<section class="Sh">
+<h1 class="Sh" id='CORE_PROTOCOL_RESPONSES'><a class='permalink' href='#CORE_PROTOCOL_RESPONSES'>RÉPONSES DU PROTOCOLE DE </a></h1>BASE
+<p class="Pp">Voici les réponses du protocole de </p>base.
+<section class="Ss">
+<h2 class="Ss" id='TPV'><a class='permalink' href='#TPV'>TP</a></h2>V
+<p class="Pp">Un objet TPV est un rapport temps-position-vitesse. Les champs "class"
+    et "mode" seront présents de manière fiable. Lorsque "mode" est 0 (Inconnu),
+    il n'y a probablement pas de données utilisables dans la phrase. Les champs
+    restants sont optionnels, leur présence dépend des données que le récepteur
+    GNSS a envoyées, et de ce que <b>gpsd </b>peut calculer à partir de ces </p>données.
+<p class="Pp">Un objet TPV sera généralement envoyé au moins une fois pour chaque époque
+    de mesure telle que déterminée par le champ "time". À moins que le récepteur
+    n'ait une solution solide et ne connaisse la seconde intercalaire actuelle,
+    le temps peut être </p>aléatoire.
+<p class="Pp">Plusieurs objets TPV sont souvent envoyés par époque. Lorsque le récepteur
+    fait couler les données vers <b>gpsd,</b> alors <b>gpsd </b>n'a d'autre choix que de les faire couler vers le client dans
+    plusieurs messages </p>TPV.
+<p class="Pp">Le champ optionnel "status" (alias type de solution) est un modificateur
+    (adjectif) pour mode. Ce n'est pas un remplacement de, ni un sur-ensemble du,
+    champ "mode". C'est presque, mais pas tout à fait, la même chose que les
+    valeurs d'indicateur de qualité GPS xxGGA de la norme NMEA 4.x. Beaucoup de
+    récepteurs GNSS ne le fournissent pas. Ceux qui le font interprètent la
+    spécification de diverses manières incompatibles. Pour économiser de l'espace
+    dans la sortie et éviter la confusion, le JSON n'inclut jamais les valeurs de
+    statut 0 ou </p>1.
+<p class="Pp">Toutes les estimations d'erreur (epc, epd, epe, eph, ept, epv, epx, epy)
+    sont supposées être à 95% de confiance, peuvent aussi être à 50%, à une sigma,
+    ou à deux sigma de confiance. Beaucoup de récepteurs GNSS ne spécifient pas de
+    niveau de confiance. Aucun ne spécifie comment la valeur est calculée. Utilisez
+    les estimations d'erreur avec prudence, et seulement comme indicateurs
+    relatifs de "bonté". Si le GPS rapporte une valeur à <b>gpsd,</b> alors <b>gpsd </b>rapportera cette valeur. Sinon
+    <b>gpsd </b>essaiera de calculer la valeur à partir de la vue du </p>ciel.
+<p class="Pp">Voir le fichier <b>include/gps.h,</b> en particulier <b>struct
+    gps_data_t, </b>pour des notes détaillées sur les éléments et les valeurs du
+    message </p>TPV.
+<p class="Pp"><b>Tableau 1. Objet </b></p>TPV
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;">N</td>om
+    <td style="vertical-align: top;">Toujours </td>?
+    <td style="vertical-align: top;">Ty</td>pe
+    <td style="vertical-align: top;">Descrip</td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe</td> : "</tr>TPV"
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Nom du pér</td>iphérique </tr>d'origine.
+  <tr>
+    <td style="vertical-align: top;">mo</td>de
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Mode NMEA : 0=inconnu, 1=pas de solution, 2=2D,
+     </td> </tr>3=3D.
+  <tr>
+    <td style="vertical-align: top;">a</td>lt
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Obsolète. Indéfin</td>i. Utilisez altHAE</tr> ou
+      altMSL.
+  <tr>
+    <td style="vertical-align: top;">alt</td>HAE
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Altitude, hauteur au-dessus</td> de l'ellipsoïde, en
+      </tr>mètres. Probablement WGS84.
+  <tr>
+    <td style="vertical-align: top;">alt</td>MSL
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Altitude MSL en mètres. Le géoïde utilisé est rarement
+     </td> spécifié et est souvent inexact. Voir les commentaires ci-d</tr>essous sur
+      geoidSep. altMSL est altHAE moins geoidSep.
+  <tr>
+    <td style="vertical-align: top;">a</td>nt
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Statut de l'ante</td>nne : 2=Court-ci</tr>rcuit, 3=Ouvert.
+  <tr>
+    <td style="vertical-align: top;">ant</td>Pwr
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Statut d'alimentation de l'antenn</td>e : 0=Inconnu, 1=Alimentation
+    </tr>  coupée, 2=Alimentation activée,
+  <tr>
+    <td style="vertical-align: top;">cl</td>imb
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Taux de montée (positif) </td>ou de descente (négatif),
+</tr>      mètres par seconde.
+  <tr>
+    <td style="vertical-align: top;">clockb</td>ias
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Décalage de l'horloge GNSS locale par rapport à l'UTC, en ns.
+      Aussi appelé Clock Offset. Parfois donné en Part Per Billion (ppb), ce qui
+      est la même chose </td>que </tr>ns.
+  <tr>
+    <td style="vertical-align: top;">clockdr</td>ift
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Le taux auquel l</td>'horloge locale </tr>dérive. En ns/s.
+  <tr>
+    <td style="vertical-align: top;">da</td>tum
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Datum actu</td>el. Espér</tr>ons WGS84.
+  <tr>
+    <td style="vertical-align: top;">de</td>pth
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Profondeur en mètres. Probablement profondeur sous la </td>quille.</tr>..
+  <tr>
+    <td style="vertical-align: top;">dgps</td>Age
+    <td style="vertical-align: top;">N</td>on
+    &gt;</td>numeric
+    <td style="vertical-align: top;">Âge des don</td>nées DGPS. </tr>En secondes
+  <tr>
+    <td style="vertical-align: top;">dgps</td>Sta
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Station </td>des donné</tr>es DGPS.
+  <tr>
+    <td style="vertical-align: top;">ec</td>efx
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Position </td>ECEF X e</tr>n mètres.
+  <tr>
+    <td style="vertical-align: top;">ec</td>efy
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Position </td>ECEF Y e</tr>n mètres.
+  <tr>
+    <td style="vertical-align: top;">ec</td>efz
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Position </td>ECEF Z e</tr>n mètres.
+  <tr>
+    <td style="vertical-align: top;">ecefp</td>Acc
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur de position E</td>CEF en mètres.
+     </tr> Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">ece</td>fvx
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse ECEF</td> X en mètres </tr>par seconde.
+  <tr>
+    <td style="vertical-align: top;">ece</td>fvy
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse ECEF</td> Y en mètres </tr>par seconde.
+  <tr>
+    <td style="vertical-align: top;">ece</td>fvz
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse ECEF</td> Z en mètres </tr>par seconde.
+  <tr>
+    <td style="vertical-align: top;">ecefv</td>Acc
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur de vitesse ECEF e</td>n mètres par seconde.
+ </tr>     Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>pc
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée de montée</td> en mètres par seconde.
+ </tr>     Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>pd
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée de cap (</td>direction) en
+      degr</tr>és. Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>ph
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée de position horizontale (2D) en
+  </td>    mètres. Aussi connue sous le nom d'erreur de </tr>position estimée (epe). Certitude
+      inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>ps
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée de vitesse</td> en mètres par seconde.
+</tr>      Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>pt
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée d'horod</td>atage en secondes.
+   </tr>   Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>px
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Estimation de l'erreur d</td>e longitude en mètres.
+ </tr>     Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>py
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Estimation de l'erreur d</td>e latitude en mètres.
+ </tr>     Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">e</td>pv
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur estimée verti</td>cale en mètres.
+     </tr> Certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">geoid</td>Sep
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">La séparation géoïdique est la différence entre
+      l'ellipsoïde de référence WGS84 et le géoïde (niveau moyen de la mer) en mètres.
+      Presque aucun récepteur GNSS ne précise comment il calcule son géoïde.
+      <b>gpsd </b>interpole le géoïde à partir d'une table de valeurs EGM2008 de 5x5 degrés
+      lorsque le récepteur ne fournit pas de séparation géoïdique. La
+      <b>séparation géoïdique calculée par gp</b>sd est généralement à moins d'un mè</td>tre de la
+      valeur « vraie », m</tr>ais peut différer jusqu'à 12 mètres.
+  <tr>
+    <td style="vertical-align: top;">j</td>am
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Indicateur de brouillage 0 (pas de</td> brouillage) à 255
+      (brouillag</tr>e sévère). -1 signifie non défini.
+  <tr>
+    <td style="vertical-align: top;">l</td>at
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Latitude en degr</td>és : +/- indique</tr>
+      Nord/Sud.
+  <tr>
+    <td style="vertical-align: top;">leapseco</td>nds
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">inte</td>ger
+    <td style="vertical-align: top;">Secondes </td>de leap a</tr>ctuelles.
+  <tr>
+    <td style="vertical-align: top;">l</td>on
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Longitude en degr</td>és : +/- indique</tr>
+      Est/Ouest.
+  <tr>
+    <td style="vertical-align: top;">magtr</td>ack
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Cap sur le s</td>ol, degrés </tr>magnétiques.
+  <tr>
+    <td style="vertical-align: top;">mag</td>var
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Déclinaison magnétique, degrés. Aussi connue comme
+      la déclinaison magnétique (la direction</td> de la composante horizontale du
+      champ magnétique mesurée dans le sens des aiguilles d'une</tr> montre depuis le nord) en
+      degrés. Positif est variation Ouest. Négatif est variation Est.
+  <tr>
+    <td style="vertical-align: top;">re</td>lD
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante bas du vec</td>teur de position rela</tr>tive
+      en mètres.
+  <tr>
+    <td style="vertical-align: top;">re</td>lE
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante est du vec</td>teur de position rela</tr>tive
+      en mètres.
+  <tr>
+    <td style="vertical-align: top;">re</td>lN
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante nord du ve</td>cteur de position rela</tr>tive
+      en mètres.
+  <tr>
+    <td style="vertical-align: top;">s</td>ep
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Erreur de position sphérique (3D) estimée en
+      mètres. </td>Supposée être à 95% de confiance, mais de nombreux récepteu</tr>rs GNSS ne le
+      précisent pas, donc certitude inconnue.
+  <tr>
+    <td style="vertical-align: top;">sp</td>eed
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse sur l</td>e sol, mètres</tr> par seconde.
+  <tr>
+    <td style="vertical-align: top;">sta</td>tus
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Statut de fix GPS : 0=Inconnu, 1=Normal,
+     </td> 2=DGPS, 3=RTK Fixé, 4=RTK Flottant, 5=DR, 6=</tr>GNSSDR, 7=Temps (levé),
+      8=Simulé, 9=P(Y)
+  <tr>
+    <td style="vertical-align: top;">te</td>mp
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Température du r</td>écepteur en degré</tr>s
+      Celsius.
+  <tr>
+    <td style="vertical-align: top;">ti</td>me
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">str</td>ing
+    <td style="vertical-align: top;">Horodatage au format ISO8601, UTC. Peut
+      avoir une partie fractionnaire avec une précision jusqu'à .001sec. Peut être absent si le
+  </td>    mode n'est ni 2D ni 3D. Peut être présent, mais invalide, s'il n'y a pas de fix.
+      Vérifiez 3 fixes 3D consécutifs avant de croire </tr>que c'est UTC. Même alors, cela peut
+      être décalé de plusieurs secondes jusqu'à ce que les secondes de leap actuelles soient connues.
+  <tr>
+    <td style="vertical-align: top;">tr</td>ack
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Cap sur le sol, </td>degrés depuis le </tr>vrai
+      nord.
+  <tr>
+    <td style="vertical-align: top;">ve</td>lD
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante d</td>e vitesse ba</tr>s en mètres.
+  <tr>
+    <td style="vertical-align: top;">ve</td>lE
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante d</td>e vitesse es</tr>t en mètres.
+  <tr>
+    <td style="vertical-align: top;">ve</td>lN
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Composante d</td>e vitesse nor</tr>d en mètres.
+  <tr>
+    <td style="vertical-align: top;">wang</td>lem
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Angle du ven</td>t magnétiqu</tr>e en degrés.
+  <tr>
+    <td style="vertical-align: top;">wang</td>ler
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Angle du ve</td>nt relatif</tr> en degrés.
+  <tr>
+    <td style="vertical-align: top;">wang</td>let
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Angle du v</td>ent vrai </tr>en degrés.
+  <tr>
+    <td style="vertical-align: top;">wspe</td>edr
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse du vent re</td>lative en mètres </tr>par
+      seconde.
+  <tr>
+    <td style="vertical-align: top;">wspe</td>edt
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Vitesse du vent</td> vraie en mètr</tr>es par seconde.
+  <tr>
+    <td style="vertical-align: top;">wt</td>emp
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">nume</td>ric
+    <td style="vertical-align: top;">Températur</td>e de l'eau</tr> en degré</table>s Celsius.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+  <br/>
+  définira les bits de validité dans le membre de l'ensemble de premier niveau pour chaque champ reçu ; voir
+    gps.h pour les noms et valeurs des masques de </p>bits.
+<p class="Pp">Les valeurs flottantes invalides ou inconnues seront définies sur NAN.
+    Vérifiez touck floating point values with isfinite() before use. isnan() is
+    not </p>sufficient.
+<p class="Pp">Voici une phrase TPV d'exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"TPV","device":"/dev/pts/1",
+    "time":"2005-06-0</pre>8T10:34:48.283Z","ept":0.005,
+    "lat":46.498293369,"lon":</div>7.567411672,"alt":1343.127,
+    "eph":36.000,"epv":32.321,</section>
+    "track":10.3788,"speed":0.091,"climb":-0.085,"mode":3}
+<section class="Ss">
+<h2 class="Ss" id='SKY'><a class='permalink' href='#SKY'>SK</a></h2>Y
+<p class="Pp">Un objet SKY rapporte une vue du ciel des positions des satellites GPS. Si
+    aucun périphérique GPS n'est disponible, ou si aucune vue du ciel n'a encore
+    été rapportée, seul le champ "class" sera présent de manière </p>fiable.
+<p class="Pp"><b>Tableau 2. Objet </b></p>SKY
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe</td> : "</tr>SKY"
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Nom du pé</td>riphériq</tr>ue source
+  <tr>
+    <td style="vertical-align: top;">nS</td>at
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Nombre d'objets satel</td>lites dans le
+      </tr>tableau "satellites".
+  <tr>
+    <td style="vertical-align: top;">gd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration géométrique (hypersphérique)
+      de la précision, une comb</td>inaison de PDOP et de TDOP. Un facteur sans
+      dimension qui doit être </tr>multiplié par une UERE de base pour obtenir une
+      estimation d'erreur.
+  <tr>
+    <td style="vertical-align: top;">hd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration horizontale de la précision, un
+      facteu</td>r sans dimension qui doit être multiplié par une UERE de b</tr>ase pour
+      obtenir une estimation d'erreur circulaire.
+  <tr>
+    <td style="vertical-align: top;">pd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration de la précision de position
+      (sphérique/</td>3D), un facteur sans dimension qui doit être multiplié par u</tr>ne
+      UERE de base pour obtenir une estimation d'erreur.
+  <tr>
+    <td style="vertical-align: top;">p</td>r
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Pseudo-di</td>stance, e</tr>n mètres.
+  <tr>
+    <td style="vertical-align: top;">prR</td>ate
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Taux de variation de l</td>a pseudo-distance, en
+ </tr>     mètres / seconde.
+  <tr>
+    <td style="vertical-align: top;">pr</td>Res
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Résidu de ps</td>eudo-distance</tr>, en mètres.
+  <tr>
+    <td style="vertical-align: top;">qu</td>al
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Indicateur de qualité 0=pas de signal 1=recherche
+      de signal 2=signal acquis 3=si</td>gnal détecté mais inutilisable 4=verrouillage
+      du code et synchronisation tempore</tr>lle 5, 6, 7=verrouillage du code et de la
+      porteuse et synchronisation temporelle
+  <tr>
+    <td style="vertical-align: top;">satelli</td>tes
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">li</td>ste
+    <td style="vertical-align: top;">Liste des objets satellites dans la vue </td>du </tr>ciel
+  <tr>
+    <td style="vertical-align: top;">td</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration temporelle de la précision, un
+      fac</td>teur sans dimension qui doit être multiplié par une UE</tr>RE de base pour
+      obtenir une estimation d'erreur.
+  <tr>
+    <td style="vertical-align: top;">ti</td>me
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Horodatage au format ISO8601, UTC. Peut
+    </td>  avoir une partie fractionnaire avec une p</tr>récision allant jusqu'à 0,001
+      seconde.
+  <tr>
+    <td style="vertical-align: top;">uS</td>at
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Nombre de satellites u</td>tilisés dans la
+      s</tr>olution de navigation.
+  <tr>
+    <td style="vertical-align: top;">vd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration verticale (altitude) de la
+      précision,</td> un facteur sans dimension qui doit être multiplié par une</tr> UERE
+      de base pour obtenir une estimation d'erreur.
+  <tr>
+    <td style="vertical-align: top;">xd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration longitudinale de la précision, un
+      facteur san</td>s dimension qui doit être multiplié par une UERE de base pour
+   </tr>   obtenir une estimation d'erreur. Aussi appelé DOP de Northing.
+  <tr>
+    <td style="vertical-align: top;">yd</td>op
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Détérioration latitudinale de la précision, un
+ </td>     facteur sans dimension qui doit être multip</tr>lié par une UERE de base pour
+      obtenir une </table>estimation d'erreur. Aussi appelé DOP d'Easting.
+<p class="Pp">De nombreux périphériques calculent des facteurs de détérioration de la
+    précision mais ne les incluent pas
+  <br/>
+  dans leurs rapports. Beaucoup de ceux qui rapportent des DOP ne rapportent
+    que le HDOP, l'erreur circulaire bidimensionnelle. <b>gpsd </b>transmet toujours ce que le
+    périphérique rapporte, puis tente de remplir les autres DOP en calculant les
+    déterminants appropriés dans une matrice de covariance basée sur la vue des
+    satellites. Les DOP peuvent manquer si certains de ces déterminants sont
+    singuliers. Il peut même arriver que le périphérique rapporte une estimation
+    d'erreur en mètres alors que le DOP correspondant est indisponible ; certains
+    périphériques utilisent une modélisation d'erreur plus sophistiquée que le
+    calcul de </p>covariance.
+<p class="Pp">Les objets de la liste des satellites ont les éléments suivants </p>:
+<p class="Pp"><b>Tableau 3. Objet </b></p>satellite
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">P</td>RN
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">ID PRN du satellite. Voir "PRN,
+      GNSS ID, SV ID, AND </td>SIG </tr>ID"
+  <tr>
+    <td style="vertical-align: top;">a</td>z
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Azimut, degr</td>és depuis l</tr>e nord vrai.
+  <tr>
+    <td style="vertical-align: top;">e</td>l
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Élévati</td>on en </tr>degrés.
+  <tr>
+    <td style="vertical-align: top;">fre</td>qid
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Pour les satellites GLONASS uniquement : l'ID
+      de fréquence du signal. Tel que défini par u-blox, plage de 0 à 13. Le
+      freqid est le canal de fréquence </td>plus </tr>7.
+  <tr>
+    <td style="vertical-align: top;">gns</td>sid
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">L'ID GNSS. Voir "PRN, GNSS ID, SV ID,
+      AND </td>SIG </tr>ID"
+  <tr>
+    <td style="vertical-align: top;">hea</td>lth
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">L'état de santé de ce satell</td>ite. 0 est inconnu,
+      1 </tr>est OK, et 2 est défaillant.
+  <tr>
+    <td style="vertical-align: top;">s</td>s
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Rapport sig</td>nal sur bru</tr>it en dBHz.
+  <tr>
+    <td style="vertical-align: top;">si</td>gid
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">L'ID de ce signal. Voir
+      "PRN, GNSS ID, S</td>V ID, AND SIG ID" u-blox, pas NMEA. Voir la
+  </tr>    documentation u-blox pour plus de détails.
+  <tr>
+    <td style="vertical-align: top;">sv</td>id
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">L'ID du satellite (PRN) au sein de sa
+      constellation. Voir </td>"&lt;&lt;PRNs&gt;</tr>"
+  <tr>
+    <td style="vertical-align: top;">us</td>ed
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Utilisé dans la solution actuelle ? (Les
+      satellites S</td>BAS/WAAS/EGNOS peuvent être marqués comme utilisés si la
+  </tr>    solution a des corrections de leur part, mais tous les </table>pilotes ne rendent
+      pas cette information disponible.)
+<p class="Pp">Notez que les objets satellites n'ont pas de champ "class",
+    car ils ne sont
+  <br/>
+  jamais envoyés à l'extérieur d'un objet </p>SKY.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse SKY, elle
+    définira le bit SATELLITE_SET dans le membre set de premier </p>niveau.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"SKY","device":"/dev/pts/1",
+    "time":"2005-07-08T11:28:07.114Z",
+    "xdop":1.55,"hdop":1.24,"pdop":1.99,
+    "satellites":[
+        {</pre>"PRN":23,"el":6,"az":84,"ss":0,"used":false},
+        {"PRN":28,"el":7,"az":160,"ss":0,"used":false},
+        {"PRN":8,"el":66,"az":189,"ss":44,"us</div>ed":true},
+        {"PRN":29,"el":13,"az":273,"ss":0,"used":false},
+        {"PRN":10,"el":51,"az":304,"ss":29,"used":true},
+        {"PRN":4,"el":</section>15,"az":199,"ss":36,"used":true},
+        {"PRN":2,"el":34,"az":241,"ss":43,"used":true},
+        {"PRN":27,"el":71,"az":76,"ss":43,"used":true}]}
+<section class="Ss">
+<h2 class="Ss" id='GST'><a class='permalink' href='#GST'>GS</a></h2>T
+<p class="Pp">Un objet GST est un rapport de bruit de pseudo-distance</p>.
+<p class="Pp"><b>Tableau 4. Objet </b></p>GST
+border="1" style="border-style: solid;"&gt;
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe</td> : "</tr>GST"
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Nom du pér</td>iphérique</tr> d'origine
+  <tr>
+    <td style="vertical-align: top;">ti</td>me
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Horodatage au format ISO8601, UTC. Peut
+      comporter une partie fractionnaire d'une précision allant jusqu'à </td>0,001 </tr>s.
+  <tr>
+    <td style="vertical-align: top;">r</td>ms
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Valeur de l'écart-type des entrées de
+      plage du processus de navigation (les entrées de plage incluent les
+      pseudo-distances et les corrections </td>DGPS)</tr>.
+  <tr>
+    <td style="vertical-align: top;">ma</td>jor
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type du demi-gran</td>d axe de
+      l'ellip</tr>se d'erreur, en mètres.
+  <tr>
+    <td style="vertical-align: top;">mi</td>nor
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type du demi-peti</td>t axe de
+      l'ellip</tr>se d'erreur, en mètres.
+  <tr>
+    <td style="vertical-align: top;">ori</td>ent
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Orientation du demi-grand axe de</td> l'ellipse
+      d'erreur, en deg</tr>rés depuis le nord géographique.
+  <tr>
+    <td style="vertical-align: top;">a</td>lt
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'e</td>rreur d'altitude,</tr> en
+      mètres.
+  <tr>
+    <td style="vertical-align: top;">l</td>at
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'e</td>rreur de latitude,</tr> en
+      mètres.
+  <tr>
+    <td style="vertical-align: top;">l</td>on
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'er</td>reur de longitude</tr>, en
+      mètres.
+  <tr>
+    <td style="vertical-align: top;">v</td>e
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'erreur d</td>e vitesse vers l'est,
+  </tr>    en mètres / seconde.
+  <tr>
+    <td style="vertical-align: top;">v</td>n
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'erreur de</td> vitesse vers le nord,
+ </tr>     en mètres / seconde.
+  <tr>
+    <td style="vertical-align: top;">v</td>u
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Écart-type de l'er</td>reur de vitesse ver</tr>s le haut, en
+     </table> mètres / seconde.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"GST","device":"/dev/ttyUSB0",
+        </pre>"time":"2010-12-07T10:23:07.096Z","rms":2.440,
+ </div>       "major":1.660,"minor":1.120,"orient":68.9</section>89,
+        "lat":1.600,"lon":1.200,"alt":2.520}
+<section class="Ss">
+<h2 class="Ss" id='ATT'><a class='permalink' href='#ATT'>AT</a></h2>T
+<p class="Pp">Un objet ATT est un rapport d'attitude du véhicule. Il est renvoyé par
+    des capteurs de boussole numérique et de gyroscope ; selon l'appareil, il peut inclure :
+    le cap, le tangage, le roulis, le lacet, le gyroscope et des relevés de champ magnétique. Comme
+    de tels capteurs sont souvent intégrés dans des systèmes de navigation maritime, la réponse
+    ATT peut également inclure la profondeur de </p>l'eau.
+<p class="Pp">Les champs "class" et "mode" seront
+    présents de manière fiable. Les autres peuvent être rapportés ou non selon le type
+    spécifique de </p>l'appareil.
+<p class="Pp">L'objet ATT est synchrone à l'époque GNSS. Certains appareils
+    rapportent des informations d'attitude avec des échelles de temps arbitraires, voire désordonnées.
+    <b>gpsd </b>les rapporte dans un objet IMU. Les objets ATT et IMU ont les
+    mêmes champs, mais les objets IMU sont produits dès que possible. Certains appareils
+    produisent les deux types avec un entrelacement </p>arbitraire.
+<p class="Pp"><b>Tableau 5. Objet </b></p>ATT
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe</td> : "</tr>ATT"
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Nom du pér</td>iphérique</tr> d'origine
+  <tr>
+    <td style="vertical-align: top;">ti</td>me
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Horodatage au format ISO8601, UTC. Peut
+      comporter une partie fractionnaire d'une précision allant jusqu'à </td>0,001 </tr>s.
+  <tr>
+    <td style="vertical-align: top;">time</td>Tag
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Étiquette de t</td>emps arbitraire</tr> de la mesure.
+  <tr>
+    <td style="vertical-align: top;">head</td>ing
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Cap, en degrés</td> depuis le nord</tr> géographique.
+  <tr>
+    <td style="vertical-align: top;">mag</td>_st
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">État du</td> magnét</tr>omètre.
+  <tr>
+    <td style="vertical-align: top;">mhead</td>ing
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Cap, en degrés</td> depuis le no</tr>rd magnétique.
+  <tr>
+    <td style="vertical-align: top;">pi</td>tch
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Tangag</td>e en d</tr>egrés.
+  <tr>
+    <td style="vertical-align: top;">pitch</td>_st
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">État du c</td>apteur de</tr> tangage.
+  <tr>
+    <td style="vertical-align: top;">r</td>ot
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Taux de rotat</td>ion en degré</tr>s par minute.
+  <tr>
+    <td style="vertical-align: top;">y</td>aw
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Lacet</td> en de</tr>grés.
+  <tr>
+    <td style="vertical-align: top;">yaw</td>_st
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">État du </td>capteur d</tr>e lacet.
+  <tr>
+    <td style="vertical-align: top;">ro</td>ll
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Roulis</td> en d</tr>egrés.
+  <tr>
+    <td style="vertical-align: top;">roll</td>_st
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">État du c</td>apteur d</tr>e roulis.
+  <tr>
+    <td style="vertical-align: top;">d</td>ip
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Inclinaison magnétique locale, en degrés,
+   </td>   positive lorsque le champ magnétique point</tr>e vers le bas (vers l'intérieur de la Terre).
+  <tr>
+    <td style="vertical-align: top;">mag_</td>len
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Intensité sca</td>laire du cham</tr>p magnétique.
+  <tr>
+    <td style="vertical-align: top;">ma</td>g_x
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante X de l'</td>intensité du
+     </tr> champ magnétique.
+  <tr>
+    <td style="vertical-align: top;">ma</td>g_y
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Y de l'</td>intensité du
+     </tr> champ magnétique.
+  <tr>
+    <td style="vertical-align: top;">ma</td>g_z
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Z de l'</td>intensité du
+     </tr> champ magnétique.
+  <tr>
+    <td style="vertical-align: top;">acc_</td>len
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Accélér</td>ation sc</tr>alaire.
+  <tr>
+    <td style="vertical-align: top;">ac</td>c_x
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante X de l'accélération </td>(m/s^2)</tr>.
+  <tr>
+    <td style="vertical-align: top;">ac</td>c_y
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Y de l'accélération </td>(m/s^2)</tr>.
+  <tr>
+    <td style="vertical-align: top;">ac</td>c_z
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Z de l'accélération </td>(m/s^2)</tr>.
+  <tr>
+    <td style="vertical-align: top;">gyr</td>o_x
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante X </td>du taux angu</tr>laire (deg/s)
+  <tr>
+    <td style="vertical-align: top;">gyr</td>o_y
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Y </td>du taux angu</tr>laire (deg/s)
+  <tr>
+    <td style="vertical-align: top;">gyr</td>o_z
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Composante Z </td>du taux angu</tr>laire (deg/s)
+  <tr>
+    <td style="vertical-align: top;">de</td>pth
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Profondeur</td> de l'eau </tr>en mètres.
+  <tr>
+    <td style="vertical-align: top;">te</td>mp
+    gn: top;"&gt;Non</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">Température au capteur, en degrés
+      centigrades.</td>
+  </tr>
+</table>
+<p class="Pp">Les codes d'état de cap, de tangage et de roulis (s'ils sont présents) varient selon l'appareil.
+  <br/>
+  Pour les boussoles numériques TNT Revolution, ils sont codés comme suit :</p>
+<p class="Pp"><b>Tableau 6. Drapeaux de l'appareil</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Code</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">C</td>
+    <td style="vertical-align: top;">alarme d'étalonnage du magnétomètre</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">L</td>
+    <td style="vertical-align: top;">alarme basse</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">M</td>
+    <td style="vertical-align: top;">avertissement bas</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">N</td>
+    <td style="vertical-align: top;">normal</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">O</td>
+    <td style="vertical-align: top;">avertissement haut</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">P</td>
+    <td style="vertical-align: top;">alarme haute</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">V</td>
+    <td style="vertical-align: top;">alarme de niveau de tension du magnétomètre</td>
+  </tr>
+</table>
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+  <br/>
+  déclenchera ATT_IS.</p>
+<p class="Pp">Voici un exemple :</p>
+<div class="Bd-indent">
+<pre>{"class":"ATT","time":1270938096.843,
+    "heading":14223.00,"mag_st":"N",
+    "pitch":169.00,"pitch_st":"N", "roll":-43.00,"roll_st":"N",
+    "dip":13641.000,"mag_x":2454.000}</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='IMU'><a class='permalink' href='#IMU'>IMU</a></h2>
+<p class="Pp">L'objet IMU est asynchrone par rapport à l'époque GNSS. Il est rapporté
+    avec des échelles de temps arbitraires, voire désordonnées.</p>
+<p class="Pp">Les objets ATT et IMU ont les mêmes champs, mais les objets IMU sont
+    produits dès que possible.</p>
+<p class="Pp">Voir la description de l'objet ATT pour les détails des champs.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='TOFF'><a class='permalink' href='#TOFF'>TOFF</a></h2>
+<p class="Pp">Ce message est émis à chaque cycle et rapporte le décalage
+    entre l'horloge de l'hôte et le temps GPS au début de la seconde
+    (en fait, lorsque les premières données du cycle de rapport sont reçues).</p>
+<p class="Pp">Ce message reflète exactement le message PPS.</p>
+<p class="Pp">Le message TOFF rapporte le temps GPS tel que dérivé du flux
+    de données série GPS. Le message PPS rapporte le temps GPS tel que dérivé de
+    l'impulsion PPS GPS.</p>
+<p class="Pp">Un objet TOFF possède les éléments suivants :</p>
+<p class="Pp"><b>Tableau 7. Objet TOFF</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Toujours ?</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">class</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Fixe : "TOFF"</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">device</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Nom de l'appareil d'origine</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">real_sec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">secondes de l'horloge GPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">real_nsec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">nanosecondes de l'horloge GPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">clock_sec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">secondes de l'horloge système</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">clock_nsec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">nanosecondes de l'horloge système</td>
+  </tr>
+</table>
+<p class="Pp">Ce message est émis une fois par seconde aux observateurs d'un appareil
+    et est
+  <br/>
+  destiné à rapporter les horodatages du rapport en bande passante du GPS et des secondes
+    telles que rapportées par l'horloge système (qui peut être corrigée par NTP) lorsque le premier
+    horodatage valide du cycle de rapport a été vu.</p>
+<p class="Pp">Le message contient deux paires seconde/nanoseconde : real_sec et
+    real_nsec contiennent le temps que le GPS pense être au début du cycle
+    en cours ; clock_sec et clock_nsec contiennent le temps que l'horloge système pense
+    être à la réception du premier message de synchronisation du cycle. real_nsec est toujours
+    à la précision de la nanoseconde. clock_nsec est à la précision de la nanoseconde sur la plupart
+  des systèmes.</p>
+<p class="Pp">Voici un exemple :</p>
+<div class="Bd-indent">
+<pre>{"class":"TOFF","device":"/dev/ttyUSB0",
+     "real_sec":1330212592, "real_nsec":343182,
+     "clock_sec":1330212592,"clock_nsec":343184,
+     "precision":-2}</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='PPS'><a class='permalink' href='#PPS'>PPS</a></h2>
+<p class="Pp">Ce message est émis chaque fois que le démon voit une impulsion PPS
+    (Pulse Per Second) valide provenant d'un appareil.</p>
+<p class="Pp">Ce message reflète exactement le message TOFF.</p>
+<p class="Pp">Le message TOFF rapporte le temps GPS tel que dérivé du flux
+    de données série GPS. Le message PPS rapporte le temps GPS tel que dérivé de
+    l'impulsion PPS GPS.</p>
+<p class="Pp">Il existe diverses sources d'erreur dans les temps d'horloge rapportés.
+    La vitesse de la connexion série entre le GPS et le système ajoute un
+    retard au début de la détection de cycle. Une erreur encore plus importante est ajoutée par le
+    temps de calcul variable à l'intérieur du GPS. Pris ensemble, le temps dérivé
+    du début du cycle GPS peut avoir des décalages de 10 millisecondes à 700
+    millisecondes et une gigue et une dérive combinées de 100 à 300 millisecondes.</p>
+<p class="Pp">Voir la documentation NTP pour leur définition de la précision.</p>
+<p class="Pp">Un objet PPS possède les éléments suivants :</p>
+<p class="Pp"><b>Tableau 8. Objet PPS</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Toujours ?</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">class</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Fixe : "PPS"</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">device</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Nom de l'appareil d'origine</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">real_sec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">secondes de la source PPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">real_nsec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">nanosecondes de la source PPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">clock_sec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">secondes de l'horloge système</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">clock_nsec</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">nanosecondes de l'horloge système</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">precision</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">estimation de style NTP de la précision du PPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">shm</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">clé shm de ce PPS</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">qErr</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">numérique</td>
+    <td style="vertical-align: top;">Erreur de quantification du PPS, en
+      picosecondes. Parfois appelée erreur « en dents de scie ».</td>
+  </tr>
+</table>
+<p class="Pp">Ce message est émis une fois par seconde aux observateurs d'un appareil
+  <br/>
+  émettant un PPS, et rapporte le temps du début de la seconde GPS (lorsque
+    le 1PPS arrive) et les secondes telles que rapportées par l'horloge système (qui peut être
+    corrigée par NTP) à cet instant.</p>
+<p class="Pp">Le message contient deux paires seconde/nanoseconde : real_sec et
+    real_nsec contiennent le temps que le GPS pense être au front du PPS ; clock_sec
+    et clock_nsec contiennent le temps que l'horloge système pense être au front
+    du PPS. real_nsec est toujours à la précision de la nanoseconde. clock_nsec est à la précision de la nanoseconde
+    sur la plupart des systèmes.</p>
+<p class="Pp">Il existe diverses sources d'erreur dans les temps d'horloge rapportés.
+    Pour un PPS livré via une impulsion de ligne série réelle, la latence de l'interruption série
+    plus le temps de traitement de l'appel au minuteur devrait être bornée au-dessus par environ 10
+    microsecondes ; cela peut être réduit à moins de 1 microseconde si votre noyau
+    supporte [RFC-2783]. L'émulation de ligne de contrôle série via USB1.1 est limitée à
+    environ 1 milliseconde.</p>
+<p class="Pp">Voici un exemple :</p>
+<div class="Bd-indent">
+<pre>{"class":"PPS","device":"/dev/ttyUSB0",
+     "real_sec":1330212592, "real_nsec":343182,
+     "clock_sec":1330212592,"clock_nsec":343184,
+     "precision":-3}</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OSC'><a class='permalink' href='#OSC'>OSC</a></h2>
+<p class="Pp">Ce message rapporte l'état d'un oscillateur discipliné par GPS
+    (GPSDO). La sortie PPS du GPS (qui a une excellente stabilité à long terme) est
+    typiquement utilisée pour discipliner un oscillateur local avec une bien meilleure stabilité à court terme
+    (tel qu'une horloge atomique au rubidium).</p>
+<p class="Pp">Un objet OSC possède les éléments suivants :</p>
+<p class="Pp"><b>Tableau 9. Objet OSC</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Toujours ?</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">class</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Fixe : "OSC"</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">device</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Nom de l'oriappare</td>il d'or</tr>igine.
+  <tr>
+    <td style="vertical-align: top;">en cours </td>d'exécution
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, l'oscillateur est actuellement
+      en cours</td> d'exécution. Les oscillateurs peuvent nécessiter une</tr> période
+      de préchauffage au début de la journée.
+  <tr>
+    <td style="vertical-align: top;">référe</td>nce
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, l'oscilla</td>teur reçoit un sig</tr>nal
+      PPS GPS.
+  <tr>
+    <td style="vertical-align: top;">discipl</td>iné
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, le signal PPS GPS est suffi</td>samment
+      stable et est utilisé p</tr>our discipliner l'oscillateur local.
+  <tr>
+    <td style="vertical-align: top;">de</td>lta
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">La différence de temps (en nanosecondes)
+ </td>     entre l'impulsion de sortie PPS de l'</tr>oscillateur discipliné par GPS et
+      l'i</table>mpulsion d'entrée PPS GPS la plus récente.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"OSC","runni</pre>ng":true,"device":"/d</div>ev/ttyUSB0",
+    "refe</section>rence":true,"discipli</section>ned":true,"delta":67}
+<section class="Sh">
+<h1 class="Sh" id='CORE_PROTOCOL_COMMANDS'><a class='permalink' href='#CORE_PROTOCOL_COMMANDS'>COMMANDES DE PROTOCOLE DE </a></h1>BASE
+<p class="Pp">Et voici les commandes que vous pouvez envoyer à <b>gps</b>d</p>.
+<section class="Ss">
+<h2 class="Ss" id='?VERSION;'><a class='permalink' href='#?VERSION;'>?</a></h2>VERSION;
+<p class="Pp">Renvoie un objet avec les attributs suivants </p>:
+<p class="Pp"><b>Tableau 10. Objet </b></p>VERSION
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe </td>: "VER</tr>SION"
+  <tr>
+    <td style="vertical-align: top;">rele</td>ase
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Niveau de</td> version</tr> publique
+  <tr>
+    <td style="vertical-align: top;">r</td>ev
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Niveau de</td> révision</tr> interne.
+  <tr>
+    <td style="vertical-align: top;">proto_ma</td>jor
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Niveau de ré</td>vision maje</tr>ur de l'API.
+  <tr>
+    <td style="vertical-align: top;">proto_mi</td>nor
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">numér</td>ique
+    <td style="vertical-align: top;">Niveau de ré</td>vision mine</tr>ur de l'API.
+  <tr>
+    <td style="vertical-align: top;">rem</td>ote
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">URL du démon distant sign</td>alant cette
+      version</tr>. Si vide, il s'agit de l</table>a version du démon local.
+<p class="Pp">Le démon envoie une réponse VERSION à chaque client lorsque le client
+  <br/>
+  s'y connecte pour la première </p>fois.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+    active le bit VERSION_SET dans le membre set de premier </p>niveau.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"VERSION","version":"2.4</pre>0dev",
+    "rev":"06f62e14eae9886</div>cde907dae61c124c53eb1101f",
+    </section>"proto_major":3,"proto_minor":1
+}
+<section class="Ss">
+<h2 class="Ss" id='?DEVICES;'><a class='permalink' href='#?DEVICES;'>?</a></h2>DEVICES;
+<p class="Pp">Renvoie un objet liste de périphériques avec les éléments suivants </p>:
+<p class="Pp"><b>Tableau 11. Objet </b></p>DEVICES
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe </td>: "DEV</tr>ICES"
+  <tr>
+    <td style="vertical-align: top;">devi</td>ces
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">li</td>ste
+    <td style="vertical-align: top;">Liste des des</td>criptions de </tr>périphériques
+  <tr>
+    <td style="vertical-align: top;">rem</td>ote
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">URL du démon distant signalant
+ </td>     l'ensemble des périphérique</tr>s. Si vide, il s'agit d'une répon</table>se DEVICES
+      du démon local.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+  <br/>
+  active le bit DEVICELIST_SET dans le membre set de premier </p>niveau.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class"="DEVICES","devices":[
+    {"class":"DEVICE","path":"/dev/pts/1","flags":1,"driver":"SiRF binary"},
+    {"class":"DEVICE","path":"/dev/pts/3","flags":4,"driver":"AIVDM"}</pre>]</div>}
+<p class="Pp">Le démon envoie occasionnellement un objet DEVICE nu au client
+    (c'est-à-dir</p>e un objet non inclus dans un enveloppe DEVICES). Le contenu
+    de données de </section>ces objets sera décrit plus tard en tant que réponse à la
+    commande ?DEVICE.
+<section class="Ss">
+<h2 class="Ss" id='?WATCH;'><a class='permalink' href='#?WATCH;'>?</a></h2>WATCH;
+<p class="Pp">Cette commande active le mode observateur. Elle définit ou demande
+    également un rapport de la politique par abonné et du bit raw. Un argument
+    objet WATCH modifie la politique de l'abonné. La réponse décrit la
+    politique de l'abonné. La réponse inclura également un objet
+  </p>DEVICES.
+<p class="Pp">Un objet WATCH possède les éléments suivants </p>:
+<p class="Pp"><b>Tableau 12. Objet </b></p>WATCH
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe </td>: "W</tr>ATCH"
+  <tr>
+    <td style="vertical-align: top;">ena</td>ble
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Active (true) ou désactive (false) le mode
+      observateur. La valeur par défaut </td>est </tr>true.
+  <tr>
+    <td style="vertical-align: top;">js</td>on
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Active (true) ou désactive (false)</td> le
+      vidage des rapports JSO</tr>N. La valeur par défaut est false.
+  <tr>
+    <td style="vertical-align: top;">nm</td>ea
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Active (true) ou désactive (false) le
+      vidage des paquets binaires sous forme de pseudo-NMEA. La valeur par
+      défaut </td>est </tr>false.
+  <tr>
+    <td style="vertical-align: top;">r</td>aw
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Contrôle le mode 'raw'. Lorsque cet attribut
+      est défini à 1 pour un canal, <b>gpsd </b>signale le flux de données NMEA ou AIVDM non
+      traité provenant du périphérique quel qu'il soit qui y est attaché. Les
+      paquets GPS binaires sont vidés en hexadécimal. Les paquets RTCM2 et
+      RTCM3 ne sont pas vidés en mode raw. Lorsque cet attribut est défini à 2
+      pour un canal qui traite des données binaires,
+      <b>gpsd signale les do</b>nnées reçues telles</td> quelles sans
+      </tr>vidage hexadécimal.
+  <tr>
+    <td style="vertical-align: top;">sca</td>led
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, applique les diviseurs de mise à
+      l'échelle à la sortie avant le vidage ; la valeur par défaut </td>est </tr>false.
+  <tr>
+    <td style="vertical-align: top;">spli</td>t24
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, agrège les parties de phrase AIS
+      type24. Si false, signale chaque partie c</td>omme un objet JSON distinct,
+      laissant au client le soin de faire correspondre les MM</tr>SI et d'agréger.
+      La valeur par défaut est false. Ne s'applique qu'aux rapports AIS.
+  <tr>
+    <td style="vertical-align: top;">p</td>ps
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Si vrai, émet le message JSON TOFF à chaque
+      c</td>ycle et un message JSON PPS lorsque le périphérique </tr>émet un 1PPS. La
+      valeur par défaut est false.
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">S'il est présent, active l'observation
+      uniquement du périphérique spécifié plutôt que de</td> tous les
+      périphériques. Utile avec les modes raw et NMEA où les réponses du
+      périp</tr>hérique ne sont pas étiquetées. N'a aucun effet lorsqu'il est
+      utilisé avec enable:false.
+  <tr>
+    <td style="vertical-align: top;">rem</td>ote
+    <td style="vertical-align: top;">N</td>on
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">URL du démon distant signalant
+ </td>     l'ensemble des observation</tr>s. Si vide, il s'agit d'une rép</table>onse WATCH du
+      démon local.
+<p class="Pp">Il existe un attribut booléen supplémentaire "timing" qui
+    est
+  <br/>
+  non documenté car cette partie de l'interface est considérée comme
+    instable et destinée uniquement aux </p>développeurs.
+<p class="Pp">En mode observateur, les rapports GPS sont vidés sous forme de
+    réponses TPV et SKY. Le signalement AIS, Subframe et RTCM est décrit dans
+    la section </p>suivante.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+    active le bit POLICY_SET dans le membre set de premier </p>niveau.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"</pre>WATCH", "r</div>aw":1,"sca</section>led":true}
+<section class="Ss">
+<h2 class="Ss" id='?POLL;'><a class='permalink' href='#?POLL;'>?</a></h2>POLL;
+<p class="Pp">La commande POLL demande des données des dernières positions vues sur
+    tous les périphériques GPS actifs. Les périphériques doivent avoir été
+    activés préalablement par ?WATCH pour pouvoir être </p>interrogés.
+<p class="Pp">L'interrogation peut conduire à des résultats peut-être surprenants
+    lorsqu'elle est utilisée sur un périphérique tel qu'un GPS NMEA pour
+    lequel une position complète doit être accumulée à partir de plusieurs
+    phrases. Si vous interrogez pendant que ces phrases sont émises,
+    la réponse ne contiendra que les données de correction collectées jusqu'à présent dans
+    l'époque actuelle. Elle peut être décalée jusqu'à un cycle de temps (généralement 1 seconde).</p>
+<p class="Pp">La réponse POLL contiendra une liste horodatée d'objets TPV décrivant les données mises en cache, et une liste horodatée d'objets SKY décrivant la configuration des satellites. Si un appareil n'a pas encore de données de localisation, cela sera signalé avec un champ mode de zéro.</p>
+<p class="Pp"><b>Tableau 13. Objet POLL</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Toujours ?</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">class</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Fixe : "POLL"</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">time</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">Numérique</td>
+    <td style="vertical-align: top;">Horodatage au format ISO 8601. Peut avoir une partie fractionnaire jusqu'à une précision de 0,001 seconde.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">active</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">Numérique</td>
+    <td style="vertical-align: top;">Nombre d'appareils actifs.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">tpv</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">tableau JSON</td>
+    <td style="vertical-align: top;">Liste d'objets TPV séparés par des virgules.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">sky</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">tableau JSON</td>
+    <td style="vertical-align: top;">Liste d'objets SKY séparés par des virgules.</td>
+  </tr>
+</table>
+<p class="Pp">Voici un exemple de réponse POLL :</p>
+<div class="Bd-indent">
+<pre>{&quot;class&quot;:&quot;POLL&quot;,&quot;time&quot;:&quot;2010-06-04T10:31:00.289Z&quot;,&quot;active&quot;:1,
+    &quot;tpv&quot;:[{&quot;class&quot;:&quot;TPV&quot;,&quot;device&quot;:&quot;/dev/ttyUSB0&quot;,
+            &quot;time&quot;:&quot;2010-09-08T13:33:06.095Z&quot;,
+            &quot;ept&quot;:0.005,&quot;lat&quot;:40.035093060,
+            &quot;lon&quot;:-75.519748733,&quot;track&quot;:99.4319,&quot;speed&quot;:0.123,&quot;mode&quot;:2}],
+    &quot;sky&quot;:[{&quot;class&quot;:&quot;SKY&quot;,&quot;device&quot;:&quot;/dev/ttyUSB0&quot;,
+            &quot;time&quot;:1270517264.240,&quot;hdop&quot;:9.20,
+            &quot;satellites&quot;:[{&quot;PRN&quot;:16,&quot;el&quot;:55,&quot;az&quot;:42,&quot;ss&quot;:36,&quot;used&quot;:true},
+                          {&quot;PRN&quot;:19,&quot;el&quot;:25,&quot;az&quot;:177,&quot;ss&quot;:0,&quot;used&quot;:false},
+                          {&quot;PRN&quot;:7,&quot;el&quot;:13,&quot;az&quot;:295,&quot;ss&quot;:0,&quot;used&quot;:false},
+                          {&quot;PRN&quot;:6,&quot;el&quot;:56,&quot;az&quot;:135,&quot;ss&quot;:32,&quot;used&quot;:true},
+                          {&quot;PRN&quot;:13,&quot;el&quot;:47,&quot;az&quot;:304,&quot;ss&quot;:0,&quot;used&quot;:false},
+                          {&quot;PRN&quot;:23,&quot;el&quot;:66,&quot;az&quot;:259,&quot;ss&quot;:0,&quot;used&quot;:false},
+                          {&quot;PRN&quot;:20,&quot;el&quot;:7,&quot;az&quot;:226,&quot;ss&quot;:0,&quot;used&quot;:false},
+                          {&quot;PRN&quot;:3,&quot;el&quot;:52,&quot;az&quot;:163,&quot;ss&quot;:32,&quot;used&quot;:true},
+                          {&quot;PRN&quot;:31,&quot;el&quot;:16,&quot;az&quot;:102,&quot;ss&quot;:0,&quot;used&quot;:false}
+]}]}</pre>
+</div>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<p class="Pp">Le logiciel client ne doit pas supposer que l'inventaire des champs de la réponse POLL est fixe pour toujours. Au fur et à mesure que <b>gpsd</b> collecte et met en cache davantage de données provenant de plus de types de capteurs, ces données sont susceptibles de se retrouver dans cette réponse.</p>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='?DEVICE;_?DEVICE='><a class='permalink' href='#?DEVICE;_?DEVICE='>?DEVICE;   ?DEVICE=</a></h2>
+<p class="Pp">Cette commande rapporte (lorsqu'elle est suivie de ';') l'état d'un appareil, ou définit (lorsqu'elle est suivie de '=' et d'un objet DEVICE) des bits de contrôle spécifiques à l'appareil, notamment la vitesse et le mode série de l'appareil, ainsi que le bit de mode natif. La forme de réglage des paramètres sera rejetée si plus d'un client est attaché au canal et si un chemin d'appareil n'est pas spécifié.</p>
+<p class="Pp">Faites attention à la réponse, car il est possible que cette commande échoue si le GPS ne prend pas en charge une commande ou ne prend en charge que certaines combinaisons de modes. En cas d'échec, le démon et le GPS continueront de communiquer à l'ancienne vitesse.</p>
+<p class="Pp">Utilisez la forme de réglage des paramètres avec prudence. Sur les GPS USB et Bluetooth, il est également possible que le réglage du mode série échoue, soit parce que la puce de l'adaptateur série ne prend pas en charge les modes autres que 8N1, soit parce que le firmware de l'appareil ne synchronise pas correctement la puce de l'adaptateur série avec l'UART du chipset GPS lorsque la vitesse change. Ces échecs peuvent bloquer votre appareil, nécessitant éventuellement un cycle d'alimentation du GPS ou (dans les cas extrêmes) le débranchement physique de la batterie de sauvegarde NVRAM.</p>
+<p class="Pp">Un objet DEVICE a les éléments suivants :</p>
+<p class="Pp"><b>Tableau 14. Objet DEVICE</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Toujours ?</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">class</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Fixe : "DEVICE"</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">activated</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Heure d'activation de l'appareil sous forme d'horodatage ISO8601. Si l'appareil est inactif, cet attribut est absent.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">bps</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Vitesse de l'appareil en bits par seconde.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">cycle</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Temps de cycle de l'appareil en secondes.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">driver</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Nom du type de pilote d'appareil utilisé par GPSD. Ne sera pas signalé avant que <b>gpsd</b> n'ait vu des paquets identifiables de l'appareil.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">flags</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Vecteur de bits des indicateurs de propriété. Les indicateurs actuellement définis sont : décrivent les types de paquets vus jusqu'à présent (GPS, RTCM2, RTCM3, AIS). Ne sera pas signalé s'il est vide, par exemple avant que <b>gpsd</b> n'ait vu des paquets identifiables de l'appareil.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">hexdata</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Données, en hexadécimal brut, à envoyer au récepteur GNSS.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">mincycle</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Temps de cycle minimum de l'appareil en secondes. Signalé par ?DEVICE lorsque (et seulement lorsque) le taux est modifiable. Il est en lecture seule et non réglable.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">native</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">0 signifie mode NMEA et 1 signifie mode alternatif (binaire s'il en a un, notamment pour les chipsets SiRF et Evermore). Tenter de définir ce mode sur un appareil non GPS entraînera une erreur.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">parity</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">N, O ou E pour aucune parité, impaire ou paire.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">path</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Nom de l'appareil pour lequel les bits de contrôle sont signalés, ou pour lequel ils doivent être appliqués. Cet attribut peut être omis uniquement lorsqu'il y a exactement un canal souscrit.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">readonly</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">booléen</td>
+    <td style="vertical-align: top;">Vrai si l'appareil est en lecture seule.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">sernum</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Numéro de série matériel (si le pilote de l'appareil renvoie cette valeur).</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">stopbits</td>
+    <td style="vertical-align: top;">Oui</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Bits d'arrêt (1 ou 2).</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">subtype</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Quelles que soient les informations de version renvoyées par le pilote de l'appareil.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">subtype1</td>
+    <td style="vertical-align: top;">Non</td>
+    <td style="vertical-align: top;">chaîne de caractères</td>
+    <td style="vertical-align: top;">Plus d'informations de version renvoyées par le pilote de l'appareil.</td>
+  </tr>
+</table>
+<p class="Pp">Les paramètres série (bps, parité, bits d'arrêt) seront omis dans une <br/>
+  réponse décrivant une source TCP/IP telle qu'un flux Ntrip, DGPSIP ou AIS ; sur un appareil série, ils seront toujours présents.</p>
+<p class="Pp">Le contenu du champ flags doit être interprété comme suit :</p>
+<p class="Pp"><b>Tableau 15. Indicateurs d'appareil</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>C #define</b></td>
+    <td style="vertical-align: top;"><b>Valeur</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">SEEN_GPS</td>
+    <td style="vertical-align: top;">0x01</td>
+    <td style="vertical-align: top;">Des données GPS ont été vues sur cet appareil</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">SEEN_RTCM2</td>
+    <td style="vertical-align: top;">0x02</td>
+    <td style="vertical-align: top;">Des données RTCM2 ont été vues sur cet
+      appareil</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">SEEN_RTCM3</td>
+    <td style="vertical-align: top;">0x04</td>
+    <td style="vertical-align: top;">Des données RTCM3 ont été vues sur cet
+      appareil</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">SEEN_AIS</td>
+    <td style="vertical-align: top;">0x08</td>
+    <td style="vertical-align: top;">Des données AIS ont été vues sur cet appareil</td>
+  </tr>
+</table>
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+  <br/>
+  définira le bit DEVICE_SET dans le membre de niveau supérieur « set »</p>.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"DEVICE","bps</pre>":4800,"parity":"N","s</div>topbits":1,"native":0}
+<p class="Pp">Lorsqu'un client est en mode observateur (watcher), le démon lui enverra des
+    notifications DEVICE lorsqu'un appareil est ajouté au pool ou </p>désactivé.
+<p class="Pp">Lorsque la bibliothèque client C analyse une réponse de ce type, elle
+    définira le bit DEVICE_SET dans le membre de niveau supérieur « set </p>»</section>.
+<section class="Ss">
+<h2 class="Ss" id='Examples'><a class='permalink' href='#Examples'>Exemple</a></h2>s
+<p class="Pp">Une notification d'un appareil désactivé </p>:
+<div class="Bd-indent">
+<pre>{"class":"DEVICE"</pre>,"path":"/dev/pts</div>1","activated":0}
+<p class="Pp">Envoyer à un récepteur u-blox situé sur /dev/ttyUSB2 une requête pour un
+    message UBX-MON-VER </p>:
+<div class="Bd-indent">
+<pre>?DEVICE={"path":"/dev/ttyUSB2","hexdata":"b5620a0400000e34</pre>"</div>}
+<p class="Pp">Le <i>démon </i>gpsd répondra par un accusé de réception (ACK) en cas de succès </p>:
+<div class="Bd-indent">
+<pre>{"cl</pre>ass"</div>:"A</section>CK"}
+<section class="Ss">
+<h2 class="Ss" id='ERROR'><a class='permalink' href='#ERROR'>ERREU</a></h2>R
+<p class="Pp">Le démon peut envoyer un objet d'erreur en réponse à une ligne de commande
+    syntaxiquement invalide ou à une commande inconnue. Il possède les éléments suivants </p>:
+<p class="Pp"><b>Tableau 16. Objet de notification </b></p>ERROR
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Toujours </b></td>présent ?
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe </td>: "E</tr>RROR"
+  <tr>
+    <td style="vertical-align: top;">mess</td>age
+    <td style="vertical-align: top;">O</td>ui
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Messag</td>e d'er</tr>reur t</table>extuel
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"ERROR","m</pre>essage":"Unrecogniz</div>ed request '?FOO'"}
+<p class="Pp">Lorsque la bibliothèque client C an</p>alyse une réponse de ce type, elle
+</section>    définira le bit ERR_SET dans le </section>membre de niveau supérieur « set ».
+<section class="Sh">
+<h1 class="Sh" id='RTCM2'><a class='permalink' href='#RTCM2'>RTCM</a></h1>2
+<p class="Pp">RTCM-104 est une famille de protocoles série utilisée pour diffuser des
+    corrections de pseudo-distance provenant de stations de référence GPS
+    différentielles. De nombreux récepteurs GPS peuvent accepter ces
+    corrections pour améliorer la précision de leurs </p>relevés.
+<p class="Pp">RTCM-104 existe en deux versions principales et incompatibles, 2.x et 3.x.
+    Chaque version principale possède des révisions mineures (compatibles)</p>.
+<p class="Pp">La norme applicable pour la version 2.x de RTCM est la norme recommandée
+    RTCM pour le service GPS NAVSTAR différentiel, RTCM Paper 194-93/SC 104-STD.
+    Pour RTCM 3.1, il s'agit de RTCM Paper 177-2006-SC104-STD. Les instructions
+    de commande pour les deux normes sont accessibles depuis le site web de la <i>Commission Radio Technique des Services </i>Maritimes <a href='https://www.rtcm.org/'>https://www.rtcm.</a>org/ sous « Publications »</p>.
+<section class="Ss">
+<h2 class="Ss" id='RTCM_WIRE_TRANSMISSIONS'><a class='permalink' href='#RTCM_WIRE_TRANSMISSIONS'>TRANSMISSIONS FILAIRES </a></h2>RTCM
+<p class="Pp">Les stations de correction GPS différentielles se composent d'un récepteur
+    de référence GPS couplé à un émetteur basse fréquence (LF). Le récepteur de
+    référence GPS est un GPS de niveau géodésique qui effectue le suivi de la
+    porteuse GPS et peut déterminer sa position à quelques millimètres près. Il
+    génère des corrections de distance et de vitesse de distance et les encode en
+    RTCM104. Il transmet le RTCM104 à l'émetteur LF via un signal série rs-232 à
+    100 ou 200 bauds selon les exigences de </p>l'émetteur.
+<p class="Pp">L'émetteur LF diffuse le signal radio d'environ 300 kHz que les récepteurs
+    radio GPS différentiels captent. Les émetteurs destinés à une plus grande
+    portée </p>devront émettre à un débit plus lent. Plus le débit de données est
+    élevé, plus il sera difficile pour le récepteur radio distant de recevoir un
+    bon rapport s</section>ignal sur bruit. (Les signaux à débit de données élevé ne
+    peuvent pas être moyennés sur une aussi longue période, ils apparaissent donc
+    comme plus bruités.)
+<section class="Ss">
+<h2 class="Ss" id='RTCM_WIRE_FORMATS'><a class='permalink' href='#RTCM_WIRE_FORMATS'>FORMATS FILAIRES </a></h2>RTCM
+<p class="Pp">Un message RTCM 2.x se compose d'une séquence d'au plus 33 mots de 30 bits.
+    Les 24 bits de poids fort de chaque mot sont des données et les six bits de
+    poids faible sont la parité. L'algorithme de parité utilisé est le même
+    ISGPS-2000 que celui utilisé sur les liaisons descendantes des satellites
+    GPS. Chaque message RTCM 2.x se compose de deux mots d'en-tête suivis de zéro
+    ou plusieurs mots de données, selon le type de </p>message.
+<p class="Pp">Un message RTCM 3.x commence par un octet d'amorce fixe 0xD3. S'y
+    suivent six bits d'information de version</p> et 10 bits d'information de
+    longueur de charge utile. Vient ensuite la charge utile ; après celle-ci se
+ </section>   trouve une somme de contrôle de 3 octets de la charge utile calculée avec
+    l'algorithme Qualcomm CRC-24Q.
+<section class="Ss">
+<h2 class="Ss" id='RTCM2_JSON_FORMAT'><a class='permalink' href='#RTCM2_JSON_FORMAT'>FORMAT JSON </a></h2>RTCM2
+<p class="Pp">Chaque message RTCM2 est converti en un objet JSON unique par message, avec
+    les champs du message en tant qu'attributs de cet objet. Les tableaux de
+    statistiques de satellites, de stations et de constellations deviennent des
+    tableaux de sous-objets JSON. Chaque phrase aura normalement aussi un champ
+    "device" contenant le chemin du périphérique </p>d'origine.
+<p class="Pp">Tous les attributs autres que le champ d</p>evice sont obligatoires. Les
+    attribu</section>ts d'en-tête sont émis avant les autres.
+<section class="Ss">
+<h2 class="Ss" id='Header_portion'><a class='permalink' href='#Header_portion'>Partie </a></h2>EN-TÊTE
+<p class="Pp"><b>Tableau 17. Objet </b></p>SKY
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Fixe </td>: "RT</tr>CM2".
+  <tr>
+    <td style="vertical-align: top;">ty</td>pe
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Type de message </td>(1-9)</tr>.
+  <tr>
+    <td style="vertical-align: top;">station</td>_id
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">L'identifiant du récepteur de référence GPS. Les
+      émetteurs LF ont également des numéros d'identification </td>(différents)</tr>.
+  <tr>
+    <td style="vertical-align: top;">zco</td>unt
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">Le temps de référence des corrections dans
+      le message, en secondes dans l'heure en cours. Notez qu'il est en temps
+      GPS, qui est en avance de quelques secondes sur l'UTC (voir la table de
+      corrections de seconde intercalaire [UTC-TAU] de l'Observatoire Naval des
+      </td>États-Unis)</tr>.
+  <tr>
+    <td style="vertical-align: top;">seq</td>num
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Numéro de séquence. Largeur de seulement 3 bits,
+      repasse à 0 </td>après </tr>7.
+  <tr>
+    <td style="vertical-align: top;">len</td>gth
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Le nombre de mots aprè</td>s l'en-tête qui
+     </tr> composent le message.
+  <tr>
+    <td style="vertical-align: top;">station_he</td>alth
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Statut de transmission de la station. Indique
+      l'état de santé de la balise en tant que source de référence. To</td>ute valeur
+      non nulle signifie que le satellite transmet probablement de mauvaises
+      données et ne devrait </tr>pas être utilisé pour un positionnement. 6 signifie
+      que la transmission n'est pas surveillée. 7 signifie que l</table>a station ne
+      fonctionne pas correctement. Les autres valeurs sont définies par
+      l'opérateur de la balise.
+<p class="Pp">&lt;message type&gt; (type de message) est l'un des suivants </p>:
+<p class="Pp"></p>1
+<div class="Bd-indent">corrections complètes — un message contenant
+  les corrections pour tous les satellites GPS visibles. Ce n'est pas </div>courant.
+<p class="Pp"></p>3
+<div class="Bd-indent">paramètres de la station de référence — la position de
+  l'antenne GPS de la station de </div>référence.
+<p class="Pp"></p>4
+<div class="Bd-indent">datum — le référentiel auquel les données DGPS
+  se </div>rapportent.
+<p class="Pp"></p>5
+<div class="Bd-indent">santé de la constellation — informations sur les
+  satellites visibles par la </div>balise.
+<p class="Pp"></p>6
+<div class="Bd-indent">message nul — simplement un </div>remplissage.
+<p class="Pp"></p>7
+<div class="Bd-indent">almanach de balise radio — informations sur cette
+  balise ou d'autres </div>balises.
+<p class="Pp"></p>9
+<div class="Bd-indent">corrections partielles — un message contenant
+  les corrections pour seulement un sous-ensemble des satellites GPS </div>visibles.
+<p class="Pp">1</p>6
+<div class="Bd-indent">message spécial — un message textuel de
+  l'opérateur de la </div>balise.
+<p class="Pp">3</p>1
+<div class="Bd-indent">corrections partielles GLONASS — un mess</div>age contenant
+  les corrections pour un </section>ensemble de satellites GLONASS visibles.
+<section class="Ss">
+<h2 class="Ss" id='Type_1_and_9:_Correction_data'><a class='permalink' href='#Type_1_and_9:_Correction_data'>Type   1 et 9 : Données de </a></h2>correction
+<p class="Pp">Un ou plusieurs objets satellite suivent l'en-tête pour les messages de
+    type 1 ou de type 9. Voici le format </p>:
+<p class="Pp"><b>Tableau 18. Objet </b></p>satellite
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">id</td>ent
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Le numéro PRN du satellite pour lequel
+      il s'agit de données de correction. Voir </td>"&lt;&lt;PRNs&gt;</tr>"
+  <tr>
+    <td style="vertical-align: top;">ud</td>re
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Erreur de distance différentielle</td> utilisateur (0-3). Voir
+      le </tr>tableau suivant pour les valeurs.
+  <tr>
+    <td style="vertical-align: top;">i</td>od
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Issue Of Data (émission des données), correspondant à l'IOD pour
+      l'éphéméride actuelle de ce satellite, telle q</td>ue transmise par le
+      satellite. L'IOD est un tag unique qui identifie l'éphéméride ; le GPS
+      utilisant la co</tr>rrection DGPS et le DGPS générant les données doivent
+      utiliser les mêmes positions orbitales pour le satellite.
+  <tr>
+    <td style="vertical-align: top;">p</td>rc
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">L'erreur de pseudo-distance en mètres pour ce
+      satellite te</td>lle que mesurée par le récepteur de référence de la balise à
+    </tr>  l'époque indiquée par le z_count dans l'enregistrement parent.
+  <tr>
+    <td style="vertical-align: top;">r</td>rc
+    <td style="vertical-align: top;">ré</td>el
+    <section class="Ss">
+<h2 class="Ss" id="UDRE"><a class="permalink" href="#UDRE">User Differential Range Error</a></h2>
+<p class="Pp">This field indicates the quality of the pseudorange measurement.
+    The value is an integer which may be used to derive a 1-sigma error bound.
+    The following table shows the mapping:</p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;">0</td>
+    <td style="vertical-align: top;">1-sigma error &#x21D0; 1 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">1</td>
+    <td style="vertical-align: top;">1-sigma error &#x21D0; 4 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">2</td>
+    <td style="vertical-align: top;">1-sigma error &#x21D0; 8 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">3</td>
+    <td style="vertical-align: top;">1-sigma error &gt; 8 m</td>
+  </tr>
+</table>
+<p class="Pp">The rate of change of pseudorange error in
+      meters/sec for this satellite as measured by the beacon reference receiver
+      at the epoch indicated by the z_count field in the parent record. This is
+      used to calculate pseudorange errors at other epochs, if required by the
+      GPS receiver.</td>
+  </tr>
+</table>
+<p class="Pp">Les valeurs d'erreur différentielle de pseudodistance utilisateur
+  sont les suivantes :</p>
+<p class="Pp"><b>Tableau 19. Valeurs UDRE</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;">0</td>
+    <td style="vertical-align: top;">Erreur 1 sigma &#x21D0; 1 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">1</td>
+    <td style="vertical-align: top;">Erreur 1 sigma &#x21D0; 4 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">2</td>
+    <td style="vertical-align: top;">Erreur 1 sigma &#x21D0; 8 m</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">3</td>
+    <td style="vertical-align: top;">Erreur 1 sigma &gt; 8 m</td>
+  </tr>
+</table>
+<p class="Pp">Voici un exemple :</p>
+<div class="Bd-indent">
+<pre>{&quot;class&quot;:&quot;RTCM2&quot;,&quot;type&quot;:1,
+    &quot;station_id&quot;:688,&quot;zcount&quot;:843.0,&quot;seqnum&quot;:5,&quot;length&quot;:19,&quot;station_health&quot;:6,
+    &quot;satellites&quot;:[
+        {&quot;ident&quot;:10,&quot;udre&quot;:0,&quot;iod&quot;:46,&quot;prc&quot;:-2.400,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:13,&quot;udre&quot;:0,&quot;iod&quot;:94,&quot;prc&quot;:-4.420,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:7,&quot;udre&quot;:0,&quot;iod&quot;:22,&quot;prc&quot;:-5.160,&quot;rrc&quot;:0.002},
+        {&quot;ident&quot;:2,&quot;udre&quot;:0,&quot;iod&quot;:34,&quot;prc&quot;:-6.480,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:4,&quot;udre&quot;:0,&quot;iod&quot;:47,&quot;prc&quot;:-8.860,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:8,&quot;udre&quot;:0,&quot;iod&quot;:76,&quot;prc&quot;:-7.980,&quot;rrc&quot;:0.002},
+        {&quot;ident&quot;:5,&quot;udre&quot;:0,&quot;iod&quot;:99,&quot;prc&quot;:-8.260,&quot;rrc&quot;:0.002},
+        {&quot;ident&quot;:23,&quot;udre&quot;:0,&quot;iod&quot;:81,&quot;prc&quot;:-8.060,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:16,&quot;udre&quot;:0,&quot;iod&quot;:70,&quot;prc&quot;:-11.740,&quot;rrc&quot;:0.000},
+        {&quot;ident&quot;:30,&quot;udre&quot;:0,&quot;iod&quot;:4,&quot;prc&quot;:-18.960,&quot;rrc&quot;:-0.006},
+        {&quot;ident&quot;:29,&quot;udre&quot;:0,&quot;iod&quot;:101,&quot;prc&quot;:-24.960,&quot;rrc&quot;:-0.002}
+]}</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Type_3:_Paramètres_de_station_de_référence"><a class="permalink" href="#Type_3:_Paramètres_de_station_de_référence">Type
+      3 : Paramètres de station de référence</a></h2>
+<p class="Pp">Voici les membres de charge utile d'un message de type 3 (Paramètres de
+    station de référence) :</p>
+<p class="Pp"><b>Tableau 20. Paramètres de station de référence</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">x</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Coordonnée X ECEF.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">y</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Coordonnée Y ECEF.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">z</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Coordonnée Z ECEF.</td>
+  </tr>
+</table>
+<p class="Pp">Les coordonnées sont la position de la station, en mètres à deux
+      décimales, dans des coordonnées ECEF (Earth Centred Earth Fixed). Celles-ci
+      sont généralement référencées au système de référence WGS84, mais peuvent
+      être référencées à NAD83 aux États-Unis (essentiellement identiques à WGS84
+      sauf pour les géodésiens), ou à un autre système de référence ailleurs dans
+      le monde.</p>
+<p class="Pp">Un message de référence invalide est représenté par un en-tête de
+    type 3 sans champs de charge utile.</p>
+<p class="Pp">Voici un exemple :</p>
+<div class="Bd-indent">
+<pre>{&quot;class&quot;:&quot;RTCM2&quot;,&quot;type&quot;:3,
+    &quot;station_id&quot;:652,&quot;zcount&quot;:1657.2,&quot;seqnum&quot;:2,&quot;length&quot;:4,&quot;station_health&quot;:6,
+    &quot;x&quot;:3878620.92,&quot;y&quot;:670281.40,&quot;z&quot;:5002093.59
+}</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Type_4:_Datum"><a class="permalink" href="#Type_4:_Datum">Type
+      4 : Datum</a></h2>
+<p class="Pp">Voici les membres de charge utile d'un message de type 4 (Datum) :</p>
+<p class="Pp"><b>Tableau 21. Datum</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">dgnss_type</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Soit "GPS", "GLONASS", "GALILEO",
+      ou "UNKNOWN".</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">dat</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">0 ou 1 et indique le sens du décalage donné
+      par dx, dy, dz. dat = 0 signifie que les coordonnées de la station (dans le
+      message de référence) sont référencées à un datum local et que l'ajout de
+      dx, dy, dz à cette position la placera dans les coordonnées GNSS
+      (WGS84 pour GPS). Si dat = 1, alors la position de la station de référence
+      est dans les coordonnées GNSS et l'ajout de dx, dy, dz la placera référencée
+      au datum local.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">datum_name</td>
+    <td style="vertical-align: top;">chaîne</td>
+    <td style="vertical-align: top;">Un nom standard pour le datum.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">dx</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Décalage X.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">dy</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Décalage Y.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">dz</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Décalage Z.</td>
+  </tr>
+</table>
+<p class="Pp">&lt;dx&gt; &lt;dy&gt; &lt;dz&gt; sont les décalages pour convertir d'un
+      datum local à un datum GNSS ou vice versa. Ces champs sont facultatifs.</p>
+<p class="Pp">Un message de datum invalide est représenté par un en-tête de
+    type 4 sans champs de charge utile.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Type_5:_Santé_de_la_constellation"><a class="permalink" href="#Type_5:_Santé_de_la_constellation">Type
+      5 : Santé de la constellation</a></h2>
+<p class="Pp">Un ou plusieurs de ceux-ci suivent l'en-tête pour les messages de
+    type 5 — un pour chaque satellite.</p>
+<p class="Pp">Voici le format :</p>
+<p class="Pp"><b>Tableau 22. Santé de la constellation</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">ident</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Le numéro PRN du satellite. Voir
+      &quot;&lt;&lt;PRNs&gt;&gt;&quot;</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">iodl</td>
+    <td style="vertical-align: top;">booléen</td>
+    <td style="vertical-align: top;">Vrai indique que cette information se
+      rapporte aux informations du satellite dans un message de type 1 ou 9
+      accompagnant.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">health</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">0 indique que le satellite est sain. Toute
+      autre valeur indique un problème (le codage n'est pas connu).</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">snr</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Le rapport porteuse/bruit du signal reçu dans
+      la plage de 25 à 55 dB(Hz).</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">health_en</td>
+    <td style="vertical-align: top;">booléen</td>
+    <td style="vertical-align: top;">Si défini sur Vrai, cela indique que le
+      satellite est sain même si les données de navigation du satellite indiquent
+      qu'il est non sain.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">new_data</td>
+    <td style="vertical-align: top;">booléen</td>
+    <td style="vertical-align: top;">Vrai indique que l'IOD de ce satellite sera
+      bientôt mis à jour dans les messages de type 1 ou 9.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">los_warning</td>
+    <td style="vertical-align: top;">booléen</td>
+    <td style="vertical-align: top;">Avertissement de ligne de vue. Vrai indique
+      que le satellite deviendra bientôt non sain.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">tou</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Temps sain restant en secondes.</td>
+  </tr>
+</table>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Type_6:_Nul"><a class="permalink" href="#Type_6:_Nul">Type
+      6 : Nul</a></h2>
+<p class="Pp">Ceci indique simplement un message nul. Il n'y a pas de champs de
+    charge utile.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Message_inconnu"><a class="permalink" href="#Message_inconnu">Message
+      inconnu</a></h2>
+<p class="Pp">Ce format est utilisé pour afficher les mots du message en
+    hexadécimal lorsque le champ de type de message ne correspond à aucun des
+    types connus.</p>
+<p class="Pp">Voici le format :</p>
+<p class="Pp"><b>Tableau 23. Message inconnu</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">data</td>
+    <td style="vertical-align: top;">liste</td>
+    <td style="vertical-align: top;">Une liste de chaînes.</td>
+  </tr>
+</table>
+<p class="Pp">Chaque chaîne du tableau est une chaîne hexadécimale représentant 30
+      bits d'informations, après les vérifications de parité et l'inversion. Les
+      deux bits de poids fort doivent être ignorés.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Type_7:_Almanach_de_balise_radio"><a class="permalink" href="#Type_7:_Almanach_de_balise_radio">Type
+      7 : Almanach de balise radio</a></h2>
+<p class="Pp">Voici le format :</p>
+<p class="Pp"><b>Tableau 24. Santé de la constellation</b></p>
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Nom</b></td>
+    <td style="vertical-align: top;"><b>Type</b></td>
+    <td style="vertical-align: top;"><b>Description</b></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">lat</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Latitude en degrés, de l'antenne de
+      transmission LF pour la station pour laquelle il s'agit d'un almanach. Le
+      nord est positif.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">lon</td>
+    <td style="vertical-align: top;">réel</td>
+    <td style="vertical-align: top;">Longitude en degrés, de l'antenne de
+      transmission LF pour la station pour laquelle il s'agit d'un almanach. L'est
+      est positif.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">range</td>
+    <td style="vertical-align: top;">entier</td>
+    <td style="vertical-align: top;">Portée publiée de la station en km.</td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">frequency</td>
+    <td styl
+e="vertical-align: top;"&gt;</td>réel
+    <td style="vertical-align: top;">Fréquence de diffusion de la station </td>en </tr>kHz.
+  <tr>
+    <td style="vertical-align: top;">san</td>té
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">&lt;health&gt; est l'état de santé de la station
+      pour laquelle ceci est un almanach. S'il est non nul, la station émet
+      des données suspectes et ne doit pas être utilisée pour les calculs de
+      position. Les normes ITU et RTCM104 diffèrent sur l'interprétation
+      détaillée du mode du champ &lt;health&gt; et même sur sa largeur </td>en </tr>bits.
+  <tr>
+    <td style="vertical-align: top;">station</td>_id
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">L'identifiant de l'émetteur. Ceci n'est pas
+      le mê</td>me que l'identifiant de référence de l'en-tête, ce derni</tr>er étant
+      l'identifiant du récepteur de référence.
+  <tr>
+    <td style="vertical-align: top;">déb</td>it
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Le déb</td>it bina</tr>ire tra</table>nsmis.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"RTCM2","type":9,"station_id":268,"zcount":252.6,
+        "seqnum":4,"length":5,"station_health":0,
+        "satellites":[
+            {"ident":13,"udre":0,"iod":3,"prc":-25.940,"rrc":0.066},
+            {"ident":2,"udre":0,"iod":73,"prc":0.920,"rrc":-0.080},
+            {"ident":8,"udre":0,"iod":22,"prc":23.820,"rrc":0.014}</pre>
+</div>]</section>}
+<section class="Ss">
+<h2 class="Ss" id='Type_13:_GPS_Time_of_Week'><a class='permalink' href='#Type_13:_GPS_Time_of_Week'>Type   13 : Heure de semaine </a></h2>GPS
+<p class="Pp">Voici les membres de la charge utile d'un message de type 13
+    (Paramètres de l'émetteur au sol) </p>:
+<p class="Pp"><b>Tableau 25. Paramètres de l'émetteur au </b></p>sol
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">l</td>at
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">Degrés de latitude, signés. Positif pour le N,
+      négatif pour </td>le </tr>S.
+  <tr>
+    <td style="vertical-align: top;">l</td>on
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">Degrés de longitude, si</td>gnés. Positif pour l'E,
+</tr>      négatif pour l'O.
+  <tr>
+    <td style="vertical-align: top;">ra</td>nge
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Portée de transmission en km </td>(1-1024)</tr>.
+  <tr>
+    <td style="vertical-align: top;">rangef</td>lag
+    <td style="vertical-align: top;">bo</td>ol
+    <td style="vertical-align: top;">Si Vrai, indique que la portée estimée
+      est différente de celle trouvée dans le message de type 7 (qui </td>contient
+      la portée listée de la balise). Indique généralement une réduction de
+      la portée due à </tr>des causes telles que de mauvaises conditions
+      ionosphériques ou une puissance de transmission réduite.
+  <tr>
+    <td style="vertical-align: top;">sta</td>tus
+    <td style="vertical-align: top;">bo</td>ol
+    <td style="vertical-align: top;">Si Vrai, signale à l'utilisateur de s'att</td>endre à un message
+      explicatif de ty</tr>pe 16 associé à cette station. Indique pr</table>obablement un
+      événement inhabituel.
+<p class="Pp">Ce type de message remplace le type de message 3 (Paramètres de la
+    station de référence)
+  <br/>
+  dans </p>RTCM</section> 2.3.
+<section class="Ss">
+<h2 class="Ss" id='Type_14:_GPS_Time_of_Week'><a class='permalink' href='#Type_14:_GPS_Time_of_Week'>Type   14 : Heure de semaine </a></h2>GPS
+<p class="Pp">Voici les membres de la charge utile d'un message de type 14 (Heure de
+    semaine GPS) </p>:
+<p class="Pp"><b>Tableau 26. Paramètres de la station de </b></p>référence
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">ho</td>ur
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Heure de la semaine </td>(0-167)</tr>.
+  <tr>
+    <td style="vertical-align: top;">leaps</td>ecs
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Secondes intercalaires </td>(0-63)</tr>.
+  <tr>
+    <td style="vertical-align: top;">we</td>ek
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Semai</td>ne GP</tr>S (0-</table>123).
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"RTCM2","type":14,"station_id"</pre>:652,"zcount":1657.2,
+        "seqnum":</div>3,"length":1,"station_health":6,"week"</section>:601,"hour":109,
+        "leapsecs":15}
+<section class="Ss">
+<h2 class="Ss" id='Type_16:_Special_Message'><a class='permalink' href='#Type_16:_Special_Message'>Type   16 : Message </a></h2>spécial
+<p class="Pp"><b>Tableau 27. Message </b></p>spécial
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">mess</td>age
+    <td style="vertical-align: top;">cha</td>îne
+    <td style="vertical-align: top;">Un message t</td>exte envoyé </tr>par l'opéra</table>teur de la
+ </section>     balise.
+<section class="Ss">
+<h2 class="Ss" id='Type_31:_Correction_data'><a class='permalink' href='#Type_31:_Correction_data'>Type   31 : Données de </a></h2>correction
+<p class="Pp">Un ou plusieurs objets satellite GLONASS suivent l'en-tête pour les
+    messages de type 1 ou
+  <br/>
+  type 9. Voici le format </p>:
+<p class="Pp"><b>Tableau 28. Objet </b></p>satellite
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>N</b></td>om
+    <td style="vertical-align: top;"><b>Ty</b></td>pe
+    <td style="vertical-align: top;"><b>Descrip</b></td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">id</td>ent
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Le numéro PRN du satellite pour lequel
+      ceci sont des données de correction. Voir « PRN, GNSS ID, SV ID, AND SIG
+    </td>  </tr>ID »
+  <tr>
+    <td style="vertical-align: top;">ud</td>re
+    <td style="vertical-align: top;">enti</td>er
+    <td style="vertical-align: top;">Erreur de portée différentielle u</td>tilisateur (0-3). Voir
+      le </tr>tableau suivant pour les valeurs.
+  <tr>
+    <td style="vertical-align: top;">cha</td>nge
+    <td style="vertical-align: top;">bool</td>éen
+    <td style="vertical-align: top;">Bit de cha</td>ngement d'é</tr>phéméride.
+  <tr>
+    <td style="vertical-align: top;">t</td>od
+    <td style="vertical-align: top;">entier non </td>signé
+    <td style="vertical-align: top;">Compteur de périodes de</td> 30 secondes depuis le </tr>début
+      de l'heure.
+  <tr>
+    <td style="vertical-align: top;">p</td>rc
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">L'erreur de pseudo-distance en mètres pour ce
+      satellite te</td>lle que mesurée par le récepteur de référence de la balise à
+    </tr>  l'époque indiquée par le z_count dans l'enregistrement parent.
+  <tr>
+    <td style="vertical-align: top;">r</td>rc
+    <td style="vertical-align: top;">ré</td>el
+    <td style="vertical-align: top;">Le taux de variation de l'erreur de pseudo-distance en
+      mètres/seconde pour ce satel</td>lite tel que mesuré par le récepteur de
+      référence de la balise à l'époque indiquée </tr>par le champ z_count dans
+      l'enregistrement parent. Ceci est utilisé pour calculer </table>les erreurs de
+      pseudo-distance à d'autres époques, si le récepteur GPS en a besoin.
+<p class="Pp">Voici un exemple </p>:
+<div class="Bd-indent">
+<pre>{"class":"RTCM2","type":31,"station_id":652,"zcount":1642.2,
+    "seqnum":0,"length":14,"station_health":6,
+    "satellites":[
+        {"ident":5,"udre":0</pre>,"change":false,"tod":0,"prc":132.360,"rrc":0.000},
+        {"ident":15,"udre":0,"change":false,"tod":0,"prc":134.840,"rrc":0.002},
+        {"ident":14,"</div>udre":0,"change":false,"tod":0,"prc":141.520,"rrc":0.000},
+        {"ident":6,"udre":0,"change":false,"tod":0,"prc":127.000,"rrc":0.000},
+        {"ident"</section>:21,"udre":0,"change":false,"tod":0,"prc":128.780,"rrc":0.000},
+        {"ident":22,"udre":0,"change":false,"tod":0,"prc":125.260,"rrc":0.002},
+        {</section>"ident":20,"udre":0,"change":false,"tod":0,"prc":117.280,"rrc":-0.004},
+        {"ident":16,"udre":0,"change":false,"tod":17,"prc":113.460,"rrc":0.018}
+]}
+<section class="Sh">
+<h1 class="Sh" id='RTCM3_DUMP_FORMAT'><a class='permalink' href='#RTCM3_DUMP_FORMAT'>FORMAT DE DUMP </a></h1>RTCM3
+<p class="Pp">La prise en charge du dump de RTCM104v3 est incomplète et</p> boguée. Ne
+    tentez pas de l'utiliser en production ! T</section>oute personne intéressée devrait
+    lire le code source.
+<section class="Sh">
+<h1 class="Sh" id='AIS_DUMP_FORMATS'><a class='permalink' href='#AIS_DUMP_FORMATS'>FORMATS DE DUMP </a></h1>AIS
+<p class="Pp">La prise en charge de l'AIS est une extension. Elle peut ne pas être
+    présente si votre instance de <b>gpsd </b>a été construite avec un ensemble de fonctionnalités </p>restreint.
+<p class="Pp">Les paquets AIS sont dumpés en tant qu'objets JSON avec la classe "AIS".
+    Chaque objet de rapport AIS contient un champ "type" donnant le type de
+    message AIS et un champ "scaled" indiquant si le reste des champs est
+    dumpé sous forme mise à l'échelle ou non. (Ceux-ci seront émis avant tout
+    champ spécifique au type.) Il contiendra également un champ "device"
+    nommant la source de données. Les autres champs ont les noms et types
+    tels que spécifiés dans le document AIVDM/AIVDO Protocol Decoding sur le
+    site web du projet GPSD ; chaque tableau de champs de message peut être
+    directement interprété comme une spécification pour les membres du type
+    d'objet JSON </p>correspondant.
+<p class="Pp">Par défaut, certaines opérations de mise à l'échelle et de conversion
+    sont effectuées pour la sortie JSON. Les latitudes et longitudes sont
+    mises à l'échelle en degrés décimaux plutôt que dans l'unité native AIS
+    de 1/10000e de minute d'arc. Les vitesses des navires (mais pas des
+    aéronefs) sont mises à l'échelle en nœuds plutôt qu'en dixièmes de nœud.
+    La vitesse de rotation peut apparaître comme "nan" si elle est
+    indisponible, ou comme l'une des chaînes "fastright" ou "fastleft" si
+    elle est hors de la plage de codage AIS ; sinon, elle est rétro-mappée
+    quadratiquement sur le numéro du capteur de rotation en degrés par minute.
+    Les tirants d'eau des navires sont convertis en mètres décimaux plutôt
+    qu'en décimètres AIS natifs. Diverses autres conversions de mise à
+    l'échelle sont décrites dans « AIVDM/AIVDO Protocol Decoding </p>»</section>.
+<section class="Sh">
+<h1 class="Sh" id='SUBFRAME_DUMP_FORMATS'><a class='permalink' href='#SUBFRAME_DUMP_FORMATS'>FORMATS DE DUMP </a></h1>SUBFRAME
+<p class="Pp">La prise en charge des sous-trames est toujours compilée dans <b>gpsd </b>mais de nombreux
+    GPS ne produisent pas de sortie subframe data or the <b>gpsd </b>driver may not support
+    </p>subframes.
+<p class="Pp">Subframe packets are dumped as JSON objects with class
+    "SUBFRAME". Each subframe report object contains a
+    "frame" field giving the subframe number, a "tSV" field
+    for the transmitting satellite number, a "TOW17" field containing
+    the 17 MSBs of the start of the next 12-second message and a
+    "scaled" field telling whether the remainder of the fields are
+    dumped in scaled or unscaled form. It will also contain a "device"
+    field naming the data source. Each SUBFRAME object will have a sub-object
+    specific to that subframe page type. Those sub-object fields have names and
+    types similar to those specified in the IS-GPS-200 document; each message
+    field table may be directly interpreted as a specification for the members
+    of the corresponding JSON object </p>type.
+<p class="Pp"><b>Table 29. SUBFRAME </b></p>object
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;">Na</td>me
+    <td style="vertical-align: top;">Alwa</td>ys?
+    <td style="vertical-align: top;">Ty</td>pe
+    <td style="vertical-align: top;">Descrip</td>ti</tr>on
+  <tr>
+    <td style="vertical-align: top;">cl</td>ass
+    <td style="vertical-align: top;">Y</td>es
+    <td style="vertical-align: top;">str</td>ing
+    <td style="vertical-align: top;">Fixed:</td> "SUB</tr>FRAME"
+  <tr>
+    <td style="vertical-align: top;">dev</td>ice
+    <td style="vertical-align: top;">Y</td>es
+    <td style="vertical-align: top;">str</td>ing
+    <td style="vertical-align: top;">Name of th</td>e originati</tr>ng device.
+  <tr>
+    <td style="vertical-align: top;">fr</td>ame
+    <td style="vertical-align: top;">N</td>o
+    <td style="vertical-align: top;">inte</td>ger
+    <td style="vertical-align: top;">Fram</td>e nu</tr>mber
+  <tr>
+    <td style="vertical-align: top;">gns</td>sId
+    <td style="vertical-align: top;">Y</td>es
+    <td style="vertical-align: top;">inte</td>ger
+    <td style="vertical-align: top;">Constellation o</td>f transmitting
+</tr>      satellite
+  <tr>
+    <td style="vertical-align: top;">sca</td>led
+    <td style="vertical-align: top;">Y</td>es
+    <td style="vertical-align: top;">bool</td>ean
+    <td style="vertical-align: top;">True is</td> values</tr> scaled
+  <tr>
+    <td style="vertical-align: top;">t</td>SV
+    <td style="vertical-align: top;">Y</td>es
+    <td style="vertical-align: top;">inte</td>ger
+    <td style="vertical-align: top;">ID of transmi</td>tting satell</tr>ite (Not PRN)
+  <tr>
+    <td style="vertical-align: top;">TO</td>W17
+    <td style="vertical-align: top;">N</td>o
+    <td style="vertical-align: top;">inte</td>ger
+    <td style="vertical-align: top;">Type 17 b</td>its of the</tr> next GPS</table> Time Of
+ </section>     Week
+<section class="Sh">
+<h1 class="Sh" id='PRN,_GNSS_ID,_SV_ID,_AND_SIG_ID'><a class='permalink' href='#PRN,_GNSS_ID,_SV_ID,_AND_SIG_ID'>PRN,   GNSS ID, SV ID, AND SIG </a></h1>ID
+<p class="Pp">This JSON refers to individual satellites by PRN, and by the
+    combinarion
+  <br/>
+  of GNSS id and SV </p>id.
+<p class="Pp">Beware. What most people think of as the PRN is not the PRN that
+    each constellation (GPS, GLONASS, BeiDou, etc.) uses in its
+  </p>documentation.
+<p class="Pp">Each constellation numbers its PRNs starting from 1. GPS reserves
+    all PRNs up to 1023. What most users think of as the PRN is what NMEA calls
+    a PRN, which is not the native, standardized, PRN. NMEA PRNs started out as
+    the GPS PRNs, but when other constellations became available, GNSS receiver
+    vendors overloaded that NMEA field. Without standardizing, or coordinating,
+    between themselves. Some receivers use different PRN mappings depending on
+    runtime configuration. Don’t expect any specificity in an NMEA PRN,
+    there is no consensus </p>meaning.
+<p class="Pp">To leave this mess behind, receiver vendors now refer to each
+    satellite by its constellation (GPS, GLONASS, etc.), and its PRN (starting
+    at 1) within that </p>constellation.
+<p class="Pp"><b>gpsd </b>refers to each constellation by its gnssid, and each
+    satellite within that constellation by its native PRN (svid). Of course
+    there is no standardization, or consensus, on these ids, so <b>gpsd
+</b>    decided on its own. These are loosely based on the u-blox </p>usage:
+<p class="Pp"><b>Table 30. gnssid and svid </b></p>table
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Constella</b></td>tion
+    <td style="vertical-align: top;"><b>A</b></td>br
+    <td style="vertical-align: top;"><b>gns</b></td>sid
+    <td style="vertical-align: top;"><b>svid (</b></td>nativ</tr>e PRN)
+  <tr>
+    <td style="vertical-align: top;">Bei</td>Dou
+    <td style="vertical-align: top;">B</td>D
+    <td style="vertical-align: top;"></td>3
+    <td style="vertical-align: top;">1-</td>3</tr>7
+  <tr>
+    <td style="vertical-align: top;">Gali</td>leo
+    <td style="vertical-align: top;">G</td>A
+    <td style="vertical-align: top;"></td>2
+    <td style="vertical-align: top;">1-</td>3</tr>6
+  <tr>
+    <td style="vertical-align: top;">GLON</td>ASS
+    <td style="vertical-align: top;">G</td>L
+    <td style="vertical-align: top;"></td>6
+    <td style="vertical-align: top;">1-32,</td> </tr>255
+  <tr>
+    <td style="vertical-align: top;">G</td>PS
+    <td style="vertical-align: top;">G</td>P
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">1-</td>3</tr>2
+  <tr>
+    <td style="vertical-align: top;">IM</td>ES
+    <td style="vertical-align: top;">I</td>M
+    <td style="vertical-align: top;"></td>4
+    <td style="vertical-align: top;">1-</td>1</tr>0
+  <tr>
+    <td style="vertical-align: top;">NavIC </td>(IRNSS)
+    <td style="vertical-align: top;">I</td>R
+    <td style="vertical-align: top;"></td>7
+    <td style="vertical-align: top;">1-</td>1</tr>1
+  <tr>
+    <td style="vertical-align: top;">QZ</td>SS
+    <td style="vertical-align: top;">Q</td>Z
+    <td style="vertical-align: top;"></td>5
+    <td style="vertical-align: top;">1</td>-</tr>7
+  <tr>
+    <td style="vertical-align: top;">SB</td>AS
+    <td style="vertical-align: top;">S</td>B
+    <td style="vertical-align: top;"></td>1
+    <td style="vertical-align: top;">12</td>0-</tr>1</table>58
+<p class="Pp">Of course the story does not end there. Modern satellites transmit
+    on
+  <br/>
+  more than one band (L1, L2, L5, etc.) and using more than one signal
+    modulation (C/a, CM, CL. P, etc.). So a GPS satellellite (gnssid = 0), with
+    a native PRN of 3 (svid = 3) may transmitting on L2 and L5 using several
+    modulations. Each of those may be reported individually by your receiver, by
+    Gisnal ID (sigid) with it own data on Health, SNR, Used, </p>etc.
+<p class="Pp">If you have a multi band receiver, and really want to understand
+    its sigids, then prepare to spend a lot of quality time with their
+    documentation. As new receivers appear, with new bands and modulations, it
+    is impossible to keep up. Here is a table of some sigids known to
+    <b>gps</b>d</p>:
+<p class="Pp"><b>Table 31. sigid </b></p>table
+<table class="tbl" border="1" style="border-style: solid;">
+  <tr>
+    <td style="vertical-align: top;"><b>Constella</b></td>tion
+    <td style="vertical-align: top;"><b>si</b></td>gid
+    <td style="vertical-align: top;"><b>sign</b></td>al </tr>name
+  <tr>
+    <td style="vertical-align: top;">Bei</td>Dou
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">B1</td>I </tr>D1
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>1
+    <td style="vertical-align: top;">B1</td>I </tr>D2
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>2
+    <td style="vertical-align: top;">B2</td>I </tr>D1
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>3
+    <td style="vertical-align: top;">B2</td>I </tr>D2
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>7
+    <td style="vertical-align: top;">B</td>2</tr>a
+  <tr>
+    <td style="vertical-align: top;">Gali</td>leo
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">E</td>1 </tr>C
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>1
+    <td style="vertical-align: top;">E</td>1 </tr>B
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>3
+    <td style="vertical-align: top;">E5</td> </tr>aI
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>4
+    <td style="vertical-align: top;">E5</td> </tr>aQ
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>5
+    <td style="vertical-align: top;">E5</td> </tr>bl
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>6
+    <td style="vertical-align: top;">E5</td> </tr>bQ
+  <tr>
+    <td style="vertical-align: top;">GLON</td>ASS
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">L1</td> </tr>OF
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>2
+    <td style="vertical-align: top;">L2</td> </tr>OF
+  <tr>
+    <td style="vertical-align: top;">G</td>PS
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">L1</td>C/</tr>A
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>3
+    <td style="vertical-align: top;">L2</td> </tr>CL
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>4
+    <td style="vertical-align: top;">L2</td> </tr>CM
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>6
+    <td style="vertical-align: top;">L</td>5 </tr>I
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>7
+    <td style="vertical-align: top;">L</td>5 </tr>Q
+  <tr>
+    <td style="vertical-align: top;">IR</td>NSS
+    <td style="vertical-align: top;">?</td>?
+    <td style="vertical-align: top;"></td>
+  </tr>
+  <tr>
+    <td style="vertical-align: top;">QZ</td>SS
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">L1</td>C/</tr>A
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>4
+    <td style="vertical-align: top;">L2</td> </tr>CM
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>5
+    <td style="vertical-align: top;">L2</td> </tr>CL
+  <tr>
+    <td style="vertical-align: top;">SB</td>AS
+    <td style="vertical-align: top;"></td>0
+    <td style="vertical-align: top;">L1</td>C/</tr>A
+  <tr>
+    <td style="vertical-align: top;"></td>
+    <td style="vertical-align: top;"></td>?
+    <td style="vertical-align: top;">L</td></tr>5</table></section>I
+<section class="Sh">
+<h1 class="Sh" id='READING'><a class='permalink' href='#READING'>READIN</a></h1>G
+<p class="Pp">Reading the raw JSON can be tedious. You can pretty print, and
+  <br/>
+  colorize, your JSON with [jq] to make reading easier. Using <b>jq </b>to
+    pretty print a JSON file can be as simple </p>as:
+<div class="Bd-indent">
+<pre>$ jq .</pre>  GPS</div>D.json
+<p class="Pp">To grab 10 seconds of live <b>gpsd </b>JSON, and pretty print
+  </p>it:
+<div class="Bd-indent">
+<pre>$ gpspip</pre>e -w -x 1</div>0 | jq .
+<p class="Pp">If you only want to see the TPV </p>messages:
+<div class="Bd-indent">
+<pre>$ gpspipe</pre> -w -x 10</div> | fgrep T</section>PV | jq .
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'&gt;VOIR   </a></h1>AUSSI
+<p class="Pp"><a href='/man/gpsd.8.en'>gpsd(8)</a>, <a href='/man/libgps.3.en'>libgps(3)</a>, <a href='/man/libgpsmm.3.en'>libgpsmm(3)</a>,
+  <a href='/man/jq.1.en'>jq</a></p>(</section>1)
+<section class="Sh">
+<h1 class="Sh" id='RESOURCES'><a class='permalink' href='#RESOURCES'>RESSOURCE</a></h1>S
+<p class="Pp"><b>Site web du projet </b>: <i></i> <a href='https://gpsd.io/'>https://gpsd.</a></p>io/
+<p class="Pp">
+  <br/>
+   [RFC 2783] : <i></i> <a href='https://datatracker.ietf.org/doc/html/rfc2783'>https://datatracker.ietf.org/doc/html/rfc2</a>783
+  <br/>
+  Pulse-Per-Second API for UNIX-like Operating </p>Systems
+<p class="Pp">
+  <br/>
+   [RFC 7159] : <i></i> <a href='https://datatracker.ietf.org/doc/html/rfc7159'>https://datatracker.ietf.org/doc/html/rfc7</a>159
+  <br/>
+  The JavaScript Object Notation (JSON) Data Interchange </p>Format
+<p class="Pp">
+  <br/>
+   [jq] : <i></i> <a href='https://github.com/stedolan/jq'>https://github.</a></p>com/stedolan/jq
+<p class="Pp">: <i></i> <a href='https://maia.usno.navy.mil/ser7/tai-utc.dat'>https://maia.usno.navy.mil/ser7/tai-utc.dat table </a>USNO
+    des corrections
+  <br/>
+  UTC </p>vers </section>TAI.
+<section class="Sh">
+<h1 class="Sh" id='COPYING'><a class='permalink' href='#COPYING'>COPIED</a></h1>R
+<p class="Pp">Ce fichier est Copyright par le projet GPSD
+  <br/>
+  SPDX-License</p>-Identifier: </section>BSD-2-clause
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEU</a></h1>R
+<p class="Pp">Eric</p> S. </section>Ray</div>mond
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-11</td>-08
+    <td class="foot-os">GPS</td>D, </tr>Ver</table>sio</section>n 3</article>.27
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le </p>paquet :
+    <dl>
+        <dt>Nom du </dt>paquet :
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/gpsd/">extra</a></dd>/gpsd
+        <dt>Version </dt>:
+        <dd>3.</dd>27-1
+        <dt>Amont </dt>:
+        <dd><a href="https://gpsd.gitlab.io/gpsd/">https://gpsd.gitlab.</a></dd>io/gpsd/
+        <dt>Licences </dt>:
+        <dd>B</dd>SD
+        <dt>Manuels </dt>:
+        <dd><a href="/listing/extra/gpsd/">/listing/extra</a></dd>/gps</dl>d</section>/
+
+<details>
+    <summary>Table des </summary>matières
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">N</a></li>OM
+        
+            <li><a href="#OVERVIEW">AP</a></li>ERÇU
+        
+            <li><a href="#CORE_PROTOCOL_RESPONSES">RÉPONSES DU </a></li>PROTOCOLE DE BASE
+        
+            <li><a href="#CORE_PROTOCOL_COMMANDS">COMMANDES DU </a></li>PROTOCOLE DE BASE
+        
+            <li><a href="#RTCM2">R</a></li>TCM2
+        
+            <li><a href="#RTCM3_DUMP_FORMAT">FORMAT DE </a></li>DUMP RTCM3
+        
+            <li><a href="#AIS_DUMP_FORMATS">FORMATS </a></li>DE DUMP AIS
+        
+            <li><a href="#SUBFRAME_DUMP_FORMATS">FORMATS DE DUMP </a></li>DE SOUS-TRAMES
+        
+            <li><a href="#PRN,_GNSS_ID,_SV_ID,_AND_SIG_ID">PRN, GNSS ID, SV </a></li>ID ET SIG ID
+        
+            <li><a href="#READING">LE</a></li>CTURE
+        
+            <li><a href="#SEE_ALSO">VOIR </a></li>AUSSI
+        
+            <li><a href="#RESOURCES">RES</a></li>SOURCES
+        
+            <li><a href="#COPYING">CO</a></li>PIEDR
+        
+            <li><a href="#AUTHOR">A</a></li>U</ul>TE</nav>U</details>R
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/gpsd_json.5.en.txt">t</a>xt, 
+        
+            <a href="/man/gpsd_json.5.en.raw"></a>r</p>a</nav></aside></main>w
+        <footer>
+            de manuel.
+            <p>Le site web est disponible selon les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0
+               , à </a>l'exception du contenu des p</p>ages de manuel, qui ont leu</footer>r propre licence
+          </body>     spécifiée dans le paque</html>t Arch Linux correspondant.

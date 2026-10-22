@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>rtcSetGeometryPointQueryFunction(4embree4) — Pages man Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">rtcSetGeometryPointQueryFunction.4embree4</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/embree/">embree</a></p>
+<p class="lic">Licences: Apache</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">rtcSetGeometryPointQueryFunction(3)</td>
+    <td class="head-vol">Embree Ray Tracing Kernels 4</td>
+    <td class="head-rtitle">rtcSetGeometryPointQueryFunction(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Ss">
+<h2 class="Ss" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h2>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>rtcSetGeometryPointQueryFunction - définit la fonction de rappel de requête de point
+  pour une géométrie
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h2>
+<dl class="Bl-tag">
+  <dt></dt>
+  <dd>
+    <pre>#include &lt;embree4/rtcore.h&gt;
+struct RTCPointQueryFunctionArguments
+{
+  // l'objet de requête de point (espace monde) passé en argument de rtcPointQuery.
+  struct RTCPointQuery* query;
+  // utilisé pour les données d'entrée/sortie utilisateur. Ne sera pas lu ni modifié en interne.
+  void* userPtr;
+  // ID de primitive et ID de géométrie de la primitive
+  unsigned int  primID;        
+  unsigned int  geomID;    
+  // le contexte avec la pile de transformations et d'ID d'instance
+  struct RTCPointQueryContext* context;
+  // facteur d'échelle indiquant si la transformation d'instance actuelle
+  // est une transformation de similarité.
+  float similarityScale;
+};
+typedef bool (*RTCPointQueryFunction)(
+  struct RTCPointQueryFunctionArguments* args
+);
+void rtcSetGeometryPointQueryFunction(
+  RTCGeometry geometry,
+  RTCPointQueryFunction queryFunc
+);
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h2>
+<p class="Pp">La fonction rtcSetGeometryPointQueryFunction enregistre une fonction de rappel de requête de point (argument queryFunc) pour la géométrie spécifiée (argument geometry).</p>
+<p class="Pp">Une seule fonction de rappel peut être enregistrée par géométrie et les appels ultérieurs écrasent la fonction de rappel précédemment définie. Passer NULL comme pointeur de fonction désactive la fonction de rappel enregistrée.</p>
+<p class="Pp">La fonction de rappel enregistrée est appelée par [rtcPointQuery] pour chaque primitive de la géométrie qui intersecte le domaine de requête de point correspondant. La fonction de rappel de type RTCPointQueryFunction reçoit un certain nombre d'arguments via la structure RTCPointQueryFunctionArguments. L'objet de requête est l'objet de requête de point d'origine passé à [rtcPointQuery], usrPtr est un pointeur arbitraire pour passer des entrées et stocker les résultats de la fonction de rappel. Les primID, geomID et context (voir [rtcInitPointQueryContext] pour les détails) peuvent être utilisés pour identifier les données de géométrie de la primitive.</p>
+<p class="Pp">Une RTCPointQueryFunction peut également être passée directement comme argument à [rtcPointQuery]. Dans ce cas, la fonction de rappel est appelée pour toutes les primitives de la scène qui intersectent le domaine de requête. Si une fonction de rappel est passée comme argument à [rtcPointQuery] et qu'une fonction de rappel (potentiellement différente) est définie pour une géométrie avec [rtcSetGeometryPointQueryFunction], les deux fonctions de rappel seront appelées et la fonction de rappel passée à [rtcPointQuery] sera appelée avant la fonction de rappel spécifique à la géométrie.</p>
+<p class="Pp">Si l'instanciation est utilisée, le paramètre similarityScale indique si la transformation d'instance actuelle (élément supérieur de la pile dans context) est une transformation de similarité ou non. Les transformations de similarité sont composées de translation, rotation et mise à l'échelle uniforme et si une matrice M définit une transformation de similarité, il existe un facteur d'échelle D tel que pour tous x,y: dist(Mx, My) = D * dist(x, y). Dans ce cas, le paramètre scalingFactor est ce facteur d'échelle D et sinon il est 0. Une échelle de similarité valide (similarityScale &gt; 0) permet de calculer les informations de distance dans l'espace d'instance et de mettre à l'échelle les distances dans l'espace monde (par exemple, pour mettre à jour le rayon de requête, voir ci-dessous) en divisant la distance dans l'espace d'instance par l'échelle de similarité. Si la transformation d'instance actuelle n'est pas une transformation de similarité (similarityScale est 0), le calcul de distance doit être effectué dans l'espace monde pour garantir l'exactitude. Dans ce cas, les transformations de l'instance vers le monde données avec le contexte doivent être utilisées pour transformer les données de primitive dans l'espace monde. Sinon, la position de requête peut être transformée dans l'espace d'instance, ce qui peut être plus efficace. S'il n'y a pas de transformation d'instance, l'échelle de similarité est de 1.</p>
+<p class="Pp">La fonction de rappel sera potentiellement appelée pour des primitives situées en dehors du domaine de requête pour deux raisons : Premièrement, la fonction de rappel est appelée pour toutes les primitives à l'intérieur d'un nœud feuille BVH car aucune donnée de géométrie des primitives n'est déterminée en interne et par conséquent les primitives individuelles ne sont pas élaguées (seulement leurs boîtes englobantes (agrégées)). Deuxièmement, en cas d'utilisation de transformations non similaires, le domaine de requête ellipsoïdal résultant (en espace d'instance) est approximé en interne par sa boîte englobante alignée sur les axes et par conséquent les nœuds internes qui n'intersectent pas le domaine d'origine peuvent intersecter la boîte englobante approximative, ce qui entraîne des appels de fonction inutiles. Dans tous les cas, les appels de fonction sont conservateurs, c'est-à-dire que si une primitive se trouve à l'intérieur du domaine de requête, un appel de fonction sera déclenché, mais l'inverse n'est pas nécessairement vrai.</p>
+<p class="Pp">Pour plus d'efficacité, le rayon de l'objet de requête peut être diminué (dans l'espace monde) à l'intérieur de la fonction de rappel pour améliorer l'élagage de la géométrie pendant le parcours du BVH. Si le rayon de la requête a été mis à jour, la fonction de rappel doit renvoyer true pour déclencher une mise à jour des informations de parcours internes. Augmenter le rayon ou modifier l'heure ou la position de la requête entraîne un comportement indéfini.</p>
+<p class="Pp">Dans la fonction de rappel, il est sûr d'appeler [rtcPointQuery] à nouveau, par exemple lors de l'implémentation manuelle de l'instanciation. Dans ce cas, la transformation de l'instance doit être empilée dans le contexte. Embree calculera en interne les informations de requête de point dans l'espace d'instance en utilisant l'élément supérieur de la pile dans le contexte lorsque [rtcPointQuery] est appelé.</p>
+<p class="Pp">Pour une implémentation de référence d'un parcours de points les plus proches sur des maillages triangulaires avec instanciation et instanciation définie par l'utilisateur, voir le tutoriel [ClosestPoint].</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h2>
+<p class="Pp">[rtcPointQuery], [rtcInitPointQueryContext]</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/embree/">extra/embree</a></dd>
+        <dt>Version :</dt>
+        <dd>4.4.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://embree.github.io/">https://embree.github.io/</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/embree/">/listing/extra/embree/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+<nav class="other-sections">
+    <p>Dans d'autres sections :</p>
+    <ul>
+    
+        <li><a href="/man/rtcSetGeometryPointQueryFunction.3embree3.fr">rtcSetGeometryPointQueryFunction(3embree3)</a></li>
+    
+    </ul>
+</nav>
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/rtcSetGeometryPointQueryFunction.4embree4.en.txt">txt</a>, 
+        
+            <a href="/man/rtcSetGeometryPointQueryFunction.4embree4.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

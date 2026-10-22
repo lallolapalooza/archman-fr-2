@@ -1,0 +1,503 @@
+
+
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>guestfs-internals(1) — Pages manuelles </title>d'Arch
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">guestfs-internals(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libguestfs/">libguestfs</a></p>
+
+        nt
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">guestfs-internal</td>s(1)
+    <td class="head-vol">Support de </td>virtualisation
+    <td class="head-rtitle">guestfs-internal</td>s(</tr>1</table>)
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NO</a></h1>M
+<p class="Pp">guestfs-internals - ar</p>chitecture et détails </section>internes de libguestfs
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTIO</a></h1>N
+<p class="Pp">Cette page manuelle est destinée aux développeurs qui souhaitent comprendre le </p>fonctionnement interne de libguestfs. Il s'agit simplement d'une description du </section>fonctionnement actuel de libguestfs, qui peut changer à tout moment à l'avenir.
+<section class="Sh">
+<h1 class="Sh" id='ARCHITECTURE'><a class='permalink' href='#ARCHITECTURE'>ARCHITECTUR</a></h1>E
+<p class="Pp">En interne, libguestfs est implémenté en exécutant une appliance (un type spécial de petite machine virtuelle) utilisant <a href='/man/qemu.1.en'>qemu(1).</a> Qemu s'exécute en tant que processus enfant du programme </p>principal.
+<pre>┌───────────────────┐
+│ Programme principal│
+│                   │
+│                   │           processus enfant / appliance
+│                   │          ┌──────────────────────────┐
+│                   │          │ qemu                     │
+├───────────────────┤   RPC    │      ┌─────────────────┐ │
+│ libguestfs  ◀╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍▶ guestfsd        │ │
+│                   │          │      ├─────────────────┤ │
+└───────────────────┘          │      │ Noyau Linux     │ │
+                               │      └────────┬────────┘ │
+                               └───────────────│──────────┘
+                                               │
+                                               │ virtio-scsi
+                                        ┌──────┴──────┐
+                                        │  Périphérique│
+                                        │  ou image de │
+                                        │  disque      │
+                                        </pre>└─────────────┘
+<p class="Pp">La bibliothèque, liée au programme principal, crée le processus enfant et donc l'appliance dans la fonction "guestfs_launch" de
+    <a href='/man/guestfs.3.en'>gues</a>tfs</p>(3).
+<p class="Pp">À l'intérieur de l'appliance se trouvent un noyau Linux et une pile complète d'outils en espace utilisateur (tels que LVM et les programmes ext2) et un petit démon de contrôle appelé "guestfsd". La bibliothèque communique avec "guestfsd" à l'aide d'appels de procédures distantes (RPC). Il existe une correspondance principalement un-à-un entre les appels d'API de libguestfs et les appels RPC au démon. Enfin, les images de disque sont attachées au processus qemu, qui traduit les accès aux périphériques effectués par le noyau Linux de l'appliance en accès à </p>l'image.
+<p class="Pp">Un malentendu courant consiste à penser que l'appliance « est » la machine virtuelle. Bien que l'image de disque à laquelle vous êtes attaché puisse également êt</p>re utilisée par une certaine machine virtuelle, libguestfs ne le sait pas et ne s'en soucie pas. (Mais vous vous en soucierez si à la fois le processus qemu de l</section>ibguestfs et votre machine virtuelle essaient de mettre à jour l'image de disque en même temps, car cela entraîne généralement une corruption massive du disque).
+<section class="Sh">
+<h1 class="Sh" id='STATE_MACHINE'><a class='permalink' href='#STATE_MACHINE'>MACHINE   </a></h1>D'ÉTATS
+<p class="Pp">libguestfs utilise une machine d'états pour modéliser le processus enfant </p>:
+<pre>               |
+guestfs_create / guestfs_create_flags
+               |
+               |
+           ____V_____
+          /          \
+          |  CONFIG  |
+          \__________/
+             ^   ^  \
+             |    \  \ guestfs_launch
+             |    _\__V______
+             |   /           \
+             |   | LAUNCHING |
+             |   \___________/
+             |       /
+             |  guestfs_launch
+             |     /
+           __|____V
+          /        \
+          | READY  |
+          </pre>\________/
+<p class="Pp">Les transitions normales sont (1) CONFIG (lorsque le descripteur est créé, mais qu'il n'y a pas de processus enfant), (2) LAUNCHING (lorsque le processus enfant démarre), (3) READY signifiant que l'appliance est opérationnelle, que des actions peuvent être émises vers le processus enfant et exécutées par </p>celui-ci.
+<p class="Pp">L'invité peut être tué par "guestfs_kill_subprocess" de
+    <a href='/man/guestfs.3.en'>guestfs(3),</a> ou peut mourir de manière asynchrone à tout moment (par exemple en raison d'une erreur interne), ce qui provoque le retour de l'état à </p>CONFIG.
+<p class="Pp">Les commandes de configuration pour qemu telles que "guestfs_set_path" de <a href='/man/guestfs.3.en'>guestfs(3) ne </a>peuvent être émises que lorsque l'on se trouve dans l'état </p>CONFIG.
+<p class="Pp">L'API propose un appel qui passe de CONFIG à travers LAUNCHING jusqu'à READY. "guestfs_launch" de <a href='/man/guestfs.3.en'>guestfs(3) se </a>bloque jusqu'à ce que le processus enfant soit prêt (READY) à accepter des commandes (ou jusqu'à une certaine erreur ou expiration du délai). "guestfs_launch" de <a href='/man/guestfs.3.en'>guestfs(3)</a> déplace interne l'état de CONFIG à LAUNCHING pendant son </p>exécution.
+<p class="Pp">Les actions de l'API telles que "guestfs_mount" de <a href='/man/guestfs.3.en'>guestfs(3) </a>ne peuvent être émises que lorsque l'on se trouve dans l'état READY. Ces appels d'API se bloquent en attendant que la commande soit exécutée. Il n'existe pas de versions non bloquantes, ni de moyen d'émettre plus d'une commande par descripteur à la </p>fois.
+<p class="Pp">Enfin, le processus enfant renvoie des messages asynchrones au </p>programme principal, tels que les messages du journal du noyau</section>. Vous pouvez enregistrer un rappel pour recevoir ces messages.
+<section class="Sh">
+<h1 class="Sh" id='INTERNALS'><a class='permalink' href='#INTERNALS'>DÉTAILS   </a></h1>INTERNES
+<section class="Ss">
+<h2 class="Ss" id='APPLIANCE_BOOT_PROCESS'><a class='permalink' href='#APPLIANCE_BOOT_PROCESS'>PROCESSUS   DE   DÉMARRAGE   DE   </a></h2>L'APPLIANCE
+<p class="Pp">Ce processus a évolué et continue d'évoluer. La description ici ne correspond qu'à la version actuelle de libguestfs et est fournie à titre informatif </p>uniquement.
+<p class="Pp">Afin de suivre les étapes décrites ci-dessous, activez le débogage de libguestfs (définissez la variable d'environnement
+    <span class="Li">"LIBGUE</span>STFS_DEB</p>UG=1").
+<dl class="Bl-tag">
+  <dt id="Create"><a class="permalink" href="#Create">Créer   </a></dt>l'appliance
+  <dd><span class="Li">"supermin --build" </span>est invoqué pour créer le noyau, un petit initrd et l'appliance.
+    <p class="Pp">L'appliance est mise en cache dans
+        <i>/var/tmp/.guestfs-&lt;UID&gt;</i> (ou dans un autre répertoire si
+        <span class="Li">"LIBGUESTFS_CACHEDIR" </span>ou
+        <span class="Li">"TMPDIR" </span>sont </p>définis).
+    <p class="Pp">Pour une description complète de la création et de la mise en cache de l'appliance, lisez la page man <a href='/man/supermin.1.en'>sup</a>erm</p>in(</dd>1).
+  <dt id="Start"><a class="permalink" href="#Start">Démarrer   qemu   et   amorcer   le   </a></dt>noyau
+  <dd>qemu est invoqué pour amorcer le </dd>noyau.
+  <dt id="Run"><a class="permalink" href="#Run">Exécuter   </a></dt>l'initrd
+  <dd><span class="Li">"supermin --build" </span>construit un petit initrd. L'initrd n'est pas l'appliance. Le but de l'initrd est de charger suffisamment de modules noyau pour que l'appliance elle-même puisse être montée et démarrée.
+    <p class="Pp">L'initrd est une archive cpio appelée
+        <i>/var/tmp/.gues</i>tfs-&lt;UID&gt;/appli</p>ance.d/initrd.
+    <p class="Pp">Lorsque l'initrd a démarré, vous verrez des messages indiquant que les modules noyau sont chargés, similaires </p>à ceci :
+        <pre>supermin: ext2 mini initrd starting up
+supermin:</pre> mounting /sys
+supermin: internal insmod libcrc</dd>32c.ko
+supermin: internal insmod crc32c-intel.ko
+  <dt id="Find"><a class="permalink" href="#Find">Trouver   et   monter   le   périphérique   de   </a></dt>l'appliance
+  <dd>L'appliance est un fichier creux contenant un système de fichiers ext2 qui contient un système d'exploitation Linux familier (bien que réduit en taille). Il serait normalement appelé
+      <i>/var/tmp/.guestfs-&lt;UID&gt;/appliance.</i>d/root.
+    <p class="Pp">Le les disques réguliers inspectés par libguestfs sont les premiers
+        dispositifs exposés par qemu (par <i>ex. co</i>mme
+/de</p>v/vda)
+    <p class="Pp">.
+Le dernier disque ajouté à qemu est l'appliance lui-même (par ex.
+        <i>/dev/vdb </i>s'il n'y avait qu'un seul disque régulier).
+</p>Ainsi,
+    <p class="Pp">la tâche finale de l'initrd est de localiser le disque de
+        l'appliance, de le monter et de basculer la racine dans l'appliance, puis <i>d'exécuter
+</i>/init
+        depuis </p>l'appliance.
+    <p class="Pp">Si cela fonctionne correctement, vous verrez des messages </p>tels que :
+        <pre>supermin: picked /sys/block/vdb/dev as root device
+supermin: creating /dev/root as block special 252:16
+supermin: mounting new root on /root
+supermin: chroot
+Starting /init script ...
+Notez que
+"Starting </pre>/init
+    <p class="Pp">script <span class="Li">..." indique que le script d'</span>initialisation de l'appliance</p> est maintenant
+        en c</dd>ours d'exécution.
+Initialiser
+  <dt id="Initialize"><a class="permalink" href="#Initialize">l'
+    appliance
+</a></dt>L'appliance
+  <dd>s'initialise maintenant lui-même. Cela implique le démarrage
+      de certains processus comme
+"udev", l'affichage <span class="Li">éventuel
+</span>      d'informations de débogage, et enfin l'exécution du démon (
+"guestfsd").
+Le démon<span class="Li">Final</span>emen</dd>t, le
+  <dt id="The"><a class="permalink" href="#The">démon (
+</a></dt>"guestfsd")
+  <dd>s'exécute
+      à<span class="Li">l'intérieur </span>de l'appliance. S'il s'exécute, vous devriez voir :
+verbose daemon enabled
+Le
+        <pre>démon s'attend à voir un </pre>port
+    <p class="Pp">virtio-serial nommé exposé
+        par qemu et connecté à l'autre extrémité à la bibliothèque.
+Le démon se connecte à ce port (et donc </p>à la
+    <p class="Pp">bibliothèque)
+        et envoie un message de quatre octets
+"GUESTFS_LAUNCH_FLAG", ce qui initie
+        le protocole
+        <span class="Li">de communication</span> (voir ci-dessou</p>s).
+PROTOCOLE DE</dd>   COMMUNICATION
+</dl>Ne comptez pas s</section>ur l'utilisation
+<section class="Ss">
+<h2 class="Ss" id='COMMUNICATION_PROTOCOL'><a class='permalink' href='#COMMUNICATION_PROTOCOL'>directe de ce protocole. </a></h2>Cette
+<p class="Pp">section
+    documente son fonctionnement actuel, mais il peut changer à tout moment.
+Le protocole utilisé pour communiquer entre la </p>bibliothèque
+<p class="Pp">et le démon
+    s'exécutant dans la machine virtuelle qemu est un mécanisme RPC simple construit
+    au-dessus de XDR (RFC 1014, RFC 1832, RFC 4506).
+Le format détaillé des structures se trouve </p>dans
+<p class="Pp">common/protocol/guestfs_protocol.x (note : ce fichier
+    <i>est automatiquement
+    généré).
+Il </i>y a deux grands cas, les fonctions ordinaires qui </p>n'ont
+<p class="Pp">aucun paramètre
+"FileIn" et
+"FileOut", qui sont gérées
+    avec des <span class="Li">messages de </span>requête/réponse
+    <span class="Li">très </span>simples. Ensuite, il y a les fonctions qui ont
+    des paramètres
+"FileIn" ou
+"FileOut", qui utilisent les mêmes
+    messages de <span class="Li">requête et </span>de réponse,
+    <span class="Li">mais qui </span>peuvent aussi être suivis par des fichiers envoyés
+    en utilisant un encodage par morceaux (chunked).
+FONCTIONS ORDINAIRES (SANS PARAMÈTRES </p>FILEIN/FILEOUT)
+<p class="Pp"><i>Pour les fonctions ordinaires, le </i></p>message
+<p class="Pp">de requête est :
+longueur totale (en-tête + </p>arguments,
+<pre>mais sans inclure le mot de longueur lui-même)
+struct guestfs_message_header (encodé en XDR)
+struct guestfs_&lt;foo&gt;_args (encodé en XDR)
+Le champ de longueur totale permet au </pre>démon
+<p class="Pp">d'allouer un tampon de taille fixe
+    dans lequel il aspire le reste du message. Par conséquent, la longueur
+    totale est limitée à
+"GUESTFS_MESSAGE_MAX"
+    octets (actuellement 4 Mo), ce <span class="Li">qui signifie que la </span>taille effective de toute requête est
+    limitée à une valeur inférieure à cette taille.
+Notez également que beaucoup de fonctions </p>ne
+<p class="Pp">prennent aucun argument, au
+   quel cas la structure
+"guestfs_
+foo
+_args"
+    est complètement
+    <span class="Li">omise.</span><span class="Li"><i>foo</i></span><span class="Li">L'en-tête </span>contient le numéro de </p>procédure
+<p class="Pp">(
+"guestfs_proc") qui permet au récepteur<span class="Li">de savoir quel </span>type de structure d'arguments attendre, ou aucune.
+Pour les fonctions qui prennent des </p>arguments
+<p class="Pp">facultatifs, les arguments facultatifs
+    sont encodés dans la structure
+"guestfs_
+foo
+_args"
+    de la
+    <span class="Li">même manière</span><span class="Li"><i>q</i></span><span class="Li">ue les </span>arguments ordinaires. Un masque de bits dans l'en-tête
+    indique quels arguments facultatifs sont significatifs. Le masque de bits est également
+    vérifié pour voir s'il contient des bits définis que le démon ne connaît pas
+    (par ex. si plus d'arguments facultatifs ont été ajoutés dans une version ultérieure de la
+    bibliothèque), et cela provoque le rejet de l'appel.
+Le message de </p>réponse
+<p class="Pp">pour les fonctions ordinaires est :
+</p>longueur
+<pre>totale (en-tête + ret,
+     mais sans inclure le mot de longueur lui-même)
+struct guestfs_message_header (encodé en XDR)
+struct guestfs_&lt;foo&gt;_ret (encodé en XDR)
+Comme ci-dessus, </pre>la
+<p class="Pp">structure
+"guestfs_
+    <span class="Li">foo
+_ret"</span><span class="Li"><i>foo</i></span><span class="Li">peut </span>être complètement omise pour les fonctions qui ne renvoient
+    aucune valeur formelle.
+Comme </p>ci-dessus,
+<p class="Pp">la longueur totale de la réponse est limitée à
+"GUESTFS_MESSAGE_MAX".
+    <span class="Li">Dans l</span>e cas</p> d'une
+<p class="Pp">erreur, un drapeau est défini dans l'en-tête, et le
+    message de réponse est légèrement modifié :
+</p>longueur
+<pre>totale (en-tête + error,
+     mais sans inclure le mot de longueur lui-même)
+struct guestfs_message_header (encodé en XDR)
+struct guestfs_message_error (encodé en XDR)
+La </pre>structure
+<p class="Pp">"guestfs_message_error" <span class="Li">contient le message </span>d'erreur sous forme de chaîne.
+FONCTIONS QUI ONT </p>DES
+<p class="Pp"><i>PARAMÈTRES FILEIN
+Un paramètre
+</i></p>"FileIn"
+<p class="Pp">i <span class="Li">ndique
+ </span>   que nous transférons un fichier
+vers l'invité. Le <i>message </i>de requête normal est
+    envoyé (voir ci-dessus). Cependant, il est suivi d'une séquence de morceaux de fichier.
+longueur </p>totale
+<pre>(en-tête + arguments,
+     mais sans inclure le mot de longueur lui-même,
+     et sans inclure les morceaux)
+struct guestfs_message_header (encodé en XDR)
+struct guestfs_&lt;foo&gt;_args (encodé en XDR)
+séquence de morceaux pour le paramètre FileIn n°0
+séquence de morceaux pour le paramètre FileIn n°1 etc.
+La "séquence </pre>de
+<p class="Pp">morceaux" est :
+longueur du </p>morceau
+<pre>(sans inclure le mot de longueur lui-même)
+struct guestfs_chunk (encodé en XDR)
+longueur du morceau
+struct guestfs_chunk (encodé en XDR)
+  ...
+longueur du morceau
+struct guestfs_chunk (avec data.data_len == 0)
+Le morceau final a </pre>le
+<p class="Pp">champ
+"data_len" défini à zéro.
+    <span class="Li">De plus,
+  </span>  un drapeau est défini dans le morceau final pour indiquer soit une complétion réussie, soit
+    une annulation anticipée.
+Au moment de la </p>rédaction,
+<p class="Pp">il n'y a pas de fonctions qui ont plus d'un
+    paramètre FileIn. Cependant, cela est (théoriquement) supporté, en envoyant la
+    séquence de morceaux pour chaque paramètre FileIn l'une après l'autre (de gauche
+    à droite).
+La bibliothèque (l'expéditeur)
+et </p>le
+<p class="Pp">démon (le récepteur) peuvent <i>annuler </i>le transfert. La bibliothèque le fait en envoyant un morceau avec un drapeau
+    spécial défini pour indiquer l'annulation. Lorsque le démon voit cela, il annule
+    tout le RPC, n'envoie
+    [[70]] aucune réponse, et revient <i>à </i>la lecture de la requête
+    suivante.
+Le démon peut aussi </p>annuler.
+<p class="Pp">Il le fait en écrivant un mot spécial
+"GUESTFS_CANCEL_FLAG" dans la socket. La
+    <span class="Li">bibliothèque écoute cela </span>pendant le transfert, et si elle le reçoit, elle
+    annulera le transfert (elle envoie un morceau d'annulation). Le mot spécial est choisi de telle sorte
+    que même si l'annulation se produit juste à la fin du transfert (après que
+    la bibliothèque a fini d'écrire et a commencé à écouter la réponse),
+    le drapeau d'annulation "spurious" ne sera pas confondu avec le message
+    de réponse.
+Ce protocole permet le transfert de fichiers de </p>taille
+<p class="Pp">arbitraire (pas de limite
+    32 bits), et aussi de fichiers dont la taille n'est pas connue à l'avance (par ex. à partir de
+    tuyaux (pipes) ou de sockets). Cependant, les morceaux sont plutôt petits
+    (
+"GUESTFS_MAX_CHUNK_SIZE")<span class="Li">, de sorte que
+    ni la </span>bibliothèque ni le démon n'ont besoin de conserver beaucoup de données en </p>mémoire.
+<p class="Pp"><i>FONCTIONS QUI ONT DES PARAMÈTRES FILEOUT
+</i></p>Le
+<p class="Pp">protocole pour les paramètres FileOut est exactement le même que pour les
+    paramètres FileIn, mais avec les rôles du démon et de la </p>bibliothèque
+<pre>inversés.
+longueur totale (en-tête + ret,
+     mais sans inclure le mot de longueur lui-même,
+     et sans inclure les morceaux)
+struct guestfs_message_header (encodé en XDR)
+struct guestfs_&lt;foo&gt;_ret (encodé en XDR)
+séquence de morceaux pour le paramètre FileOut n°0
+séquence de morceaux pour le paramètre FileOut </pre>n°1
+<p class="Pp"><i>etc.
+</i></p>MESSAGE
+<p class="Pp">INITIAL
+Lorsque le démon démarre, il envoie un mot initial<span class="Li">(
+"GUESTFS_LAUNCH_FLAG")</span> qui indique
+    que l'invité et le démon sont en vie. C'est ce que "guestfs_launch"
+    dans
+guestfs(3) <a href='/man/guestfs.3.en'>attend.
+</a>MESSAGES </p>DE
+<p class="Pp"><i>NOTIFICATION DE   PROGRESSION
+Le </i></p>démon
+<p class="Pp">peut envoyer des messages de notification de progression à tout moment.
+    Ceux-ci sont distingués par le mot de longueur normal remplacé par
+    <span class="Li">"GUESTFS_PROGRESS_FLAG", suivi </span>d'un
+    message de progression de taille fixe.
+La </p>bibliothèque
+<p class="Pp">les transforme en rappels de progression (voir
+    "GUESTFS_EVENT_PROGRESS" dans
+guestfs(3) <a href='/man/guestfs.3.en'>) s'il y a </a>un
+    rappel enregistré, ou les jette sinon.
+Le démon limite </p>lui-même
+<p class="Pp">la fréquence des messages de progression qu'il envoie
+    (voir
+"daemon/proto.c: <span class="Li">notify_progress").
+    </span>Tous les appels ne génè</p>rent pas de messages de</section> progression.
+APPLIANCE
+<section class="Ss">
+<h2 class="Ss" id='FIXED_APPLIANCE'><a class='permalink' href='#FIXED_APPLIANCE'>FIXE
+Lorsque </a></h2>libguestfs
+<p class="Pp">(ou les outils libguestfs) sont exécutés, ils cherchent dans un chemin
+    à la recherche d'une appliance. Le chemin est intégré à libguestfs, ou peut être défini
+    en <span class="Li">utilisant la variable </span>d'environnement
+"LIBGUESTFS_PATH"</p>.
+<p class="Pp">Normalement, une appliance supermin est localisée sur ce chemin (voir
+    "SUPERMIN APPLIANCE" <a href='/man/supermin.1.en'>dans
+supermin(1)</a>). libguestfs
+    reconstruit celle-ci en une appliance complète en
+    <span class="Li">exécutant
+</span>"supermin</p> --build".
+<p class="Pp">Cependant, une "appliance fixe" plus simple peut aussi être utilisée.
+    libguestfs la détecte en cherchant un répertoire sur le chemin contenant
+    tous les fichiers </p>suivants
+<ul class="Bl-bullet">
+  <li><i>:
+</i></li>kernel
+  <li><i>init</i></li>rd
+  <li><i>ro</i></li>ot
+  <li><i>README.fixed </i>(notez qu'il <b>[[100]] </b>doit êtr</li>e présen</ul>t aussi)
+<p class="Pp">Si l'appliance fixe est trouvée, libguestfs saute supermin
+    complètement et exécute simplement la machine virtuelle (en utilisant qemu ou le backend
+    actuel, voir "BACKEND" <a href='/man/guestfs.3.en'>dans
+</a>guestfs(3)) avec le kernel,
+    l'initrd et le disque root de l'appliance </p>fixe.
+<p class="Pp">Ainsi, l'appliance fixe peut être utilisée lorsqu'une plateforme ou une distribution
+    Linux ne supporte pas supermin. Vous construisez l'appliance fixe sur une
+    plateforme qui supporte supermin en utilisant
+    <a href='/man/libguestfs-make-fixed-appliance.1.en'>libguestfs-make-fixe</a>d-appliance(1), la c</p>opiez ailleurs, et u</section>tilisez-la pour exéc</section>uter
+    libguestfs.
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR   </a></h1>AUSSI
+<p class="Pp"><a href='/man/guestfs.3.en'>guestfs(3)</a>, ng.1.en'&gt;guestfs-hacking(1)</a>,
+    <a href='/man/guestfs-examples.3.en'>guestfs-examples(3)</a>, <a href='/man/libguestfs-test-tool.1.en'>libguestfs-test-tool(1)</a>,
+    <a href='/man/libguestfs-make-fixed-appliance.1.en'>libguestfs-make-fixed-appliance(1)</a>, <a href='http://libguestfs.org/'>http:/</a>/libgu</p>estfs</section>.org/.
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTEUR</a></h1>S
+<p class="Pp">Richard W.M. Jones (<span class="Li">"rjones </span>at redha</p>t dot
+ </section>   com")
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>DROITS </a></h1>D'AUTEUR
+<p class="Pp">Copyright (C</p>) 2009-2025 </section>Red Hat Inc.
+<section class="Sh">
+<h1 class="Sh" id='LICENSE'><a class='permalink' href='#LICENSE'>LICENC</a></h1>E
+<p class="Pp">Cette bibliothèque est un logiciel libre ; vous pouvez la redistribuer et/ou
+    la modifier selon les termes de la GNU Lesser General Public License telle que
+    publiée par la Free Software Foundation ; soit la version 2 de la Licence,
+    soit (à votre choix) toute version </p>ultérieure.
+<p class="Pp">Cette bibliothèque est distribuée dans l'espoir qu'elle sera utile,
+    mais SANS AUCUNE GARANTIE ; sans même la garantie implicite de
+    COMMERCIALISATION ou d'ADÉQUATION À UN OBJET PARTICULIER. Voir la GNU Lesser
+    General Public License pour plus de </p>détails.
+<p class="Pp">Vous devriez avoir reçu une copie de la GNU Lesser General Public
+    Lic</p>ense avec cette bibliothèque ; sinon, écrivez à la Free Software
+    Found</section>ation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301
+  USA
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BOGUE</a></h1>S
+<p class="Pp">Pour obtenir une liste des bogues concernant libguestfs, utilisez ce lien :
+    <a href='https://bugzilla.redhat.com/buglist.cgi?component=libguestfs'>https://bugzilla.redhat.com/buglist.cgi?component=libguestf</a>s&amp;product=Virtualization+Tool</p>s
+<p class="Pp">Pour signaler un nouveau bogue concernant libguestfs, utilisez ce lien :
+    <a href='https://bugzilla.redhat.com/enter_bug.cgi?component=libguestfs'>https://bugzilla.redhat.com/enter_bug.cgi?component=libguestf</a>s&amp;product=Virtualization+Tool</p>s
+<p class="Pp">Lorsque vous signalez un bogue, veuillez fournir </p>:
+<ul class="Bl-bullet">
+  <li>La version de </li>libguestfs.
+  <li>L'origine de votre libguestfs (par ex. quelle distribution Linux, compilé à partir des sources,
+      </li>etc.)
+  <li>Décrivez le bogue avec précision et indiquez comment le </li>reproduire.
+  <li>Exécutez <a href='/man/libguestfs-test-tool.1.en'>libguestfs-test-tool(1)</a> et collez la <b>sortie com</b>plète et no</li>n modifiée
+</ul>      dans</section> le rappor</div>t de bogue.
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-08</td>-13
+    <td class="foot-os">lib</td>gue</tr>st</table>fs-</section>1.5</article>6.2
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le </p>paquet :
+    <dl>
+        <dt>Nom du </dt>paquet :
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libguestfs/">extra/libg</a></dd>uestfs
+        <dt>Version </dt>:
+        <dd>1.56.</dd>2-2
+        <dt>Amont </dt>:
+        <dd><a href="https://libguestfs.org/">https://libguestfs.</a></dd>org/
+        <dt>Licences </dt>:
+        <dd>GPL-2.0-or-later, LGPL-2.</dd>1-or-later
+        <dt>Manuels </dt>:
+        <dd><a href="/listing/extra/libguestfs/">/listi</a></dd>ng/extr</dl>a/libgu</section>estfs/
+
+<details>
+    <summary>Table des </summary>matières
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">N</a></li>OM
+        
+            <li><a href="#DESCRIPTION">DESC</a></li>RIPTION
+        
+            <li><a href="#ARCHITECTURE">ARCH</a></li>ITECTURE
+        
+            <li><a href="#STATE_MACHINE">MACHINE </a></li>À ÉTATS
+        
+            <li><a href="#INTERNALS">DÉTAILS </a></li>INTERNES
+        
+            <li><a href="#SEE_ALSO">VOIR </a></li>AUSSI
+        
+            <li><a href="#AUTHORS">AU</a></li>TEURS
+        
+            <li><a href="#COPYRIGHT">DROITS </a></li>D'AUTEUR
+        
+            <li><a href="#LICENSE">LI</a></li>CENCE
+        
+            <li><a href="#BUGS">B</a></li>O</ul>GU</nav>E</details>S
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/guestfs-internals.1.en.txt">t</a>xt, 
+        
+            <a href="/man/guestfs-internals.1.en.raw"></a>r</p>a</nav></aside></main>w
+        <footer>
+            de manuel.
+            <p>Le site web est disponible selon les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0
+               , à l</a>'exception du contenu des p</p>ages de manuel, qui possède </footer>sa propre licence
+          </body>     spécifiée dans le paqu</html>et Arch Linux correspondant.

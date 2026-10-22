@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ossl-guide-tls-server-block(7ssl) — pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ossl-guide-tls-server-block(7ssl)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/openssl/">openssl</a></p>
+<p class="lic">Licences: Apache-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OSSL-GUIDE-TLS-SERVER-BLOCK(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">OSSL-GUIDE-TLS-SERVER-BLOCK(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">ossl-guide-tls-server-block - Guide OpenSSL : Écrire un serveur TLS simple bloquant</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLE_DE_SERVEUR_TLS_SIMPLE_BLOQUANT'><a class='permalink' href='#EXEMPLE_DE_SERVEUR_TLS_SIMPLE_BLOQUANT'>EXEMPLE DE SERVEUR TLS SIMPLE BLOQUANT</a></h1>
+<p class="Pp">Cette page présente divers exemples de code source démontrant comment écrire une application de serveur TLS &quot;echo&quot; simple, non concurrente, qui accepte une connexion client à la fois, renvoyant l'entrée du client au même client. Une fois que le client actuel se déconnecte, la connexion client suivante est acceptée.</p>
+<p class="Pp">Le socket d'acceptation et les connexions client sont tous deux &quot;bloquants&quot;. Un serveur plus typique utiliserait des sockets non bloquants avec une boucle d'événements et des rappels pour les événements d'E/S.</p>
+<p class="Pp">Le code source complet de cet exemple de serveur TLS bloquant est disponible dans le répertoire <b>demos/guide</b> de la distribution source OpenSSL, dans le fichier <b>tls-server-block.c</b>. Il est également disponible en ligne à l'adresse
+    <a href='https://github.com/openssl/openssl/blob/master/demos/guide/tls-server-block.c'>https://github.com/openssl/openssl/blob/master/demos/guide/tls-server-block.c</a>.</p>
+<p class="Pp">Nous supposons que vous avez déjà installé OpenSSL sur votre système ; que vous avez déjà une compréhension fondamentale des concepts OpenSSL et TLS (voir <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a> et
+    <a href='/man/ossl-guide-tls-introduction.7.en'>ossl-guide-tls-introduction(7)</a>) ; et que vous savez comment écrire et compiler du code C et le lier aux bibliothèques libcrypto et libssl fournies par OpenSSL. Il suppose également que vous avez une compréhension de base de TCP/IP et des sockets.</p>
+<section class="Ss">
+<h2 class="Ss" id='Création_des_objets_SSL_CTX_et_SSL'><a class='permalink' href='#Création_des_objets_SSL_CTX_et_SSL'>Création des objets SSL_CTX et SSL</a></h2>
+<p class="Pp">La première étape consiste à créer un objet <b>SSL_CTX</b> pour notre serveur. Nous utilisons la fonction <a href='/man/SSL_CTX_new.3.en'>SSL_CTX_new(3)</a> à cette fin. Nous pourrions alternativement utiliser <a href='/man/SSL_CTX_new_ex.3.en'>SSL_CTX_new_ex(3)</a> si nous voulons associer le <b>SSL_CTX</b> à un <b>OSSL_LIB_CTX</b> particulier (voir <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a> pour en savoir plus sur <b>OSSL_LIB_CTX</b>). Nous passons en argument la valeur de retour de la fonction <a href='/man/TLS_server_method.3.en'>TLS_server_method(3)</a>. Vous devriez utiliser cette méthode chaque fois que vous écrivez un serveur TLS. Cette méthode utilisera automatiquement la négociation de version TLS pour sélectionner la version la plus élevée du protocole qui est mutuellement prise en charge par le serveur et le client.</p>
+<pre>/*
+ * Un SSL_CTX contient des informations de configuration partagées pour plusieurs
+ * connexions SSL ultérieures par client.
+ */
+ctx = SSL_CTX_new(TLS_server_method());
+if (ctx == NULL) {
+    ERR_print_errors_fp(stderr);
+    errx(res, &quot;Échec de la création du SSL_CTX serveur&quot;);
+}</pre>
+<p class="Pp">Nous aimerions également restreindre les versions TLS que nous sommes prêts à accepter à TLSv1.2 ou supérieur. Les versions du protocole TLS antérieures à celle-ci sont généralement à éviter autant que possible. Nous pouvons le faire en utilisant <a href='/man/SSL_CTX_set_min_proto_version.3.en'>SSL_CTX_set_min_proto_version(3)</a> :</p>
+<pre>/*
+ * Les versions TLS antérieures à TLS 1.2 sont dépréciées par l'IETF et DEVRAIENT
+ * être évitées si possible.
+ */
+if (!SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)) {
+    SSL_CTX_free(ctx);
+    ERR_print_errors_fp(stderr);
+    errx(res, &quot;Échec de la définition de la version minimale du protocole TLS&quot;);
+}</pre>
+<p class="Pp">Ensuite, nous configurons quelques options, voir
+    <a href='/man/SSL_CTX_set_options.3.en'>SSL_CTX_set_options(3)</a> pour les détails :</p>
+<pre>/*
+ * Tolérer les clients qui se déconnectent sans &quot;shutdown&quot; TLS. Approprié dans tous
+ * les protocoles applicatifs qui effectuent leur propre &quot;framing&quot; de messages, et
+ * ne s'appuient pas sur TLS pour se défendre contre les attaques de &quot;troncature&quot;.
+ */
+opts = SSL_OP_IGNORE_UNEXPECTED_EOF;
+/*
+ * Bloquer les attaques potentielles d'épuisement du CPU par les clients qui demandent des renégociations
+ * fréquentes. Ceci n'est bien sûr efficace que s'il existe des limites sur la
+ * négociation TLS complète initiale ou les taux de connexion.
+ */
+opts |= SSL_OP_NO_RENEGOTIATION;
+/*
+ * La plupart des serveurs choisissent d'utiliser leur propre préférence de chiffrement, groupe ou signature
+ * plutôt que celle du client.
+ */
+opts |= SSL_OP_SERVER_PREFERENCE;
+/* Appliquer les options de sélection */
+SSL_CTX_set_options(ctx, opts);</pre>
+<p class="Pp">Les serveurs ont besoin d'une clé privée et d'un certificat. Bien que les chiffrements anonymes (pas de certificat serveur) soient possibles dans TLS 1.2, ils sont rarement applicables et ne sont actuellement pas définis pour TLS 1.3. Des certificats d'autorité de certification émetteurs intermédiaires supplémentaires sont souvent également nécessaires, et le certificat du serveur (entité finale ou EE) ainsi que les certificats de l'émetteur (&quot;chaîne&quot;) sont plus facilement configurés dans un seul &quot;fichier de chaîne&quot;. Ci-dessous, nous chargeons un tel fichier de chaîne (le certificat EE doit apparaître en premier), puis nous chargeons la clé privée correspondante, en vérifiant qu'elle correspond au certificat du serveur. Aucune vérification n'est effectuée pour vérifier l'intégrité de la chaîne (signatures CA ou dates d'expiration des certificats, par exemple).</p>
+<pre>/*
+ * Charger le fichier de certificat *chaîne* du serveur (format PEM), qui inclut
+ * non seulement le certificat serveur feuille (entité finale), mais aussi tous les
+ * certificats intermédiaires d'émetteur-CA. Le certificat feuille doit être le
+ * premier certificat dans le fichier.
+ *
+ * Dans les cas d'utilisation avancée, cela peut être appelé plusieurs fois, une fois par algorithme
+ * de clé publique pour lequel le serveur a un certificat correspondant.
+ * Cependant, la clé privée correspondante (voir ci-dessous) doit être chargée en premier,
+ * *avant* de passer au fichier de chaîne suivant.
+ */
+if (SSL_CTX_use_certificate_chain_file(ctx, &quot;chain.pem&quot;) &lt;= 0) {
+    SSL_CTX_free(ctx);
+    ERR_print_errors_fp(stderr);
+    errx(res, &quot;Échec du chargement du fichier de chaîne de certificats serveur&quot;);
+}
+/*
+ * Charger la clé privée correspondante, cela vérifie également que la clé privée
+ * correspond au certificat d'entité finale qui vient d'être chargé. Il ne vérifie pas
+ * si la chaîne de certificats est valide, les certificats pourraient être
+ * expirés, ou échouer autrement à former une chaîne que le client peut valider.
+ */
+if (SSL_CTX_use_PrivateKey_file(ctx, &quot;pkey.pem&quot;, SSL_FILETYPE_PEM) &lt;= 0) {
+    SSL_CTX_free(ctx);
+    ERR_print_errors_fp(stderr);
+    errx(res, &quot;Erreur lors du chargement du fichier de clé privée du serveur, &quot;
+              &quot;possible désaccord clé/certificat ???&quot;);
+}</pre>
+<p class="Pp">Ensuite, nous activons la mise en cache des sessions, ce qui permet aux clients de faire plus efficacement des connexions TLS supplémentaires après avoir terminé une première négociation TLS complète. Avec TLS 1.3, la reprise de session effectue généralement un nouvel accord de clé, mais l'échange de certificats est évité.</p>
+<pre>/*
+ * Les serveurs qui souhaitent activer la reprise de session doivent spécifier un tableau
+ * d'octets d'ID de session, qui identifie l'application serveur, et réduit la
+ * probabilité de partage inapproprié du cache.
+ */
+SSL_CTX_set_session_id_context(ctx, (void *)cache_id, sizeof(cache_id));
+SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_SERVER);
+/*
+ * Combien de sessions TLS clients à mettre en cache. La valeur par défaut est
+ * SSL_SESSION_CACHE_MAX_SIZE_DEFAULT (20k dans les versions récentes d'OpenSSL),
+ * qui peut être trop petit ou trop grand.
+ */
+SSL_CTX_sess_set_cache_size(ctx, 1024);
+/*
+ * Les sessions plus anciennes que celle-ci sont considérées comme une absence dans le cache, même si elles sont encore
+ * dans le cache. La valeur par défaut est deux heures. Les serveurs actifs dont les clients effectuent
+ * de nombreuses connexions en rafale courte peuvent souhaiter un délai d'attente plus court, sur des serveurs peu
+ * chargés avec des connexions sporadiques d'un client donné, un délai plus long peut être approprié.
+ */
+SSL_CTX_set_timeout(ctx, 3600);</pre>
+<p class="Pp">La plupart des serveurs, y compris celui-ci, ne sollicitent pas de certificats clients. Nous n'avons donc pas besoin d'un &quot;magasin de confiance&quot; et permettons à la négociation de se terminer même lorsque le client ne présente pas de certificat. Remarque : Même si un client présentait un certificat de confiance, pour qu'il soit utile, l'application serveur aurait toujours besoin d'un code personnalisé pour utiliser l'identité vérifiée afin d'accorder un accès non par défaut à ce client particulier. Certains serveurs accordent l'accès à tous les clients avec des certificats d'une CA privée, cela nécessite alors le traitement des listes de révocation de certificats pour désautoriser un client. Il est souvent plus simple et plus sûr de conserver une liste de clés publiques autorisées.</p>
+<p class="Pp">Bien que ce soit le réglage par défaut, nous appelons explicitement la fonction <a href='/man/SSL_CTX_set_verify.3.en'>SSL_CTX_set_verify(3)</a> et lui passons la valeur <b>SSL_VERIFY_NONE</b>. L'argument final de cette fonction est une fonction de rappel que vous pouvez facultativement fournir pour remplacer le traitement par défaut de la vérification de certificat. La plupart des applications n'ont pas besoin de le faire, donc cela peut être défini en toute sécurité sur NULL pour obtenir le traitement par défaut.</p>
+<pre>/*
+ * Les clients utilisent rarement l'authentification basée sur certificat, et nous ne
+ * demandons donc pas l'authentification TLS &quot;mutuelle&quot; (en fait, il n'y a aucun moyen de savoir
+ * si et comment le client a authentifié le serveur, donc le terme &quot;mutuel&quot;
+ * est potentiellement trompeur).
+ *
+ * Étant donné que nous ne sollicitons ni ne traitons les certificats clients, nous n'avons pas
+ * besoin de configurer un magasin de certificats de confiance, donc aucun appel à
+ * SSL_CTX_set_default_verify_paths() n'est nécessaire.
+</pre></div>
+</section>
+
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+            
+        </footer>
+    </body>
+</html>
+  La chaîne de certificats du
+ * serveur est supposée valide.
+ */
+SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);</pre>
+<p class="Pp">C'est toute la configuration dont nous avons besoin pour le
+    <b>SSL_CTX</b>. Ensuite, nous créons un BIO d'acceptation sur lequel accepter
+    les connexions client. Ceci enregistre simplement le port cible (et un
+    préfixe optionnel "host:"), sans créer réellement le socket. Ce traitement
+    retardé permet au programmeur de spécifier des comportements
+    supplémentaires avant que le socket d'écoute ne soit réellement créé.</p>
+<pre>/*
+ * Créer un socket d'écoute encapsulé dans un BIO.
+ * Le premier appel à BIO_do_accept() initialise le socket
+ */
+acceptor_bio = BIO_new_accept(hostport);
+if (acceptor_bio == NULL) {
+    SSL_CTX_free(ctx);
+    ERR_print_errors_fp(stderr);
+    errx(res, "Erreur lors de la création du bio d'acceptation");
+}</pre>
+<p class="Pp">Les serveurs souhaitent presque toujours utiliser l'option
+    "SO_REUSEADDR" pour éviter les échecs de démarrage s'il reste des
+    connexions client dormantes, nous le faisons donc avant de faire le
+    <b>premier</b> appel à <a href='/man/BIO_do_accept.3.en'>BIO_do_accept(3)</a>, qui crée le socket d'écoute, sans accepter
+    une connexion client. Les appels ultérieurs à la même fonction accepteront
+    de nouvelles connexions.</p>
+<pre>BIO_set_bind_mode(acceptor_bio, BIO_BIND_REUSEADDR);
+if (BIO_do_accept(acceptor_bio) &lt;= 0) {
+    SSL_CTX_free(ctx);
+    ERR_print_errors_fp(stderr);
+    errx(res, "Erreur lors de la configuration du socket d'acceptation");
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Serveur_boucle'><a class='permalink' href='#Serveur_boucle'>Boucle   serveur</a></h2>
+<p class="Pp">Le serveur entre maintenant dans une boucle "infinie" traitant une
+    connexion client à la fois. Avant chaque connexion, nous effaçons la pile
+    d'erreurs OpenSSL, de sorte que tout rapport d'erreur soit lié uniquement à
+    la nouvelle connexion.</p>
+<pre>/* Pile d'erreurs vierge pour chaque nouvelle connexion */
+ERR_clear_error();</pre>
+<p class="Pp">À ce stade, le serveur se bloque pour accepter le client suivant :</p>
+<pre>/* Attendre que le client suivant se connecte */
+if (BIO_do_accept(acceptor_bio) &lt;= 0) {
+    /* Le client s'est déconnecté avant que nous ayons accepté la connexion */
+    continue;
+}</pre>
+<p class="Pp">En cas de succès, la connexion client acceptée a été encapsulée dans un
+    nouveau BIO et ajoutée à la fin de la chaîne de BIO d'acceptation. Nous la
+    retirons, restaurant le BIO d'acceptation à son état initial.</p>
+<pre>/* Retirer la connexion client de la chaîne de BIO */
+client_bio = BIO_pop(acceptor_bio);
+fprintf(stderr, "Nouvelle connexion client acceptée\n");</pre>
+<p class="Pp">Ensuite, nous créons un objet <b>SSL</b> en appelant la fonction
+    <a href='/man/SSL_new.3.en'>SSL_new(3)</a> et en passant le <b>SSL_CTX</b> que nous avons créé comme argument. Le BIO de
+    connexion client est configuré comme conduit d'E/S pour cette poignée SSL.
+    SSL_set_bio transfère la propriété du BIO ou des BIO impliqués (notre
+    <b>client_bio</b>) à la poignée SSL.</p>
+<pre>/* Associer une nouvelle poignée SSL à la nouvelle connexion */
+if ((ssl = SSL_new(ctx)) == NULL) {
+    ERR_print_errors_fp(stderr);
+    warnx("Erreur lors de la création de la poignée SSL pour la nouvelle connexion");
+    BIO_free(client_bio);
+    continue;
+}
+SSL_set_bio(ssl, client_bio, client_bio);</pre>
+<p class="Pp">Et nous sommes maintenant prêts à tenter la négociation SSL. Avec un
+    socket bloquant, OpenSSL effectuera toutes les opérations de lecture et
+    d'écriture nécessaires pour terminer la négociation (ou détecter et
+    signaler un échec) avant de revenir.</p>
+<pre>/* Tenter une négociation SSL avec le client */
+if (SSL_accept(ssl) &lt;= 0) {
+    ERR_print_errors_fp(stderr);
+    warnx("Erreur lors de la négociation SSL avec le client");
+    SSL_free(ssl);
+    continue;
+}</pre>
+<p class="Pp">Une fois la négociation terminée, le serveur boucle en renvoyant
+    l'entrée du client au client :</p>
+<pre>while (SSL_read_ex(ssl, buf, sizeof(buf), &amp;nread) &gt; 0) {
+    if (SSL_write_ex(ssl, buf, nread, &amp;nwritten) &gt; 0 &amp;&amp;
+        nwritten == nread) {
+        total += nwritten;
+        continue;
+    }
+    warnx("Erreur lors de l'écho de l'entrée client");
+    break;
+}</pre>
+<p class="Pp">Une fois que le client ferme sa connexion, nous signalons le nombre
+    d'octets envoyés à <b>stderr</b> et libérons la poignée SSL, ce qui libère
+    également le <b>client_bio</b> et ferme le socket sous-jacent.</p>
+<pre>fprintf(stderr, "Connexion client fermée, %zu octets envoyés\n", total);
+SSL_free(ssl);</pre>
+<p class="Pp">Le serveur est maintenant prêt à accepter la prochaine connexion
+    client.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Nettoyage_final'><a class='permalink' href='#Nettoyage_final'>Nettoyage   final</a></h2>
+<p class="Pp">Si le serveur parvenait d'une manière ou d'une autre à sortir de la
+    boucle infinie et à être prêt à quitter, il désallouerait d'abord le
+    <b>SSL_CTX</b> construit.</p>
+<pre>/*
+ * Code de nettoyage de remplacement inaccessible, la boucle ci-dessus tourne à l'infini.
+ */
+SSL_CTX_free(ctx);
+return EXIT_SUCCESS;</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR   AUSSI</a></h1>
+<p class="Pp"><a href='/man/ossl-guide-introduction.7.en'>ossl-guide-introduction(7)</a>,
+    <a href='/man/ossl-guide-libraries-introduction.7.en'>ossl-guide-libraries-introduction(7)</a>,
+    <a href='/man/ossl-guide-libssl-introduction.7.en'>ossl-guide-libssl-introduction(7)</a>,
+    <a href='/man/ossl-guide-tls-introduction.7.en'>ossl-guide-tls-introduction(7)</a>,
+    <a href='/man/ossl-guide-tls-client-non-block.7.en'>ossl-guide-tls-client-non-block(7)</a>,
+    <a href='/man/ossl-guide-quic-client-block.7.en'>ossl-guide-quic-client-block(7)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2024-2025 Les auteurs du projet OpenSSL. Tous droits réservés.</p>
+<p class="Pp">Licence accordée selon la licence Apache 2.0 (la "Licence"). Vous
+    ne pouvez pas utiliser ce fichier sauf en conformité avec la Licence. Vous
+    pouvez obtenir une copie dans le fichier LICENSE de la distribution source ou
+    à l'adresse <a href='https://www.openssl.org/source/license.html'>https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version :</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#EXEMPLE_DE_SERVEUR_TLS_BLOQUANT_SIMPLE">EXEMPLE DE SERVEUR TLS BLOQUANT SIMPLE</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ossl-guide-tls-server-block.7ssl.en.txt">txt</a>, 
+        
+            <a href="/man/ossl-guide-tls-server-block.7ssl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

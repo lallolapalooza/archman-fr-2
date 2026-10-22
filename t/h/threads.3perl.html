@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>threads(3perl) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">threads.3perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">threads(3perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">threads(3perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">threads - Threads basés sur l'interpréteur Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp">Ce document décrit la version 2.43 du module threads</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AVERTISSEMENT'><a class='permalink' href='#AVERTISSEMENT'>AVERTISSEMENT</a></h1>
+<p class="Pp">Les « threads basés sur l'interpréteur » fournis par Perl ne sont pas
+    le moyen rapide et léger de multitâche auquel on pourrait s'attendre ou espérer.
+    Les threads sont implémentés d'une manière qui les rend faciles à mal utiliser. Peu
+    de gens savent comment les utiliser correctement ou seront capables d'apporter de l'aide.</p>
+<p class="Pp">L'utilisation des threads basés sur l'interpréteur en Perl est officiellement
+    déconseillée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre>use threads ('yield',
+             'stack_size' =&gt; 64*4096,
+             'exit' =&gt; 'threads_only',
+             'stringify');
+sub start_thread {
+    my @args = @_;
+    print('Thread démarré : ', join(' ', @args), &quot;\n&quot;);
+}
+my $thr = threads-&gt;create('start_thread', 'argument');
+$thr-&gt;join();
+threads-&gt;create(sub { print(&quot;Je suis un thread\n&quot;); })-&gt;join();
+my $thr2 = async { foreach (@files) { ... } };
+$thr2-&gt;join();
+if (my $err = $thr2-&gt;error()) {
+    warn(&quot;Erreur de thread : $err\n&quot;);
+}
+# Appel de thread en contexte de liste (implicite) pour qu'il puisse retourner une liste
+my ($thr) = threads-&gt;create(sub { return (qw/a b c/); });
+# ou spécifier explicitement le contexte
+my $thr = threads-&gt;create({'context' =&gt; 'list'},
+                          sub { return (qw/a b c/); });
+my @results = $thr-&gt;join();
+$thr-&gt;detach();
+# Obtenir l'objet d'un thread
+$thr = threads-&gt;self();
+$thr = threads-&gt;object($tid);
+# Obtenir l'ID d'un thread
+$tid = threads-&gt;tid();
+$tid = $thr-&gt;tid();
+$tid = &quot;$thr&quot;;
+# Donner une chance aux autres threads de s'exécuter
+threads-&gt;yield();
+yield();
+# Listes des threads non détachés
+my @threads = threads-&gt;list();
+my $thread_count = threads-&gt;list();
+my @running = threads-&gt;list(threads::running);
+my @joinable = threads-&gt;list(threads::joinable);
+# Tester les objets thread
+if ($thr1 == $thr2) {
+    ...
+}
+# Gérer la taille de la pile des threads
+$stack_size = threads-&gt;get_stack_size();
+$old_size = threads-&gt;set_stack_size(32*4096);
+# Créer un thread avec un contexte et une taille de pile spécifiques
+my $thr = threads-&gt;create({ 'context'    =&gt; 'list',
+                            'stack_size' =&gt; 32*4096,
+                            'exit'       =&gt; 'thread_only' },
+                          \&amp;foo);
+# Obtenir le contexte du thread
+my $wantarray = $thr-&gt;wantarray();
+# Vérifier l'état du thread
+if ($thr-&gt;is_running()) {
+    sleep(1);
+}
+if ($thr-&gt;is_joinable()) {
+    $thr-&gt;join();
+}
+# Envoyer un signal à un thread
+$thr-&gt;kill('SIGUSR1');
+# Quitter un thread
+threads-&gt;exit();</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Depuis Perl 5.8, la programmation de threads est disponible en utilisant
+    un modèle appelé <i>threads d'interpréteur</i> qui fournit un nouvel interpréteur
+    Perl pour chaque thread, et, par défaut, aucune donnée ou information d'état n'est
+    partagée entre les threads.</p>
+<p class="Pp">(Avant Perl 5.8, <i>5005threads</i> était disponible via l'API
+    <span class="Li">&quot;Thread.pm&quot;</span>. Ce modèle de threading a été déprécié,
+    et a été supprimé à partir de Perl 5.10.0.)</p>
+<p class="Pp">Comme mentionné précédemment, toutes les variables sont, par défaut, locales au
+    thread. Pour utiliser des variables partagées, vous devez également charger
+    threads::shared :</p>
+<pre>use threads;
+use threads::shared;</pre>
+<p class="Pp">Lors du chargement de threads::shared, vous devez utiliser
+    <span class="Li">&quot;use threads&quot;</span> avant d'utiliser
+    <span class="Li">&quot;use threads::shared&quot;</span>. (Le module
+    <span class="Li">&quot;threads&quot;</span> émettra un avertissement si vous faites
+    l'inverse.)</p>
+<p class="Pp">Il est fortement recommandé d'activer les threads via
+    <span class="Li">&quot;use threads&quot;</span> dès que possible dans votre
+    script.</p>
+<p class="Pp">Si nécessaire, les scripts peuvent être écrits de manière à fonctionner
+    avec des Perl threadés et non threadés :</p>
+<pre>my $can_use_threads = eval 'use threads; 1';
+if ($can_use_threads) {
+    # Faire le traitement en utilisant les threads
+    ...
+} else {
+    # Le faire sans utiliser les threads
+    ...
+}</pre>
+<dl class="Bl-tag">
+  <dt>$thr = threads-&gt;create(FONCTION, ARGS)</dt>
+  <dd>Ceci crée un nouveau thread qui commencera son exécution avec la fonction
+      d'entrée spécifiée, et lui donnera la liste <i>ARGS</i> comme paramètres. Il
+      retournera l'objet threads correspondant, ou
+      <span class="Li">&quot;undef&quot;</span> si la création du thread a échoué.
+    <p class="Pp"><i>FONCTION</i> peut être le nom d'une fonction, une sous-routine
+        anonyme, ou une référence de code.</p>
+        <pre>my $thr = threads-&gt;create('nom_func', ...);
+    # ou
+my $thr = threads-&gt;create(sub { ... }, ...);
+    # ou
+my $thr = threads-&gt;create(\&amp;func, ...);
+</pre>
+    <p class="Pp">La méthode <span class="Li">&quot;-&gt;new()&quot;</span> est
+        un alias pour <span class="Li">&quot;-&gt;create()&quot;</span>.</p>
+  </dd>
+  <dt>$thr-&gt;<b>join()</b></dt>
+  <dd>Ceci attendra que le thread correspondant termine son exécution. Quand le
+      thread se termine, <span class="Li">&quot;-&gt;join()&quot;</span> retournera
+      la ou les valeurs de retour de la fonction d'entrée.
+    <p class="Pp">Le contexte (vide, scalaire ou liste) pour la ou les valeurs de
+        retour pour <span class="Li">&quot;-&gt;join()&quot;</span> est déterminé
+        au moment de la création du thread.</p>
+        <pre># Créer un thread en contexte de liste (implicite)
+my ($thr1) = threads-&gt;create(sub {
+                                my @results = qw(a b c);
+                                return (@results);
+                             });
+#   ou (explicite)
+my $thr1 = threads-&gt;create({'context' =&gt; 'list'},
+                           sub {
+                                my @results = qw(a b c);
+                                return (@results);
+                           });
+# Récupérer les résultats de liste du thread
+my @res1 = $thr1-&gt;join();
+# Créer un thread en contexte scalaire (implicite)
+my $thr2 = threads-&gt;create(sub {
+                                my $result = 42;
+                                return ($result);
+                             });
+# Récupérer le résultat scalaire du thread
+my $res2 = $thr2-&gt;join();
+# Créer un thread en contexte vide (explicite)
+my $thr3 = threads-&gt;create({'void' =&gt; 1},
+                           sub { print(&quot;Bonjour, le monde\n&quot;); });
+# Joindre le thread en contexte vide (c'est-à-dire sans valeur de retour)
+$thr3-&gt;join();
+</pre>
+    <p class="Pp">Voir &quot;CONTEXTE DE THREAD&quot; pour plus de détails.</p>
+    <p class="Pp">Si le programme se termine sans que tous les threads aient été
+        joints ou détachés, un avertissement sera émis.</p>
+    <p class="Pp">Appeler <span class="Li">&quot;-&gt;join()&quot;</span> ou
+        <span class="Li">&quot;-&gt;detach()&quot;</span> sur un thread déjà joint
+        provoquera une erreur.</p>
+  </dd>
+  <dt>$thr-&gt;<b>detach()</b></dt>
+  <dd>Rend le thread non joignable, et provoque le rejet de toute valeur de retour
+      éventuelle. Lorsque le programme se termine, les threads détachés qui sont
+      encore en cours d'exécution sont silencieusement terminés.
+    <p class="Pp">Si le programme se termine sans que tous les threads aient été
+        joints ou détachés, un avertissement sera émis.</p>
+    <p class="Pp">Appeler <span class="Li">&quot;-&gt;join()&quot;</span> ou
+        <span class="Li">&quot;-&gt;detach()&quot;</span> sur un thread déjà détaché
+        provoquera une erreur.</p>
+  </dd>
+  <dt id="threads"><a class="permalink" href="#threads">threads-&gt;<b>detach()</b></a></dt>
+  <dd>Méthode de classe qui permet à un thread de se détacher.</dd>
+  <dt id="threads~2"><a class="permalink" href="#threads~2">threads-&gt;<b>self()</b></a></dt>
+  <dd>Méthode de classe qui permet à un thread d'obtenir son propre objet
+      <i>threads</i>.</dd>
+  <dt>$thr-&gt;<b>tid()</b></dt>
+  <dd>Retourne l'ID du thread. Les ID de thread sont des entiers uniques, le thread
+      principal d'un programme étant 0, et les autres s'incrémentant de 1 pour chaque
+      thread créé.</dd>
+  <dt id="threads~3"><a class="permalink" href="#threads~3">threads-&gt;tid()</a></dt>
+  <dd>Méthode de classe qui permet à un thread d'obtenir son propre ID.</dd>
+  <dt>&quot;$thr&quot;</dt>
+  <dd>Si vous ajoutez l'option d'importation <span class="Li">&quot;stringify&quot;</span>
+      à votre déclaration <span class="Li">&quot;use threads&quot;</span>, alors
+      l'utilisation d'un objet thread dans une chaîne de caractères ou un contexte
+      de chaîne (par exemple, comme clé de hachage) provoquera l'utilisation de son
+      ID comme valeur :
+        <pre>use threads qw(stringify);
+my $thr = threads-&gt;create(...);
+print(&quot;Thread $thr démarré\n&quot;);  # Affiche : Thread 1 démarré
+</pre>
+  </dd>
+  <dt id="threads~4"><a class="permalink" href="#threads~4">threads-&gt;object($tid)</a></dt>
+  <dd>Ceci retournera l'objet <i>threads</i> pour le thread <i>actif</i> associé
+      à l'ID de thread spécifié. Si <span class="Li">$tid</span> est la valeur du
+      thread courant, alors cet appel fonctionne de la même manière que
+      <span class="Li">&quot;-&gt;self()&quot;</span>. Sinon, retourne
+      <span class="Li">&quot;undef&quot;</span> s'il n'y a pas de thread associé au TID,
+      si le thread est joint ou détaché, si aucun TID n'est spécifié ou si le TID
+      spécifié est undef.</dd>
+  <dt id="threads~5"><a class="permalink" href="#threads~5">threads-&gt;<b>yield()</b></a></dt>
+  <dd>Ceci permet au thread courant de céder la main aux autres threads, leur donnant
+      une chance de s'exécuter. Ceci est utile pour éviter que des threads
+      ne monopolisent le CPU.</dd>
+  <dt>yield()</dt>
+  <dd>Fonction exportée qui permet au thread courant de céder la main aux autres
+      threads.</dd>
+  <dt id="threads~6"><a class="permalink" href="#threads~6">threads-&gt;<b>list()</b></a></dt>
+  <dd>Retourne une liste de tous les objets threads qui n'ont pas été détachés.
+      Si un argument est fourni, il doit s'agir d'une des constantes suivantes :
+      <dl class="Bl-tag">
+        <dt>threads::running</dt>
+        <dd>Retourne uniquement les threads qui sont actuellement en cours d'exécution.</dd>
+        <dt>threads::joinable</dt>
+        <dd>Retourne uniquement les threads qui peuvent être joints (c'est-à-dire
+            non détachés et non déjà joints).</dd>
+      </dl>
+      Si aucune liste n'est fournie, alors tous les threads non détachés sont
+      renvoyés. Si un thread a déjà été joint, il ne sera pas renvoyé. S'il a été
+      détaché, il ne sera pas renvoyé.
+    <p class="Pp">Si la liste des threads est demandée dans un contexte scalaire,
+        le nombre de threads correspondants sera retourné.</p>
+        <pre>my @all_threads = threads-&gt;list();
+my $num_threads = threads-&gt;list(); # Numéro de tous les threads
+my @running_threads = threads-&gt;list(threads::running);
+my $num_running = threads-&gt;list(threads::running); # Numéro des threads en cours d'exécution
+</pre>
+  </dd>
+  <dt>$thr-&gt;<b>error()</b></dt>
+  <dd>Si la création d'un thread a échoué, ou si le thread a rencontré une exception
+      non gérée, alors <span class="Li">&quot;-&gt;error()&quot;</span> retournera
+      une chaîne de caractères décrivant l'erreur. Sinon, elle retournera
+      <span class="Li">&quot;undef&quot;</span>.
+    <p class="Pp">Il est important de noter que cette méthode ne doit être appelée
+        qu'après que le thread ait été joint.</p>
+  </dd>
+  <dt>$thr-&gt;<b>kill(SIGNAL)</b></dt>
+  <dd>Envoie le signal <span class="Li">SIGNAL</span> au thread représenté par
+      <span class="Li">$thr</span>. Ceci est implémenté en utilisant le système
+      d'exploitation sous-jacent, et donc les signaux disponibles et leur comportement
+      peuvent varier selon le système d'exploitation. Si le signal ne peut pas être
+      envoyé, alors une exception sera levée.</dd>
+  <dt>$thr-&gt;<b>is_running()</b></dt>
+  <dd>Retourne vrai si le thread est en cours d'exécution.</dd>
+  <dt>$thr-&gt;<b>is_joinable()</b></dt>
+  <dd>Retourne vrai si le thread peut être joint (c'est-à-dire qu'il n'est ni
+      détaché, ni déjà joint).</dd>
+  <dt id="threads~7"><a class="permalink" href="#threads~7">threads-&gt;<b>exit()</b></a></dt>
+  <dd>Ceci termine le thread courant. Il ne faut pas l'appeler depuis le thread
+      principal.</dd>
+  <dt>$thr-&gt;<b>wantarray()</b></dt>
+  <dd>Retourne le contexte sous lequel le thread sera joint. Les valeurs possibles
+      sont <span class="Li">void</span>, <span class="Li">scalar</span> ou
+      <span class="Li">list</span>.</dd>
+  <dt id="threads~8"><a class="permalink" href="#threads~8">threads-&gt;<b>stack_size()</b></a></dt>
+  <dd>Cette méthode est un alias pour
+      <span class="Li">&quot;threads-&gt;get_stack_size()&quot;</span>.</dd>
+  <dt id="threads~9"><a class="permalink" href="#threads~9">threads-&gt;<b>get_stack_size()</b></a></dt>
+  <dd>Retourne la taille de la pile par défaut pour les nouveaux threads. Si aucun
+      thread n'a été créé, alors cette taille est celle qui sera utilisée pour le
+      prochain thread créé. Si des threads ont déjà été créés, alors il s'agit de la
+      taille de pile utilisée par le dernier thread créé.</dd>
+  <dt id="threads~10"><a class="permalink" href="#threads~10">threads-&gt;<b>set_stack_size(SIZE)</b></a></dt>
+  <dd>Définit la taille de la pile par défaut pour les nouveaux threads à
+      <span class="Li">SIZE</span> octets. Ceci ne change pas la taille de pile des
+      threads déjà créés. La valeur retournée est l'ancienne taille de pile par défaut.</dd>
+  <dt>threads-&gt;<b><b>exit</b>(MODE)</dt>
+  <dd>Dans le bloc <span class="Li">&quot;use threads&quot;</span>, vous pouvez spécifier
+      la façon dont les threads doivent se terminer. Les modes possibles sont :
+      <dl class="Bl-tag">
+        <dt>threads_only</dt>
+        <dd>Le programme se terminera uniquement lorsque tous les threads non détachés
+            auront été joints. Les threads détachés seront silencieusement
+            terminés.</dd>
+        <dt>threads_any</dt>
+        <dd>Le programme se terminera lorsque le thread principal se terminera, même
+            s'il reste des threads non joints. Un avertissement sera émis.</dd>
+      </dl>
+      La valeur par défaut est <span class="Li">threads_any</span>.</dd>
+  <dt>threads-&gt;<b><b>create</b>(ATTRIBUTES, FUNCTION, ARGS)</dt>
+  <dd>Les attributs sont un hachage qui peut contenir les clés suivantes :
+      <dl class="Bl-tag">
+        <dt>stack_size</dt>
+        <dd>La taille de pile à utiliser pour ce thread en particulier. Ceci a priorité
+            sur la taille de pile par défaut définie par
+            <span class="Li">&quot;threads-&gt;set_stack_size()&quot;</span>.</dd>
+        <dt>exit</dt>
+        <dd>Spécifie la façon dont le programme doit se terminer lorsque ce thread se
+            termine. Les valeurs possibles sont les mêmes que celles décrites pour la
+            méthode de classe <span class="Li">&quot;threads-&gt;exit()&quot;</span>.</dd>
+        <dt>context</dt>
+        <dd>Spécifie le contexte sous lequel le thread sera joint. Les valeurs possibles
+            sont <span class="Li">void</span>, <span class="Li">scalar</span> ou
+            <span class="Li">list</span>. Ceci a priorité sur la façon dont le retour
+            est géré par défaut (qui est basé sur le contexte dans lequel le thread est
+            appelé).</dd>
+      </dl>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THREAD_CONTEXT'><a class='permalink' href='#THREAD_CONTEXT'>CONTEXTE DE THREAD</a></h1>
+<p class="Pp">Le contexte dans lequel une fonction d'entrée de thread retourne une
+    valeur est déterminé à la création du thread. Les valeurs possibles sont
+    <span class="Li">void</span>, <span class="Li">scalar</span> et
+    <span class="Li">list</span>.</p>
+<p class="Pp">Si le contexte est <span class="Li">void</span>, alors aucune valeur
+    n'est retournée par <span class="Li">-&gt;join()</span>.</p>
+<p class="Pp">Si le contexte est <span class="Li">scalar</span>, alors la première
+    valeur retournée par la fonction d'entrée est retournée par
+    <span class="Li">-&gt;join()</span>.</p>
+<p class="Pp">Si le contexte est <span class="Li">list</span>, alors toutes les
+    valeurs retournées par la fonction d'entrée sont retournées par
+    <span class="Li">-&gt;join()</span>.</p>
+<p class="Pp">Si le contexte n'est pas explicitement spécifié, alors il est déduit
+    du contexte dans lequel le thread est créé. Par exemple, si vous faites ceci :</p>
+<pre>my $thr = threads-&gt;create(sub { return (1, 2, 3); });
+my $result = $thr-&gt;join();
+</pre>
+<p class="Pp">Alors <span class="Li">$result</span> recevra la valeur 1, car le
+    contexte est scalaire. D'un autre côté, si vous faites ceci :</p>
+<pre>my ($thr) = threads-&gt;create(sub { return (1, 2, 3); });
+my @results = $thr-&gt;join();
+</pre>
+<p class="Pp">Alors <span class="Li">@results</span> contiendra (1, 2, 3), car le
+    contexte est une liste.</p>
+<p class="Pp">Si vous voulez éviter toute ambiguïté, vous pouvez spécifier le
+    contexte explicitement en utilisant le quatrième argument de
+    <span class="Li">threads-&gt;create</span>:</p>
+<pre>my $thr = threads-&gt;create({'context' =&gt; 'list'}, sub { return (1, 2, 3); });
+my @results = $thr-&gt;join(); # @results contiendra (1, 2, 3)
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE'><a class='permalink' href='#EXAMPLE'>EXEMPLE</a></h1>
+<pre>use threads;
+my $thr = threads-&gt;create(sub {
+    my $tid = threads-&gt;tid();
+    my $master_tid = threads-&gt;tid($thr); # Obtenir l'ID du thread parent
+    print(&quot;Hello from thread $tid (parent $master_tid)\n&quot;);
+    sleep(1);
+    return &quot;Thread $tid finished&quot;;
+});
+print(&quot;Main thread waiting for child...\n&quot;);
+my $result = $thr-&gt;join();
+print(&quot;Child thread returned: '$result'\n&quot;);
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='KNOWN_ISSUES_AND_LIMITATIONS'><a class='permalink' href='#KNOWN_ISSUES_AND_LIMITATIONS'>PROBLÈMES CONNUS ET LIMITATIONS</a></h1>
+<p class="Pp">Les limitations et les problèmes suivants sont connus :</p>
+<ul class="Bl-bullet">
+  <li>
+    <p class="Pp">Les threads Perl sont des threads d'interpréteur, pas des threads
+        du système d'exploitation. Ils sont beaucoup plus lourds que les threads
+        du système d'exploitation et ne devraient pas être utilisés pour des tâches
+        qui nécessitent des centaines ou des milliers de threads.</p>
+  </li>
+  <li>
+    <p class="Pp">Certains modules Perl ne sont pas thread-safe. Leur utilisation
+        dans des threads peut entraîner des résultats inattendus ou des plantages.</p>
+  </li>
+  <li>
+    <p class="Pp">Le partage de données entre les threads est complexe et sujet aux
+        erreurs. Il faut utiliser le module <span class="Li">threads::shared</span>
+        et des primitives de synchronisation appropriées (comme les mutex et les
+        sémaphores) pour éviter les conditions de concurrence.</p>
+  </li>
+  <li>
+    <p class="Pp">La gestion des signaux dans les environnements multithreadés peut
+        être délicate. L'envoi de signaux aux threads peut avoir des effets
+        imprévisibles.</p>
+  </li>
+  <li>
+    <p class="Pp">La taille de la pile des threads est généralement plus petite que la
+        taille de pile par défaut du thread principal. Si vous prévoyez d'avoir des
+        appels de fonction récursifs profonds ou de grandes allocations sur la
+        pile dans vos threads, vous devrez peut-être augmenter la taille de la pile
+        en utilisant <span class="Li">threads-&gt;set_stack_size()</span>.</p>
+  </li>
+  <li>
+    <p class="Pp">Le débogage de code multithreadé est nettement plus difficile que le
+        débogage de code monothreadé. Les outils de débogage traditionnels peuvent
+        ne pas fonctionner correctement avec les threads.</p>
+  </li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Marcus Blackwell &lt;marcus@blackwell.id.au&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT_AND_LICENSE'><a class='permalink' href='#COPYRIGHT_AND_LICENSE'>COPYRIGHT ET LICENCE</a></h1>
+<p class="Pp">Copyright (C) 2001-2008 par Marcus Blackwell.</p>
+<p class="Pp">Ce module est libre ; vous pouvez le redistribuer et/ou le modifier
+    sous les mêmes conditions que Perl lui-même. Autrement dit, aussi bien sous
+    la licence du Perl v1.0 ou toute version ultérieure publiée par la Free
+    Software Foundation.</p>
+</section>
+</div>
+</section>
+            </article>
+        </main>
+    </body>
+</html>
+<dl>
+  <dt id="yield">yield()</dt>
+  <dd>Ceci est une suggestion au SE pour permettre à ce thread de céder le temps processeur à d'autres threads. Ce qui se passe réellement dépend fortement de l'implémentation sous-jacente des threads.
+    <p class="Pp">Vous pouvez écrire <span class="Li">&quot;use threads
+        qw(yield)&quot;</span>, puis simplement utiliser
+        <span class="Li">yield()</span> dans votre code.</p>
+  </dd>
+  <dt id="threads~6"><a class="permalink" href="#threads~6">threads-&gt;<b>list()</b></a></dt>
+  <dd></dd>
+  <dt id="threads~7"><a class="permalink" href="#threads~7">threads-&gt;list(threads::all)</a></dt>
+  <dd></dd>
+  <dt id="threads~8"><a class="permalink" href="#threads~8">threads-&gt;list(threads::running)</a></dt>
+  <dd></dd>
+  <dt id="threads~9"><a class="permalink" href="#threads~9">threads-&gt;list(threads::joinable)</a></dt>
+  <dd>Sans arguments (ou en utilisant
+      <span class="Li">&quot;threads::all&quot;</span>) et dans un contexte de liste,
+      retourne une liste de tous les objets <i>threads</i> non joints et non détachés. Dans un contexte scalaire, retourne le nombre de ceux-ci.
+    <p class="Pp">Avec un argument <i>vrai</i> (en utilisant
+        <span class="Li">&quot;threads::running&quot;</span>), retourne une liste de
+        tous les objets <i>threads</i> non joints et non détachés qui sont encore
+        en cours d'exécution.</p>
+    <p class="Pp">Avec un argument <i>faux</i> (en utilisant
+        <span class="Li">&quot;threads::joinable&quot;</span>), retourne une liste
+        de tous les objets <i>threads</i> non joints et non détachés qui ont
+        terminé leur exécution (c'est-à-dire, pour lesquels
+        <span class="Li">&quot;-&gt;join()&quot;</span> ne bloquera pas).</p>
+  </dd>
+  <dt>$thr1-&gt;equal($thr2)</dt>
+  <dd>Teste si deux objets threads sont le même thread ou non. Ceci est surchargé pour les formes plus naturelles :
+        <pre>if ($thr1 == $thr2) {
+    print(&quot;Les threads sont les mêmes\n&quot;);
+}
+# ou
+if ($thr1 != $thr2) {
+    print(&quot;Les threads diffèrent\n&quot;);
+}
+</pre>
+    <p class="Pp">(La comparaison des threads est basée sur les identifiants de thread.)</p>
+  </dd>
+  <dt id="async"><a class="permalink" href="#async">async BLOC;</a></dt>
+  <dd><span class="Li">&quot;async&quot;</span> crée un thread pour exécuter le bloc qui le suit immédiatement. Ce bloc est traité comme une sous-routine anonyme et doit donc avoir un point-virgule après l'accolade fermante. Comme <span class="Li">&quot;threads-&gt;create()&quot;</span>,
+      <span class="Li">&quot;async&quot;</span> retourne un objet <i>threads</i>.</dd>
+  <dt>$thr-&gt;<b>error()</b></dt>
+  <dd>Les threads sont exécutés dans un contexte <span class="Li">&quot;eval&quot;</span>. Cette méthode retournera <span class="Li">&quot;undef&quot;</span> si le thread se termine <i>normalement</i>. Sinon, elle retourne la valeur de <span class="Li">$@</span> associée à l'état d'exécution du thread dans son contexte <span class="Li">&quot;eval&quot;</span>.</dd>
+  <dt>$thr-&gt;<b>_handle()</b></dt>
+  <dd>Cette méthode <i>privée</i> retourne un pointeur (c'est-à-dire, l'adresse mémoire exprimée en entier non signé) vers la structure interne de thread associée à un objet threads. Pour Win32, c'est un pointeur vers la valeur <span class="Li">&quot;HANDLE&quot;</span> retournée par <span class="Li">&quot;CreateThread&quot;</span> (c'est-à-dire, <span class="Li">&quot;HANDLE *&quot;</span>); pour d'autres plateformes, c'est un pointeur vers la structure <span class="Li">&quot;pthread_t&quot;</span> utilisée dans l'appel <span class="Li">&quot;pthread_create&quot;</span> (c'est-à-dire, <span class="Li">&quot;pthread_t *&quot;</span>).
+    <p class="Pp">Cette méthode n'est d'aucune utilité pour la programmation générale de threads Perl. Son intention est de fournir à d'autres modules de threads (basés sur XS) la capacité d'accéder, et éventuellement de manipuler, la structure de thread sous-jacente associée à un thread Perl.</p>
+  </dd>
+  <dt id="threads~10"><a class="permalink" href="#threads~10">threads-&gt;<b>_handle()</b></a></dt>
+  <dd>Méthode de classe qui permet à un thread d'obtenir son propre <i>handle</i>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXITING_A_THREAD'><a class='permalink' href='#EXITING_A_THREAD'>TERMINER UN THREAD</a></h1>
+<p class="Pp">La méthode habituelle pour terminer un thread est de <b>return()</b>
+    depuis la fonction d'entrée avec la ou les valeurs de retour appropriées.</p>
+<dl class="Bl-tag">
+  <dt id="threads~11"><a class="permalink" href="#threads~11">threads-&gt;<b>exit()</b></a></dt>
+  <dd>Si nécessaire, un thread peut être terminé à tout moment en appelant
+      <span class="Li">&quot;threads-&gt;exit()&quot;</span>. Cela provoquera le retour de <span class="Li">&quot;undef&quot;</span> par le thread dans un contexte scalaire, ou de la liste vide dans un contexte de liste.
+    <p class="Pp">Lorsqu'elle est appelée depuis le thread <i>principal</i>, cela se comporte comme <span class="Li">exit(0)</span>.</p>
+  </dd>
+  <dt id="threads~12"><a class="permalink" href="#threads~12">threads-&gt;exit(status)</a></dt>
+  <dd>Lorsqu'elle est appelée depuis un thread, cela se comporte comme
+      <span class="Li">&quot;threads-&gt;exit()&quot;</span> (c'est-à-dire, le code de statut de sortie est ignoré).
+    <p class="Pp">Lorsqu'elle est appelée depuis le thread <i>principal</i>, cela se comporte comme <span class="Li">exit(status)</span>.</p>
+  </dd>
+  <dt id="die()"><a class="permalink" href="#die()"><b>die()</b></a></dt>
+  <dd>Appeler <span class="Li">die()</span> dans un thread indique une sortie anormale pour le thread. Tout gestionnaire <span class="Li">$SIG{__DIE__}</span> dans le thread sera appelé en premier, puis le thread se terminera avec un message d'avertissement contenant les arguments passés à l'appel <span class="Li">die()</span>.</dd>
+  <dt id="exit(status)"><a class="permalink" href="#exit(status)">exit(status)</a></dt>
+  <dd>Appeler <b>exit()</b> à l'intérieur d'un thread provoque la terminaison de toute l'application. Pour cette raison, l'utilisation de <span class="Li">exit()</span>
+      à l'intérieur de code threadé, ou dans des modules qui pourraient être utilisés dans des applications threadées, est fortement déconseillée.
+    <p class="Pp">Si <span class="Li">exit()</span> est vraiment nécessaire, envisagez d'utiliser ce qui suit :</p>
+        <pre>threads-&gt;exit() if threads-&gt;can('exit');   # Thread friendly
+exit(status);
+</pre>
+  </dd>
+  <dt id="use"><a class="permalink" href="#use">use threads 'exit' =&gt;
+    'threads_only'</a></dt>
+  <dd>Ceci remplace globalement le comportement par défaut de l'appel
+      <span class="Li">exit()</span> à l'intérieur d'un thread, et fait effectivement en sorte que de tels appels se comportent comme
+      <span class="Li">&quot;threads-&gt;exit()&quot;</span>. Autrement dit, avec ce réglage, appeler <span class="Li">exit()</span> ne termine que le thread.
+    <p class="Pp">En raison de son effet global, ce réglage ne doit pas être utilisé à l'intérieur de modules ou similaires.</p>
+    <p class="Pp">Le thread <i>principal</i> n'est pas affecté par ce réglage.</p>
+  </dd>
+  <dt id="threads~13"><a class="permalink" href="#threads~13">threads-&gt;create({'exit'
+    =&gt; 'thread_only'}, ...)</a></dt>
+  <dd>Ceci remplace le comportement par défaut de <span class="Li">exit()</span>
+      à l'intérieur du thread nouvellement créé uniquement.</dd>
+  <dt>$thr-&gt;set_thread_exit_only(boolean)</dt>
+  <dd>Ceci peut être utilisé pour changer le comportement <i>exit thread only</i> pour un thread après sa création. Avec un argument <i>vrai</i>,
+      <span class="Li">exit()</span> ne provoquera la sortie que du thread. Avec un argument <i>faux</i>,
+      <span class="Li">exit()</span> terminera l'application.
+    <p class="Pp">Le thread <i>principal</i> n'est pas affecté par cet appel.</p>
+  </dd>
+  <dt id="threads~14"><a class="permalink" href="#threads~14">threads-&gt;set_thread_exit_only(boolean)</a></dt>
+  <dd>Méthode de classe à utiliser à l'intérieur d'un thread pour changer son propre comportement pour <span class="Li">exit()</span>.
+    <p class="Pp">Le thread <i>principal</i> n'est pas affecté par cet appel.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THREAD_STATE'><a class='permalink' href='#THREAD_STATE'>ÉTAT DU THREAD</a></h1>
+<p class="Pp">Les méthodes booléennes suivantes sont utiles pour déterminer l'état
+    <i>état</i> d'un thread.</p>
+<dl class="Bl-tag">
+  <dt>$thr-&gt;<b>is_running()</b></dt>
+  <dd>Retourne vrai si un thread est toujours en cours d'exécution (c'est-à-dire, si sa fonction d'entrée n'est pas encore terminée ou terminée).
+  </dd>
+  <dt>$thr-&gt;<b>is_joinable()</b></dt>
+  <dd>Retourne vrai si le thread a terminé son exécution, n'est pas détaché et n'a pas encore été joint. En d'autres termes, le thread est prêt à être joint, et un appel à
+      <span class="Li">&quot;$thr-&gt;join()&quot;</span> ne bloquera pas.</dd>
+  <dt>$thr-&gt;<b>is_detached()</b></dt>
+  <dd>Retourne vrai si le thread a été détaché.</dd>
+  <dt id="threads~15"><a class="permalink" href="#threads~15">threads-&gt;<b>is_detached()</b></a></dt>
+  <dd>Méthode de classe qui permet à un thread de déterminer s'il est détaché ou non.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THREAD_CONTEXT'><a class='permalink' href='#THREAD_CONTEXT'>CONTEXTE DU THREAD</a></h1>
+<p class="Pp">Comme pour les sous-routines, le type de valeur retournée par la fonction d'entrée d'un thread peut être déterminé par le <i>contexte</i> du thread : liste, scalaire ou vide. Le contexte du thread est déterminé lors de la création du thread. Ceci est nécessaire pour que le contexte soit disponible à la fonction d'entrée via <b>wantarray()</b>. Le thread peut alors spécifier une valeur du type approprié à retourner depuis
+    <span class="Li">&quot;-&gt;join()&quot;</span>.</p>
+<section class="Ss">
+<h2 class="Ss" id='Explicit_context'><a class='permalink' href='#Explicit_context'>Contexte explicite</a></h2>
+<p class="Pp">Étant donné que la création de thread et la jonction de thread peuvent se produire dans des contextes différents, il peut être souhaitable de spécifier explicitement le contexte à la fonction d'entrée du thread. Ceci peut être fait en appelant
+    <span class="Li">&quot;-&gt;create()&quot;</span> avec une référence de hachage comme premier argument :</p>
+<pre>my $thr = threads-&gt;create({'context' =&gt; 'list'}, \&amp;foo);
+...
+my @results = $thr-&gt;join();</pre>
+<p class="Pp">Dans l'exemple ci-dessus, l'objet threads est retourné au thread parent dans un contexte scalaire, et la fonction d'entrée du thread
+    <span class="Li">&quot;foo&quot;</span> sera appelée dans un contexte de liste (tableau) de telle sorte que le thread parent puisse recevoir une liste (tableau) de l'appel <span class="Li">&quot;-&gt;join()&quot;</span>.
+    (<span class="Li">'array'</span> est synonyme de
+    <span class="Li">'list'</span>.)</p>
+<p class="Pp">De même, si vous avez besoin de l'objet threads, mais que votre thread ne retournera pas de valeur (c'est-à-dire, contexte <i>vide</i>), vous feriez ce qui suit :</p>
+<pre>my $thr = threads-&gt;create({'context' =&gt; 'void'}, \&amp;foo);
+...
+$thr-&gt;join();</pre>
+<p class="Pp">Le type de contexte peut également être utilisé comme <i>clé</i> dans la référence de hachage suivie d'une valeur <i>vraie</i> :</p>
+<pre>threads-&gt;create({'scalar' =&gt; 1}, \&amp;foo);
+...
+my ($thr) = threads-&gt;list();
+my $result = $thr-&gt;join();</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Implicit_context'><a class='permalink' href='#Implicit_context'>Contexte implicite</a></h2>
+<p class="Pp">S'il n'est pas explicitement indiqué, le contexte du thread est implicite par le contexte de l'appel <span class="Li">&quot;-&gt;create()&quot;</span> :</p>
+<pre># Créer un thread dans un contexte de liste
+my ($thr) = threads-&gt;create(...);
+# Créer un thread dans un contexte scalaire
+my $thr = threads-&gt;create(...);
+# Créer un thread dans un contexte vide
+threads-&gt;create(...);</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='$thr-&amp;gt;&lt;b&gt;wantarray()&lt;/b&gt;'><a class='permalink' href='#$thr-&amp;gt;&lt;b&gt;wantarray()&lt;/b&gt;'>$thr-&gt;<b>wantarray()</b></a></h2>
+<p class="Pp">Ceci retourne le contexte du thread de la même manière que
+    <b>wantarray()</b>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='threads-&amp;gt;&lt;b&gt;w'><a class='permalink' href='#threads-&amp;gt;&lt;b&gt;w'>threads-&gt;w</a></h2>
+</section>
+antarray()&lt;/b&gt;'><a class='permalink' href='#threads-&amp;gt;&lt;b&gt;wantarray()&lt;/b&gt;'>threads-&gt;<b>wantarray()</b></a></h2>
+<p class="Pp">Méthode de classe pour renvoyer le contexte du thread courant. Ceci renvoie la même valeur que l'exécution de <b>wantarray()</b> à l'intérieur de la fonction du point d'entrée du thread courant.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THREAD_STACK_SIZE'><a class='permalink' href='#THREAD_STACK_SIZE'>TAILLE_PILE_THREAD</a></h1>
+<p class="Pp">La taille par défaut de la pile par thread pour différentes plateformes varie considérablement, et est presque toujours bien plus que ce qui est nécessaire pour la plupart des applications. Sur Win32, le makefile de Perl définit explicitement la pile par défaut à 16 Mo ; sur la plupart des autres plateformes, la valeur par défaut du système est utilisée, ce qui peut encore être beaucoup plus grand que nécessaire.</p>
+<p class="Pp">En ajustant la taille de la pile pour qu'elle reflète plus précisément les besoins de votre application, vous pouvez réduire considérablement l'utilisation de la mémoire de votre application et augmenter le nombre de threads exécutés simultanément.</p>
+<p class="Pp">Notez que sous Windows, la granularité d'allocation d'espace d'adressage est de 64 Ko, par conséquent, définir la pile à une taille inférieure à celle-ci sous Win32 Perl n'économisera pas plus de mémoire.</p>
+<dl class="Bl-tag">
+  <dt id="threads~17"><a class="permalink" href="#threads~17">threads-&gt;<b>get_stack_size()</b>;</a></dt>
+  <dd>Retourne la taille de pile par défaut actuelle par thread. La valeur par défaut est zéro, ce qui signifie que la taille de pile par défaut du système est actuellement utilisée.</dd>
+  <dt>$taille = $thr-&gt;<b>get_stack_size()</b>;</dt>
+  <dd>Retourne la taille de la pile pour un thread particulier. Une valeur de retour de zéro indique que la taille de pile par défaut du système a été utilisée pour le thread.</dd>
+  <dt>$ancienne_taille = threads-&gt;set_stack_size($nouvelle_taille);</dt>
+  <dd>Définit une nouvelle taille de pile par défaut par thread et renvoie le paramètre précédent.
+    <p class="Pp">Certaines plateformes ont une taille minimale de pile de thread. Essayer de définir la taille de la pile en dessous de cette valeur entraînera un avertissement, et la taille minimale de la pile sera utilisée.</p>
+    <p class=" Pp">Certaines plateformes Linux ont une taille maximale de pile. Définir une taille de pile trop grande entraînera l'échec de la création du thread.</p>
+    <p class=" Pp">Si nécessaire, <span class="Li">$nouvelle_taille</span> sera arrondie au multiple suivant de la taille de page mémoire (généralement 4096 ou 8192).</p>
+    <p class=" Pp">Les threads créés après la définition de la taille de la pile appelleront alors <span class="Li">pthread_attr_setstacksize()</span> <i>(pour les plateformes pthreads)</i>, ou fourniront la taille de la pile à <span class="Li">CreateThread()</span> <i>(pour Win32 Perl)</i>.</p>
+    <p class=" Pp">(Évidemment, cet appel n'affecte aucun thread existant.)</p>
+  </dd>
+  <dt id="use~2"><a class="permalink" href="#use~2">use threads ('stack_size'
+    =&gt; VALEUR);</a></dt>
+  <dd>Ceci définit la taille de pile par défaut par thread au début de l'application.</dd>
+  <dt>$ENV{'PERL5_ITHREADS_STACK_SIZE'}</dt>
+  <dd>La taille de pile par défaut par thread peut être définie au début de l'application en utilisant la variable d'environnement
+      <span class="Li">&quot;PERL5_ITHREADS_STACK_SIZE&quot;</span> :
+        <pre>PERL5_ITHREADS_STACK_SIZE=1048576
+export PERL5_ITHREADS_STACK_SIZE
+perl -e'use threads; print(threads-&gt;get_stack_size(), &quot;\n&quot;)'
+</pre>
+    <p class="Pp">Cette valeur remplace tout paramètre
+        <span class="Li">&quot;stack_size&quot;</span> donné à
+        <span class="Li">&quot;use threads&quot;</span>. Son objectif principal est
+        de permettre la définition de la taille de pile par thread pour les applications multithread héritées.</p>
+  </dd>
+  <dt id="threads~18"><a class="permalink" href="#threads~18">threads-&gt;create({'stack_size'
+    =&gt; VALEUR}, FONCTION, ARGUMENTS)</a></dt>
+  <dd>Pour spécifier une taille de pile particulière pour n'importe quel thread individuel, appelez
+      <span class="Li">&quot;-&gt;create()&quot;</span> avec une référence de hachage comme premier argument :
+        <pre>my $thr = threads-&gt;create({'stack_size' =&gt; 32*4096},
+                          \&amp;foo, @args);
+</pre>
+  </dd>
+  <dt>$thr2 = $thr1-&gt;create(FONCTION, ARGUMENTS)</dt>
+  <dd>Ceci crée un nouveau thread (<span class="Li">$thr2</span>) qui hérite de la taille de pile d'un thread existant (<span class="Li">$thr1</span>).
+      C'est une abréviation pour :
+        <pre>my $stack_size = $thr1-&gt;get_stack_size();
+my $thr2 = threads-&gt;create({'stack_size' =&gt; $stack_size},
+                           FONCTION, ARGUMENTS);
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THREAD_SIGNALLING'><a class='permalink' href='#THREAD_SIGNALLING'>SIGNALISATION_THREAD</a></h1>
+<p class="Pp">Lorsque les signaux sûrs sont actifs (comportement par défaut - voir "Signaux non sûrs" pour plus de détails), les signaux peuvent être envoyés et traités par des threads individuels.</p>
+<dl class="Bl-tag">
+  <dt>$thr-&gt;kill('SIG...');</dt>
+  <dd>Envoie le signal spécifié au thread. Les noms de signaux et les numéros de signaux (positifs) sont les mêmes que ceux pris en charge par <b>kill()</b>. Par exemple, 'SIGTERM', 'TERM' et (selon le système d'exploitation) 15 sont tous des arguments valides pour
+      <span class="Li">&quot;-&gt;kill()&quot;</span>.
+    <p class="Pp">Retourne l'objet thread pour permettre le chaînage de méthodes :</p>
+        <pre>$thr-&gt;kill('SIG...')-&gt;join();
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Les gestionnaires de signaux doivent être configurés dans les threads pour les signaux sur lesquels ils sont censés agir. Voici un exemple pour *annuler* un thread :</p>
+<pre>use threads;
+sub thr_func
+{
+    # Gestionnaire de signal de 'annulation' de thread
+    $SIG{'KILL'} = sub { threads-&gt;exit(); };
+    ...
+}
+# Créer un thread
+my $thr = threads-&gt;create('thr_func');
+...
+# Signaler au thread de se terminer, puis le détacher
+# pour qu'il soit nettoyé automatiquement
+$thr-&gt;kill('KILL')-&gt;detach();</pre>
+<p class="Pp">Voici un autre exemple simplifié qui illustre l'utilisation de la signalisation de thread en conjonction avec un sémaphore pour fournir des capacités rudimentaires de *mise en pause* et de *reprise* :</p>
+<pre>use threads;
+use Thread::Semaphore;
+sub thr_func
+{
+    my $sema = shift;
+    # Gestionnaire de signal de 'mise en pause/reprise' de thread
+    $SIG{'STOP'} = sub {
+        $sema-&gt;down();      # Thread mis en pause
+        $sema-&gt;up();        # Thread reprend
+    };
+    ...
+}
+# Créer un sémaphore et le passer à un thread
+my $sema = Thread::Semaphore-&gt;new();
+my $thr = threads-&gt;create('thr_func', $sema);
+# Mettre le thread en pause
+$sema-&gt;down();
+$thr-&gt;kill('STOP');
+...
+# Permettre au thread de continuer
+$sema-&gt;up();</pre>
+<p class="Pp">ATTENTION : La capacité de signalisation de thread fournie par ce module n'envoie pas réellement de signaux via le système d'exploitation. Elle *émule* les signaux au niveau de Perl de telle sorte que les gestionnaires de signaux soient appelés dans le thread approprié. Par exemple, envoyer
+    <span class="Li">&quot;$thr-&gt;kill('STOP')&quot;</span> ne suspend pas réellement un thread (ou tout le processus), mais provoque l'appel d'un gestionnaire <span class="Li">$SIG{'STOP'}</span> dans ce thread (comme illustré ci-dessus).</p>
+<p class="Pp">En tant que tels, les signaux qui ne seraient normalement pas appropriés à utiliser dans la commande
+    <span class="Li">kill()</span> (par exemple,
+    <span class="Li">&quot;kill('KILL', $$)&quot;</span>) sont acceptables à utiliser avec la méthode
+    <span class="Li">&quot;-&gt;kill()&quot;</span> (encore une fois, comme illustré ci-dessus).</p>
+<p class="Pp">Par conséquent, envoyer un signal à un thread ne perturbe pas l'opération sur laquelle le thread travaille actuellement : le signal sera traité après la fin de l'opération en cours. Par exemple, si le thread est *bloqué* sur un appel d'E/S, lui envoyer un signal n'interrompra pas l'appel d'E/S de telle sorte que le signal soit traité immédiatement.</p>
+<p class="Pp">Envoyer un signal à un thread terminé/achevé est ignoré.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='WARNINGS'><a class='permalink' href='#WARNINGS'>AVERTISSEMENTS</a></h1>
+<dl class="Bl-tag">
+  <dt id="Perl"><a class="permalink" href="#Perl">Perl s'est terminé avec des threads actifs :</a></dt>
+  <dd>Si le programme se termine sans que tous les threads aient été joints ou détachés, cet avertissement sera émis.
+    <p class="Pp">NOTE : Si le thread *principal* se termine, cet avertissement ne peut pas être supprimé en utilisant <span class="Li">&quot;no warnings 'threads';&quot;</span> comme suggéré ci-dessous.</p>
+  </dd>
+  <dt id="Thread"><a class="permalink" href="#Thread">Échec de la création du thread : pthread_create a retourné #</a></dt>
+  <dd>Voir la page de manuel appropriée pour
+      <span class="Li">&quot;pthread_create&quot;</span> pour déterminer la cause réelle de l'échec.</dd>
+  <dt id="Thread~2"><a class="permalink" href="#Thread~2">Thread # terminé anormalement : ...</a></dt>
+  <dd>Un thread s'est terminé d'une manière autre que le simple retour de sa fonction de point d'entrée, ou en utilisant
+      <span class="Li">&quot;threads-&gt;exit()&quot;</span>. Par exemple, le thread peut s'être terminé en raison d'une erreur, ou en utilisant
+      <span class="Li">&quot;die&quot;</span>.</dd>
+  <dt id="Using"><a class="permalink" href="#Using">Utilisation de la taille minimale de pile de thread de #</a></dt>
+  <dd>Certaines plateformes ont une taille minimale de pile de thread. Essayer de définir la taille de la pile en dessous de cette valeur entraînera l'avertissement ci-dessus, et la taille de la pile sera définie à la valeur minimale.</dd>
+  <dt id="Thread~3"><a class="permalink" href="#Thread~3">Échec de la création du thread : pthread_attr_setstacksize(<i>TAILLE</i>) a retourné 22</a></dt>
+  <dd>La <i>TAILLE</i> spécifiée dépasse la taille maximale de pile du système. Utilisez une valeur plus petite pour la taille de la pile.</dd>
+</dl>
+<p class="Pp">Si nécessaire, les avertissements de thread peuvent être supprimés en utilisant :</p>
+<pre>no warnings 'threads';</pre>
+<p class="Pp">dans la portée appropriée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ERRORS'><a class='permalink' href='#ERRORS'>ERREURS</a></h1>
+<dl class="Bl-tag">
+  <dt id="This"><a class="permalink" href="#This">Ce Perl n'est pas compilé pour supporter les threads</a></dt>
+  <dd>La copie particulière de Perl que vous essayez d'utiliser n'a pas été compilée avec l'option de configuration
+      <span class="Li">&quot;useithreads&quot;</span>.
+    <p class="Pp">Le support des threads nécessite que tout Perl et tous les modules XS de l'installation Perl soient reconstruits ; il ne s'agit pas simplement d'ajouter le module threads (c'est-à-dire que les Perl threadés et non threadés sont binaires incompatibles).</p>
+  </dd>
+  <dt id="Cannot"><a class="permalink" href="#Cannot">Impossible de changer la taille de la pile d'un thread existant</a></dt>
+  <dd>La taille de la pile des threads actuellement existants ne peut pas être modifiée, par conséquent, ce qui suit entraîne l'erreur ci-dessus :
+        <pre>$thr-&gt;set_stack_size($taille);
+</pre>
+  </dd>
+  <dt id="Cannot~2"><a class="permalink" href="#Cannot~2">Impossible de signaler les threads sans signaux sûrs</a></dt>
+  <dd>Les signaux sûrs doivent être actifs pour utiliser la méthode de signalisation
+      <span class="Li">&quot;-&gt;kill()&quot;</span>. Voir "Signaux non sûrs" pour plus de détails.</dd>
+  <dt id="Unrecognized"><a class="permalink" href="#Unrecognized">Nom de signal non reconnu : ...</a></dt>
+  <dd>La copie particulière de Perl que vous essayez d'utiliser ne prend pas en charge le signal spécifié utilisé dans un appel
+      <span class="Li">&quot;-&gt;kill()&quot;</span>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS_AND_LIMITATIONS'><a class='permalink' href='#BUGS_AND_LIMITATIONS'>BOGUES ET LIMITATIONS</a></h1>
+<p class="Pp">Avant d'envisager de soumettre un rapport de bogue, veuillez consulter, et éventuellement poster un message sur le forum de discussion pour voir si ce que vous avez rencontré est un problème connu.</p>
+<dl class="Bl-tag">
+  <dt id="Thread~4"><a class="permalink" href="#Thread~4">Modules thread-safe</a></dt>
+  <dd>Voir "Rendre votre module thread-safe" dans perlmod</dd>
+</dl>
+ lors de la création
+      de modules qui peuvent être utilisés dans des applications multithreadées, en particulier si ces
+      modules utilisent des données non-Perl ou du code XS.</dd>
+  <dt id="Using~2"><a class="permalink" href="#Using~2">Utilisation de modules
+    non thread-safe</a></dt>
+  <dd>Malheureusement, vous pouvez rencontrer des modules Perl qui ne sont pas
+      <i>thread-safe</i>. Par exemple, ils peuvent planter l'interpréteur Perl
+      pendant leur exécution, ou planter (dump core) lors de la terminaison. Selon le module
+      et les exigences de votre application, il peut être possible de contourner ces difficultés.
+    <p class="Pp">Si le module ne doit être utilisé qu'à l'intérieur d'un thread, vous pouvez essayer de charger le module depuis l'intérieur de la fonction d'entrée du thread en utilisant
+        <span class="Li">&quot;require&quot;</span> (et
+        <span class="Li">&quot;import&quot;</span> si nécessaire) :</p>
+        <pre>sub thr_func
+{
+    require Unsafe::Module
+    # Unsafe::Module-&gt;import(...);
+    ....
+}
+</pre>
+    <p class="Pp">Si le module est nécessaire dans le thread *principal*, essayez de modifier votre application de manière à ce que le module soit chargé (à nouveau en utilisant
+        <span class="Li">&quot;require&quot;</span> et
+        <span class="Li">&quot;-&gt;import()&quot;</span>) après le démarrage de tous les threads, et de telle sorte qu'aucun autre thread ne soit démarré
+      après.</p>
+    <p class="Pp">Si ce qui précède ne fonctionne pas, ou n'est pas suffisant pour votre
+        application, alors déposez un rapport de bug sur
+        <a href='https://rt.cpan.org/Public/'>https://rt.cpan.org/Public/</a> contre le module problématique.</p>
+  </dd>
+  <dt id="Memory"><a class="permalink" href="#Memory">Consommation de mémoire</a></dt>
+  <dd>Sur la plupart des systèmes, la création et la destruction fréquentes et continues de threads peuvent entraîner une croissance continue de l'empreinte mémoire de l'interpréteur Perl. Bien qu'il soit simple de lancer des threads puis de les
+      <span class="Li">&quot;-&gt;join()&quot;</span> ou de les
+      <span class="Li">&quot;-&gt;detach()&quot;</span>, pour les applications de longue durée, il est préférable de maintenir un pool de threads et de les réutiliser pour le travail nécessaire, en utilisant des files d'attente pour notifier les threads du travail en attente. La distribution CPAN de ce module contient un exemple simple
+      (<i>examples/pool_reuse.pl</i>) illustrant la création, l'utilisation et la surveillance d'un pool de threads *réutilisables*. </dd>
+  <dt id="Current"><a class="permalink" href="#Current">Répertoire de travail actuel</a></dt>
+  <dd>Sur toutes les plateformes sauf MSWin32, le paramètre du répertoire de travail actuel est partagé entre tous les threads de telle sorte que sa modification dans un thread
+      (par exemple, en utilisant <span class="Li">chdir()</span>) affectera tous les threads de l'application.
+    <p class="Pp">Sur MSWin32, chaque thread conserve son propre paramètre de répertoire de travail actuel.</p>
+  </dd>
+  <dt id="Locales"><a class="permalink" href="#Locales">Locales</a></dt>
+  <dd>Avant Perl 5.28, les locales ne pouvaient pas être utilisées avec les threads, en raison de diverses conditions de concurrence. À partir de cette version, sur les systèmes qui implémentent
+      des fonctions de locale thread-safe, les threads peuvent être utilisés, avec quelques mises en garde. Cela inclut Windows à partir de Visual Studio 2005, et les systèmes compatibles avec POSIX 2008. Voir &quot;Multi-threaded operation&quot; dans perllocale.
+    <p class="Pp">Chaque thread (sauf le thread principal) est démarré en utilisant la locale C. Le thread principal est démarré comme tous les autres programmes Perl ; voir &quot;ENVIRONMENT&quot; dans perllocale. Vous pouvez changer de locale dans n'importe quel thread aussi souvent que vous le souhaitez.</p>
+    <p class="Pp">Si vous souhaitez hériter de la locale du thread parent, vous pouvez, dans le parent, définir une variable comme suit :</p>
+        <pre>$foo = POSIX::setlocale(LC_ALL, NULL);
+</pre>
+    <p class="Pp">et ensuite passer à threads-&gt;<b>create()</b> une sous-routine qui ferme sur <span class="Li">$foo</span>. Ensuite, dans l'enfant, vous dites</p>
+        <pre>POSIX::setlocale(LC_ALL, $foo);
+</pre>
+    <p class="Pp">Ou vous pouvez utiliser les fonctionnalités de threads::shared pour passer
+        <span class="Li">$foo</span> ; ou si l'environnement n'a pas changé, dans l'enfant, faites</p>
+        <pre>POSIX::setlocale(LC_ALL, &quot;&quot;);
+</pre>
+  </dd>
+  <dt id="Environment"><a class="permalink" href="#Environment">Variables d'environnement</a></dt>
+  <dd>Actuellement, sur toutes les plateformes sauf MSWin32, tous les appels *système* (par exemple, en utilisant <span class="Li">system()</span> ou les back-ticks) effectués à partir des threads
+      utilisent les paramètres des variables d'environnement du thread *principal*. En d'autres termes, les modifications apportées à <span class="Li">%ENV</span> dans un thread ne seront pas visibles dans les appels *système* effectués par ce thread.
+    <p class="Pp">Pour contourner cela, définissez les variables d'environnement dans le cadre de l'appel *système*. Par exemple :</p>
+        <pre>my $msg = 'hello';
+system(&quot;FOO=$msg; echo \$FOO&quot;);   # Affiche 'hello' sur STDOUT
+</pre>
+    <p class="Pp">Sur MSWin32, chaque thread conserve son propre ensemble de variables d'environnement.</p>
+  </dd>
+  <dt id="Catching"><a class="permalink" href="#Catching">Capture des signaux</a></dt>
+  <dd>Les signaux sont *capturés* par le thread principal (ID de thread = 0) d'un script. Par conséquent, la mise en place de gestionnaires de signaux dans les threads à des fins autres que la &quot;SIGNALISATION DE THREAD&quot; comme documenté ci-dessus n'accomplira pas ce qui est prévu.
+    <p class="Pp">C'est particulièrement vrai si vous essayez de capturer <span class="Li">&quot;SIGALRM&quot;</span> dans un thread. Pour gérer les alarmes dans les threads, mettez en place un gestionnaire de signaux dans le thread principal, puis utilisez la &quot;SIGNALISATION DE THREAD&quot; pour relayer le signal au thread :</p>
+        <pre># Crée un thread avec une tâche qui peut expirer
+my $thr = threads-&gt;create(sub {
+    threads-&gt;yield();
+    eval {
+        $SIG{ALRM} = sub { die(&quot;Timeout\n&quot;); };
+        alarm(10);
+        ...  # Faire le travail ici
+        alarm(0);
+    };
+    if ($@ =~ /Timeout/) {
+        warn(&quot;La tâche dans le thread a expiré\n&quot;);
+    }
+};
+# Définit le gestionnaire de signaux pour relayer SIGALRM au thread
+$SIG{ALRM} = sub { $thr-&gt;kill('ALRM') };
+... # Le thread principal continue de travailler
+</pre>
+  </dd>
+  <dt id="Parent"><a class="permalink" href="#Parent">Threads parent-enfant</a></dt>
+  <dd>Sur certaines plateformes, il peut ne pas être possible de détruire les threads *parents* tant qu'il existe encore des threads *enfants*.</dd>
+  <dt id="Unsafe"><a class="permalink" href="#Unsafe">Signaux dangereux</a></dt>
+  <dd>Depuis Perl 5.8.0, les signaux ont été rendus plus sûrs dans Perl en reportant leur gestion jusqu'à ce que l'interpréteur soit dans un état *sûr*. Voir &quot;Safe Signals&quot; dans perl58delta et &quot;Deferred Signals (Safe Signals)&quot; dans perlipc pour plus de détails.
+    <p class="Pp">Les signaux sûrs sont le comportement par défaut, et l'ancien comportement de signalisation immédiat et dangereux n'est en vigueur que dans les situations suivantes :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Perl a été compilé avec
+      <span class="Li">&quot;PERL_OLD_SIGNALS&quot;</span> (voir
+      <span class="Li">&quot;perl&#x00A0;-V&quot;</span>).</li>
+  <li>La variable d'environnement <span class="Li">&quot;PERL_SIGNALS&quot;</span>
+      est définie sur <span class="Li">&quot;unsafe&quot;</span> (voir
+      &quot;PERL_SIGNALS&quot; dans perlrun).</li>
+  <li>Le module Perl::Unsafe::Signals est utilisé.</li>
+</ul>
+</div>
+<div class="Bd-indent">
+<p class="Pp">Si les signaux dangereux sont actifs, la gestion des signaux n'est pas thread-safe, et la méthode de signalisation
+      <span class="Li">&quot;-&gt;kill()&quot;</span> ne peut pas être utilisée.</p>
+</div>
+<dl class="Bl-tag">
+  <dt id="Identity"><a class="permalink" href="#Identity">Identité des objets
+    renvoyés par les threads</a></dt>
+  <dd>Lorsqu'une valeur est renvoyée par un thread via une opération
+      <span class="Li">&quot;join&quot;</span>, la valeur et tout ce à quoi elle fait référence sont copiés dans le thread de jonction, un peu de la même manière que les valeurs sont copiées lors de la création du thread. Cela fonctionne bien pour la plupart des types de valeurs, y compris les tableaux, les hachages et les sous-routines. La copie est récursive à travers les éléments de tableau, les scalaires de référence, les variables fermées par les sous-routines et d'autres types de références.
+    <p class="Pp">Cependant, tout ce à quoi la valeur renvoyée fait référence est une nouvelle copie dans le thread de jonction, même si un objet renvoyé était dans le thread enfant une copie de quelque chose qui existait précédemment dans le thread parent. Après la jonction, le parent aura donc un doublon de chacun de ces objets. Cela peut parfois poser problème, surtout si l'objet est modifié ; cela peut particulièrement poser problème pour les données privées auxquelles une sous-routine renvoyée donne accès.</p>
+  </dd>
+  <dt id="Returning"><a class="permalink" href="#Returning">Retour d'objets "blessés" depuis les threads</a></dt>
+  <dd>Le retour d'objets "blessés" (blessed objects) depuis les threads ne fonctionne pas. Selon les classes impliquées, vous pourrez peut-être contourner ce problème en retournant une version sérialisée de l'objet (par exemple, en utilisant Data::Dumper ou Storable), puis en la reconstituant dans le thread de jonction. Si vous utilisez Perl 5.10.0 ou une version ultérieure, et si la classe prend en charge les objets partagés, vous pouvez les passer via des files d'attente partagées.</dd>
+  <dt id="END"><a class="permalink" href="#END">Blocs END dans les threads</a></dt>
+  <dd>Il est possible d'ajouter des blocs END aux threads en utilisant require ou eval avec le code approprié. Ces blocs <span class="Li">&quot;END&quot;</span> seront alors exécutés lorsque l'interpréteur du thread sera détruit (c'est-à-dire, soit lors d'un appel <span class="Li">&quot;-&gt;join()&quot;</span>, soit lors de la terminaison du programme).
+    <p class="Pp">Cependant, l'appel de toute méthode de threads dans un tel bloc
+        <span class="Li">&quot;END&quot;</span> échouera très probablement (par exemple, l'application peut se bloquer ou générer une erreur) en raison des mutex nécessaires pour contrôler la fonctionnalité au sein du module threads.</p>
+    <p class="Pp">Pour cette raison, l'utilisation de blocs <span class="Li">&quot;END&quot;</span> dans les threads est *fortement* déconseillée.</p>
+  </dd>
+  <dt id="Open"><a class="permalink" href="#Open">Descripteurs de répertoire ouverts</a></dt>
+  <dd>Dans perl 5.14 et supérieur, sur les systèmes autres que Windows qui ne prennent pas en charge la fonction C <span class="Li">&quot;fchdir&quot;</span>, les descripteurs de répertoire (voir opendir) ne seront pas copiés vers les nouveaux threads. Vous pouvez utiliser la variable <span class="Li">&quot;d_fchdir&quot;</span> dans Config.pm pour déterminer si votre système la prend en charge.
+    <p class="Pp">Dans les versions précédentes de perl, le lancement de threads avec des descripteurs de répertoire ouverts plantait l'interpréteur. [perl #75154]
+        <a href='https://rt.perl.org/rt3/Public/Bug/Display.html?id=75154'>https://rt.perl.org/rt3/Public/Bug/Display.html?id=75154</a></p>
+  </dd>
+  <dt id="Detached"><a class="permalink" href="#Detached">Threads détachés et destruction globale</a></dt>
+  <dd>Si le thread principal se termine alors qu'il y a des threads détachés qui sont toujours en cours d'exécution, alors la phase de destruction globale de Perl n'est pas exécutée car, sinon, certaines structures globales qui contrôlent le fonctionnement des threads et qui sont allouées dans la mémoire du thread principal pourraient être détruites avant que le thread détaché ne soit détruit.
+    <p class="Pp">Si vous utilisez du code qui nécessite l'exécution de la phase de destruction globale pour le nettoyage (par exemple, la suppression de fichiers temporaires), n'utilisez pas de threads détachés, mais plutôt joignez tous les threads avant de quitter le programme.</p>
+  </dd>
+  <dt id="Perl~2"><a class="permalink" href="#Perl~2">Bugs Perl et la version CPAN de threads</a></dt>
+  <dd>La prise en charge des threads s'étend au-delà du code de ce module (c'est-à-dire,
+      <i>threads.pm</i> et <i>threads.xs</i>), et dans l'interpréteur Perl
+      lui-même. Les versions plus anciennes de Perl contiennent des bugs t</dd>
+</dl>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" type="text/css" href="https://man.archlinux.org/css/style.css">
+        <link rel="stylesheet" type="text/css" href="https://man.archlinux.org/css/manual.css">
+        <title>threads(3perl) — Arch Linux manual pages</title>
+    </head>
+    <body>
+        <main>
+            <article>
+<section class="Sh">
+<h1 class="Sh" id='BUGS_AND_LIMITATIONS'><a class='permalink' href='#BUGS_AND_LIMITATIONS'>BUGS AND LIMITATIONS</a></h1>
+<dl class="Nl">
+<dt>Some Perl versions might have bugs that may manifest themselves
+      despite using the latest version of threads from CPAN. There is no
+      workaround for this other than upgrading to the latest version of Perl.</dt>
+<dd><p class="Pp">Even with the latest version of Perl, it is known that certain
+        constructs with threads may result in warning messages concerning leaked
+        scalars or unreferenced scalars. However, such warnings are harmless,
+        and may safely be ignored.</p></dd>
+<dt></dt>
+<dd><p class="Pp">You can search for threads related bug reports at
+        <a href='https://rt.cpan.org/Public/'>https://rt.cpan.org/Public/</a>. If needed submit any new bugs,
+        problems, patches, etc. to:
+        <a href='https://rt.cpan.org/Public/Dist/Display.html?Name=threads'>https://rt.cpan.org/Public/Dist/Display.html?Name=threads</a></p></dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REQUIREMENTS'><a class='permalink' href='#REQUIREMENTS'>REQUIREMENTS</a></h1>
+<p class="Pp">Perl 5.8.0 or later</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE   ALSO</a></h1>
+<p class="Pp">threads on MetaCPAN:
+  <a href='https://metacpan.org/release/threads'>https://metacpan.org/release/threads</a></p>
+<p class="Pp">Code repository for CPAN distribution:
+    <a href='https://github.com/Dual-Life/threads'>https://github.com/Dual-Life/threads</a></p>
+<p class="Pp">threads::shared, perlthrtut</p>
+<p class="Pp"><a href='https://www.perl.com/pub/a/2002/06/11/threads.html'>https://www.perl.com/pub/a/2002/06/11/threads.html</a> and
+    <a href='https://www.perl.com/pub/a/2002/09/04/threads.html'>https://www.perl.com/pub/a/2002/09/04/threads.html</a></p>
+<p class="Pp">Perl threads mailing list:
+    <a href='https://lists.perl.org/list/ithreads.html'>https://lists.perl.org/list/ithreads.html</a></p>
+<p class="Pp">Stack size discussion:
+    <a href='https://www.perlmonks.org/?node_id=532956'>https://www.perlmonks.org/?node_id=532956</a></p>
+<p class="Pp">Sample code in the <i>examples</i> directory of this distribution
+    on CPAN.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTHOR</a></h1>
+<p class="Pp">Artur Bergman &lt;sky AT crucially DOT net&gt;</p>
+<p class="Pp">CPAN version produced by Jerry D. Hedden &lt;jdhedden AT cpan DOT
+    org&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENSE'><a class='permalink' href='#LICENSE'>LICENSE</a></h1>
+<p class="Pp">threads is released under the same license as Perl.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ACKNOWLEDGEMENTS'><a class='permalink' href='#ACKNOWLEDGEMENTS'>ACKNOWLEDGEMENTS</a></h1>
+<p class="Pp">Richard Soderberg &lt;perl AT crystalflame DOT net&gt; - Helping
+    me out tons, trying to find reasons for races and other weird bugs!</p>
+<p class="Pp">Simon Cozens &lt;simon AT brecon DOT co DOT uk&gt; - Being there
+    to answer zillions of annoying questions</p>
+<p class="Pp">Rocco Caputo &lt;troc AT netrus DOT net&gt;</p>
+<p class="Pp">Vipul Ved Prakash &lt;mail AT vipul DOT net&gt; - Helping with
+    debugging</p>
+<p class="Pp">Dean Arnold &lt;darnold AT presicient DOT com&gt; - Stack size
+  API</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version:</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licenses:</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+            <li><a href="#WARNING">WARNING</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#EXITING_A_THREAD">EXITING A THREAD</a></li>
+        
+            <li><a href="#THREAD_STATE">THREAD STATE</a></li>
+        
+            <li><a href="#THREAD_CONTEXT">THREAD CONTEXT</a></li>
+        
+            <li><a href="#THREAD_STACK_SIZE">THREAD STACK SIZE</a></li>
+        
+            <li><a href="#THREAD_SIGNALLING">THREAD SIGNALLING</a></li>
+        
+            <li><a href="#WARNINGS">WARNINGS</a></li>
+        
+            <li><a href="#ERRORS">ERRORS</a></li>
+        
+            <li><a href="#BUGS_AND_LIMITATIONS">BUGS AND LIMITATIONS</a></li>
+        
+            <li><a href="#REQUIREMENTS">REQUIREMENTS</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#AUTHOR">AUTHOR</a></li>
+        
+            <li><a href="#LICENSE">LICENSE</a></li>
+        
+            <li><a href="#ACKNOWLEDGEMENTS">ACKNOWLEDGEMENTS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/threads.3perl.en.txt">txt</a>, 
+        
+            <a href="/man/threads.3perl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pmFetch(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pmFetch(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/pcp/">pcp</a></p>
+<p class="lic">Licences: GPL-2.0-or-later, LGPL-2.1-or-later, CC-BY-3.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PMFETCH(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">PMFETCH(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><b>pmFetch</b> - obtenir les valeurs des métriques de performance</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp"><b>#include &lt;pcp/pmapi.h&gt;</b></p>
+<p class="Pp">int pmFetch(int <i>numpmid</i>,</p>
+<p class="Pp">
+  <br/>
+  pmID&#x00A0;*<i>pmidlist</i>, pmResult&#x00A0;**<i>result</i>);
+  <br/>
+</p>
+<p class="Pp">cc ... -lpcp</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Étant donné une liste d'identifiants de métriques de performance (PMID), par exemple construits par <a href='/man/pmLookupName.3.en'>pmLookupName(3)</a>, via <i>pmidlist</i> et <i>numpmid</i>, récupérer les valeurs de ces métriques de performance.</p>
+<p class="Pp">Un appel à <b>pmFetch</b> est exécuté dans le contexte d'une source de métriques, d'un profil d'instance et d'un temps de collecte, précédemment établis par des appels aux fonctions de contexte et de profil appropriées, à savoir certaines parmi <a href='/man/pmNewContext.3.en'>pmNewContext(3)</a>, <a href='/man/pmDupContext.3.en'>pmDupContext(3)</a>, <a href='/man/pmUseContext.3.en'>pmUseContext(3)</a>, <a href='/man/pmAddProfile.3.en'>pmAddProfile(3)</a>, <a href='/man/pmDelProfile.3.en'>pmDelProfile(3)</a> et <a href='/man/pmSetMode.3.en'>pmSetMode(3)</a>.</p>
+<p class="Pp">Le résultat principal de <b>pmFetch</b> est retourné dans l'argument <i>result</i> sous forme d'arbre, en utilisant les structures de données de composant suivantes ;</p>
+<pre>typedef struct {
+      unsigned int vtype : 8;        /* type de valeur (identique à pmDesc.type) */
+      unsigned int vlen : 24;        /* octets pour vtype/vlen + vbuf */
+      char         vbuf[1];          /* une ou plusieurs valeurs */
+} pmValueBlock;
+typedef struct {
+      int          inst;                 /* identifiant d'instance */
+      union {
+            pmValueBlock *pval;      /* pointeur vers le bloc de valeur */
+            int          lval;       /* valeur entière in situ */
+      } value;
+} pmValue;
+typedef struct {
+      pmID      pmid;                /* identifiant de métrique */
+      int       numval;              /* nombre de valeurs ou code d'erreur */
+      int       valfmt;              /* style de valeur, in situ ou pointeur */
+      pmValue   vlist[1];            /* ensemble d'instances/valeurs */
+} pmValueSet;
+/* Résultat retourné par pmFetch() */
+typedef struct {
+      struct timespec timestamp;     /* horodatage par le collecteur */
+      int            numpmid;        /* nombre de PMID */
+      pmValueSet     *vset[1];       /* ensemble d'ensembles de valeurs */
+} pmResult;
+<br/></pre>
+<p class="Pp">Pour accueillir les métriques avec plusieurs instances de valeur, le champ <i>numval</i> indique combien de valeurs sont retournées pour chaque PMID demandé. Le champ <i>valfmt</i> dans la structure <i>pmValueSet</i> indique si les valeurs pour cette métrique sont stockées <i>in situ</i> dans le champ <i>lval</i>, c'est-à-dire une quantité entière de 32 bits (soit int, unsigned int, long ou unsigned long) ou si les valeurs sont conservées dans des structures <i>pmValueBlock</i> associées. La structure <i>pmValueBlock</i> est toujours utilisée pour les valeurs en virgule flottante (float ou double) et gère également des données binaires de taille arbitraire telles que les métriques de type "chaîne de caractères" et les métriques avec des types de données agrégés ou complexes. La longueur maximale d'un tampon <i>pmValueBlock</i> est de <b>PM_VAL_VLEN_MAX</b> octets. Si le format <i>pmValueBlock</i> est utilisé, le champ <i>vtype</i> indique le type de données de la valeur. Ce champ a la même interprétation que le champ <i>type</i> dans la structure <b>pmDesc</b>, voir <a href='/man/pmLookupDesc.3.en'>pmLookupDesc(3)</a>.</p>
+<p class="Pp">Notez que la valeur in situ peut être un entier signé ou non signé de 32 bits, une valeur longue signée ou non signée de 32 bits (sur les plateformes 32 bits). Dans les cas spéciaux décrits ci-dessous, il peut également s'agir d'une valeur en virgule flottante de 32 bits. Si l'application a besoin de connaître le type d'une valeur in situ, ce qui est presque toujours le cas, il est nécessaire de récupérer le descripteur de la métrique et d'interpréter le champ <b>type</b>, comme décrit en détail dans <a href='/man/pmLookupDesc.3.en'>pmLookupDesc(3)</a>. Lorsque le <i>pmResult</i> est reçu d'un <b>pmcd</b> PCP1.x, les valeurs in situ peuvent également être des valeurs en virgule flottante de 32 bits (de type <b>PM_TYPE_FLOAT</b>). Dans tous les cas, il est conseillé d'utiliser <a href='/man/pmLookupDesc.3.en'>pmLookupDesc(3)</a> pour récupérer le descripteur de la métrique et interpréter le champ <b>type</b> qui s'y trouve. Notez également que le <a href='/man/PMAPI.3.en'>PMAPI(3)</a> traduira automatiquement du format PCP2.0 au format PCP1.x lorsqu'un client PCP1.x demande des valeurs en virgule flottante de 32 bits à un <b>pmcd</b> PCP2.0, mais la traduction inverse ne se produit pas (car le <b>pmcd</b> PCP2.0 ne peut pas distinguer automatiquement les valeurs en virgule flottante arbitraires de 32 bits des entiers de 32 bits).</p>
+<p class="Pp">Si une valeur (c'est-à-dire associée à une instance particulière) pour une métrique demandée est "indisponible" (au moment demandé), alors il n'y a pas de structure <i>pmValue</i> associée dans le <i>result</i>. S'il n'y a aucune valeur disponible pour une métrique, alors <i>numval</i> sera zéro et l'instance <i>pmValue[]</i> associée sera vide (<i>valfmt</i> est indéfini dans ces circonstances, cependant <i>pmid</i> sera correctement défini sur le PMID de la métrique sans valeurs).</p>
+<p class="Pp">En tant qu'extension de ce protocole, si le Système de Collecte des Métriques de Performance (PMCS) est en mesure de fournir une raison pour laquelle aucune valeur n'est disponible pour une métrique particulière, cela est codé comme un code d'erreur standard dans le <i>numval</i> correspondant. Comme les codes d'erreur sont tous négatifs, les valeurs d'une métrique demandée sont "indisponibles" si <i>numval</i> est inférieur ou égal à zéro. La valeur d'une métrique de performance peut être "indisponible" pour plusieurs raisons ; la liste suivante est illustrative mais non exhaustive : du logiciel pour le Domaine de Métriques de Performance associé</p>
+<dl class="Bl-tag">
+  <dt>+</dt>
+  <dd>La collecte n'est pas actuellement activée dans le logiciel pour le Domaine de Métriques de Performance associé</dd>
+  <dt>+</dt>
+  <dd>Le PMID associé n'est pas connu</dd>
+  <dt>+</dt>
+  <dd>La configuration système actuelle n'inclut pas le composant matériel associé et/ou le module logiciel associé, par exemple, un disque n'est pas installé, ou hors ligne, ou Oracle n'est pas installé</dd>
+  <dt>+</dt>
+  <dd>La métrique est de celles pour lesquelles un profil d'instance est requis, et aucun n'a été fourni (il y a un petit nombre de métriques dans cette catégorie, typiquement celles avec des domaines d'instance très grands et/ou très dynamiques, et/ou des méthodes d'instanciation de métrique coûteuses).</dd>
+  <dt>+</dt>
+  <dd>Si le contexte actuel implique la récupération de métriques à partir d'une archive, les valeurs peuvent être indisponibles dans la région autour d'un enregistrement de <i>&lt;mark&gt;</i> (voir <a href='/man/pmlogextract.1.en'>pmlogextract(1)</a>) qui indique une discontinuité temporelle dans la série chronologique des valeurs de métriques.</dd>
+</dl>
+<p class="Pp">En général, nous pourrions ne pas être en mesure de différencier les divers cas, et si la différenciation n'est pas possible, <i>numval</i> sera simplement zéro.</p>
+<p class="Pp">La définition de l'argument et les spécifications de résultat ont été construites pour garantir que pour chaque PMID dans la <i>pmidlist</i> demandée, il y a exactement un <i>pmValueSet</i> dans le <i>result</i>, et de plus, les PMID apparaissent exactement dans le même ordre dans <i>pmidlist</i> et <i>result</i>. Cela rend le nombre et l'ordre des entrées dans <i>result</i> complètement déterministes, et simplifie grandement la logique de programmation de l'application après l'appel à <b>pmFetch</b>.</p>
+<p class="Pp">La structure <i>result</i> retournée par <b>pmFetch</b> est allouée dynamiquement en utilisant une combinaison d'appels à <a href='/man/malloc.3.en'>malloc(3)</a> et de stratégies d'allocation spécialisées, et doit être libérée lorsqu'elle n'est plus nécessaire en appelant <a href='/man/pmFreeResult.3.en'>pmFreeResult(3)</a> - en aucun cas <a href='/man/free.3.en'>free(3)</a> ne doit être appelé directement pour libérer cet espace.</p>
+<p class="Pp">Comme les conditions d'erreur courantes sont codées dans la structure de données <i>result</i>, nous nous attendons à ce que seuls des événements catastrophiques entraînent le retour d'une valeur d'erreur. Un exemple serait si la source des métriques était un hôte distant, et que cet hôte ou le PMCS sur cet hôte devenait inaccessible. Sinon, la valeur retournée par la fonction <b>pmFetch</b> sera non négative.</p>
+<p class="Pp">Si le contexte actuel implique la récupération de métriques à partir d'un démon collecteur de métriques de performance (PMCD), alors la valeur de retour peut être utilisée pour coder des changements hors bande dans l'état du PMCD et des agents de collecte de métriques de performance (PMDA) associés, sous forme d'un "ou" au niveau du bit des valeurs suivantes :</p>
+<dl class="Bl-tag">
+  <dt id="PMCD_RESTART_AGENT"><a class="permalink" href="#PMCD_RESTART_AGENT"><b>PMCD_RESTART_AGENT</b></a></dt>
+  <dd>Une tentative a été faite pour redémarrer au moins un PMDA défaillant.</dd>
+  <dt id="PMCD_ADD_AGENT"><a class="permalink" href="#PMCD_ADD_AGENT"><b>PMCD_ADD_AGENT</b></a></dt>
+  <dd>Au moins un PMDA a été démarré.</dd>
+  <dt id="PMCD_DROP_AGENT"><a class="permalink" href="#PMCD_DROP_AGENT"><b>PMCD_DROP_AGENT</b></a></dt>
+  <dd>PMCD a détecté la terminaison d'au moins un PMDA.</dd>
+  <dt id="PMCD_AGENT_CHANGE"><a class="permalink" href="#PMCD_AGENT_CHANGE"><b>PMCD_AGENT_CHANGE</b></a></dt>
+  <dd>Une macro de commodité pour l'un des trois changements de PMDA.</dd>
+  <dt id="PMCD_LABEL_CHANGE"><a class="permalink" href="#PMCD_LABEL_CHANGE"><b>PMCD_LABEL_CHANGE</b></a></dt>
+</dl>
+</div>
+</section>
+
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>pmFetch(3) — Performance Co-Pilot</title>
+        <link rel="stylesheet" href="/css/style.css" />
+        <link rel="stylesheet" href="/css/man.css" />
+    </head>
+    <body>
+        
+        <main class="container">
+            
+            <article>
+                <section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Pp">pmFetch, pmFetchGroup, pmFetchNotify, pmFetchArchive, pmFetchSemanticPMID - fetch performance metric values</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='C_SYNOPSIS'><a class='permalink' href='#C_SYNOPSIS'>C SYNOPSIS</a></h1>
+<pre>
+<span class="Li">#include &lt;pcp/pmapi.h&gt;</span>
+
+<span class="Li">int</span>
+<a href="/man/pmFetch.3.en"><b>pmFetch</b></a><span class="Pa">(</span>
+  <span class="Li">pmContext</span> <span class="Pa">*</span><span class="nf">handle</span><span
+  class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indom</span><span
+  class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indomsel</span><span class="Pa">,</span>
+  <span class="Li">int</span> <span class="nf">numpmid</span><span class="Pa">,</span>
+  <span class="Li">pmPmtid</span> <span class="Pa">*</span><span class="nf">pmid</span><span class="Pa">,</span>
+  <span class="Li">pmResult</span> <span class="Pa">*</span><span class="nf">result</span>
+<span class="Pa">)</span><span class="Pa">;</span>
+
+<span class="Li">int</span>
+<a href="/man/pmFetchGroup.3.en"><b>pmFetchGroup</b></a><span class="Pa">(</span>
+  <span class="Li">pmContext</span> <span class="Pa">*</span><span class="nf">handle</span><span
+  class="Pa">,</span>
+  <span class="Li">int</span> <span class="nf">numpmid</span><span class="Pa">,</span>
+  <span class="Li">pmPmtid</span> <span class="Pa">*</span><span class="nf">pmid</span><span
+  class="Pa">,</span>
+  <span class="Li">pmResult</span> <span class="Pa">*</span><span class="nf">result</span>
+<span class="Pa">)</span><span class="Pa">;</span>
+
+<span class="Li">int</span>
+<a href="/man/pmFetchNotify.3.en"><b>pmFetchNotify</b></a><span class="Pa">(</span>
+  <span class="Li">pmContext</span> <span class="Pa">*</span><span class="nf">handle</span><span
+  class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indom</span><span class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indomsel</span><span class="Pa">,</span>
+  <span class="Li">int</span> <span class="nf">numpmid</span><span class="Pa">,</span>
+  <span class="Li">pmPmtid</span> <span class="Pa">*</span><span class="nf">pmid</span><span
+  class="Pa">,</span>
+  <span class="Li">pmResult</span> <span class="Pa">*</span><span class="nf">result</span>
+<span class="Pa">)</span><span class="Pa">;</span>
+
+<span class="Li">int</span>
+<a href="/man/pmFetchArchive.3.en"><b>pmFetchArchive</b></a><span class="Pa">(</span>
+  <span class="Li">pmContext</span> <span class="Pa">*</span><span class="nf">handle</span><span
+  class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indom</span><span class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indomsel</span><span class="Pa">,</span>
+  <span class="Li">int</span> <span class="nf">numpmid</span><span class="Pa">,</span>
+  <span class="Li">pmPmtid</span> <span class="Pa">*</span><span class="nf">pmid</span><span
+  class="Pa">,</span>
+  <span class="Li">pmResult</span> <span class="Pa">*</span><span class="nf">result</span>
+<span class="Pa">)</span><span class="Pa">;</span>
+
+<span class="Li">int</span>
+<a href="/man/pmFetchSemanticPMID.3.en"><b>pmFetchSemanticPMID</b></a><span class="Pa">(</span>
+  <span class="Li">pmContext</span> <span class="Pa">*</span><span class="nf">handle</span><span
+  class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indom</span><span class="Pa">,</span>
+  <span class="Li">pmInDom</span> <span class="nf">indomsel</span><span class="Pa">,</span>
+  <span class="Li">int</span> <span class="nf">numspmid</span><span class="Pa">,</span>
+  <span class="Li">pmSemanticPMID</span> <span class="Pa">*</span><span class="nf">spmid</span><span class="Pa">,</span>
+  <span class="Li">pmResult</span> <span class="Pa">*</span><span class="nf">result</span>
+<span class="Pa">)</span><span class="Pa">;</span>
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">The <code class="Nm">pmFetch</code> function is the most primitive
+    mechanism for fetching performance metric values from the Performance Co-Pilot
+    (PCP) collector daemon (<a href="/man/pmcd.1.en">pmcd(1)</a>) or from
+    performance metric archives. The <code class="Nm">pmFetchGroup</code>
+    function is a simpler interface that is restricted to using the default
+    instance domain for each metric.</p>
+<p class="Pp">The <code class="Nm">pmFetchNotify</code> and
+    <code class="Nm">pmFetchArchive</code> functions are variants of
+    <code class="Nm">pmFetch</code> specifically designed for fetching data from
+    performance metric archives. <code class="Nm">pmFetchNotify</code> is
+    intended for interactive clients that need to poll for data changes, while
+    <code class="Nm">pmFetchArchive</code> is for batch processing of archive
+    data.</p>
+<p class="Pp">The <code class="Nm">pmFetchSemanticPMID</code> function is a variant
+    of <code class="Nm">pmFetch</code> that allows fetching metrics using
+    semantic Performance Metric Identifiers (PMIDs) instead of standard PMIDs.
+    Semantic PMIDs provide a more abstract way to refer to metrics and can be
+    resolved to one or more standard PMIDs by the PCP infrastructure.</p>
+<p class="Pp">The <code class="Ll">handle</code> argument is a pointer to a
+    valid performance metric context, previously created using
+    <a href="/man/pmNewContext.3.en">pmNewContext(3)</a> or
+    <a href="/man/pmUseContext.3.en">pmUseContext(3)</a>.</p>
+<p class="Pp">The <code class="Ll">indom</code> and <code class="Ll">indomsel</code>
+    arguments specify the instance domain and the instance domain selection to be
+    used for fetching metric values. For most metrics, the instance domain is
+    the same as the metric's PMID, and <code class="Ll">indomsel</code> is set
+    to <code class="Li">PM_INDOM_NULL</code>. However, some metrics may have
+    separate instance domains, and specific instances within those domains may be
+    selected using <code class="Ll">indomsel</code>.</p>
+<p class="Pp">The <code class="Ll">numpmid</code> argument is the number of
+    performance metric identifiers in the <code class="Ll">pmid</code> array.
+    The <code class="Ll">pmid</code> array contains the PMIDs of the metrics
+    to be fetched.</p>
+<p class="Pp">The <code class="Ll">numspmid</code> and <code class="Ll">spmid</code>
+    arguments for <code class="Nm">pmFetchSemanticPMID</code> function specify
+    the number and array of semantic PMIDs to be fetched.</p>
+<p class="Pp">The <code class="Ll">result</code> argument is a pointer to a
+    <code class="Li">pmResult</code> structure, which will be filled with the
+    fetched metric values. The <code class="Li">pmResult</code> structure
+    contains the following fields:</p>
+<dl class="Bl-tag">
+  <dt id="pm_result_timestamp"><a class="permalink" href="#pm_result_timestamp"><b>pm_result_timestamp</b></a></dt>
+  <dd>A <span class="Li">struct timespec</span> indicating the timestamp of the
+      fetched data.</dd>
+  <dt id="pm_result_numpmid"><a class="permalink" href="#pm_result_numpmid"><b>pm_result_numpmid</b></a></dt>
+  <dd>The number of performance metric values returned.</dd>
+  <dt id="pm_result_pmid"><a class="permalink" href="#pm_result_pmid"><b>pm_result_pmid</b></a></dt>
+  <dd>An array of <span class="Li">pmResultItem</span> structures, each containing
+      a performance metric value and its associated instance and status.</dd>
+</dl>
+<p class="Pp">The <code class="Li">pmResultItem</code> structure contains the
+    following fields:</p>
+<dl class="Bl-tag">
+  <dt id="pm_resultitem_pmid"><a class="permalink" href="#pm_resultitem_pmid"><b>pm_resultitem_pmid</b></a></dt>
+  <dd>The PMID of the performance metric.</dd>
+  <dt id="pm_resultitem_inst"><a class="permalink" href="#pm_resultitem_inst"><b>pm_resultitem_inst</b></a></dt>
+  <dd>The instance identifier of the metric value.</dd>
+  <dt id="pm_resultitem_value"><a class="permalink" href="#pm_resultitem_value"><b>pm_resultitem_value</b></a></dt>
+  <dd>A <span class="Li">pmValue</span> union containing the metric value in its
+      appropriate type (e.g., integer, floating-point).</dd>
+  <dt id="pm_resultitem_state"><a class="permalink" href="#pm_resultitem_state"><b>pm_resultitem_state</b></a></dt>
+  <dd>The state of the metric value (e.g., valid, unknown, stale).</dd>
+</dl>
+<p class="Pp">The return value of <code class="Nm">pmFetch</code> and its variants
+    is typically 0 on success, or a negative error code on failure. However, the
+    <code class="Ll">result</code> structure may also contain status information
+    that indicates changes in the performance metric namespace or the host
+    environment. The following special status codes may be returned in the
+    <code class="Ll">result</code> structure:</p>
+<dl class="Bl-tag">
+  <dt id="PMCD_NAMES_CHANGE"><a class="permalink" href="#PMCD_NAMES_CHANGE"><b>PMCD_NAMES_CHANGE</b></a></dt>
+  <dd>PMCD has been informed that the namespace has been modified, such that new
+      metrics have appeared or existing metrics have been removed.</dd>
+  <dt id="PMCD_HOSTNAME_CHANGE"><a class="permalink" href="#PMCD_HOSTNAME_CHANGE"><b>PMCD_HOSTNAME_CHANGE</b></a></dt>
+  <dd>The hostname on the host where PMCD is running has changed. This may be
+      the result of changes from temporary to permanent hostname after a system
+      reboot or some subsequent explicit change to the system's hostname.</dd>
+</dl>
+<p class="Pp">The default is to return zero to indicate no change in state,
+    however the <i class="It" >pmResult</i> returned by <b>pmFetch</b> has the same
+    interpretation independent of the return value being zero or greater than
+    zero.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMPATIBILITY'><a class='permalink' href='#COMPATIBILITY'>COMPATIBILITY</a></h1>
+<p class="Pp">Prior to PCP 7.0 the <i class="It" >timestamp</i> field in the
+    <span class="Li">pmResult</span> struct was a <span class="Li">struct
+    timeval</span>. To support PMAPI transition, the old interface and semantics
+    can be used if applications are recompiled with
+  <b>-DPMAPI_VERSION=2</b>.</p>
+<p class="Pp">For a time in PCP 6.x there was a routine with the same semantics
+    as the current <b>pmFetch</b> called <b>pmFetchHighRes</b>, and a struct
+    with the same definition as the current <span class="Li">pmResult</span>
+    struct called <span class="Li">pmResultHighRes</span>, although both are now
+    deprecated and compile-time support for <b>pmFetchHighRes</b> (and the
+    historically misnamed alias <b>pmHighResFetch</b>) and
+    <span class="Li">pmResultHighRes</span> will be removed in a future
+  release.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE   ALSO</a></h1>
+<p class="Pp"><a href='/man/pmcd.1.en'>pmcd(1)</a>, <a href='/man/pmAddProfile.3.en'>pmAddProfile(3)</a>, <a href='/man/PMAPI.3.en'>PMAPI(3)</a>,
+    <a href='/man/pmDelProfile.3.en'>pmDelProfile(3)</a>, <a href='/man/pmDupContext.3.en'>pmDupContext(3)</a>, <a href='/man/pmExtractValue.3.en'>pmExtractValue(3)</a>,
+    <a href='/man/pmFetchArchive.3.en'>pmFetchArchive(3)</a>, <a href='/man/pmFreeResult.3.en'>pmFreeResult(3)</a>, <a href='/man/pmGetInDom.3.en'>pmGetInDom(3)</a>,
+    <a href='/man/pmLookupDesc.3.en'>pmLookupDesc(3)</a>, <a href='/man/pmLookupLabels.3.en'>pmLookupLabels(3)</a>, <a href='/man/pmLookupName.3.en'>pmLookupName(3)</a>,
+    <a href='/man/pmNewContext.3.en'>pmNewContext(3)</a>, <a href='/man/pmSetMode.3.en'>pmSetMode(3)</a>, <a href='/man/pmUseContext.3.en'>pmUseContext(3)</a> and
+    <a href='/man/pmWhichContext.3.en'>pmWhichContext(3)</a>.</p>
+<p class="Pp">Note that <b>pmFetch</b> is the most primitive method for fetching
+    metric values from the PMCS. See the <a href='/man/pmFetchGroup.3.en'>pmFetchGroup(3)</a> API for a higher
+    level method that insulates the user from the intricacies of looking up
+    metric names and metadata, setting up instance profiles, <i>pmResult</i>
+    traversal, conversions, and scaling.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DIAGNOSTICS'><a class='permalink' href='#DIAGNOSTICS'>DIAGNOSTICS</a></h1>
+<p class="Pp">As mentioned above, <b>pmFetch</b> return error codes
+    <i>insitu</i> in the argument <i>result</i>. If no result is returned, e.g.
+    due to IPC failure using the current PMAPI context, or end of file on an
+    archive, then these routines will return a negative error code which may be
+    examined using <a href='/man/pmErrStr.3.en'>pmErrStr(3)</a>.</p>
+<dl class="Bl-tag">
+  <dt id="PM_ERR_EOL"><a class="permalink" href="#PM_ERR_EOL"><b>PM_ERR_EOL</b></a></dt>
+  <dd>When fetching records from an archive, <b>pmFetch</b> returns this error
+      code to indicate the end of the archive has been passed (or the start of
+      the archive has been passed, if the direction of traversal is backwards in
+      time). If the ``mode'' for the current PMAPI context (see
+      <a href='/man/pmSetMode.3.en'>pmSetMode(3)</a>) is <b>PM_MODE_INTERP</b> then the time origin is
+      advanced, even when this error code is returned. In this way applications
+      that position the time outside the range defined by the records in the
+      archive, and then commence to <b>pmFetch</b> will eventually see valid
+      results once the time origin moves inside the temporal span of the
+      archive.</dd>
+  <dt id="EAGAIN"><a class="permalink" href="#EAGAIN"><b>-EAGAIN</b></a></dt>
+  <dd>If the current context involves fetching metrics from <b>pmcd</b>, then a
+      return value of <b>-EAGAIN</b> indicates the caller has created too many
+      contexts.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONMENT'><a class='permalink' href='#ENVIRONMENT'>ENVIRONMENT</a></h1>
+<p class="Pp">Many of the performance metrics exported from PCP agents have the semantics
+    of <i>counter</i> meaning they are expected to be monotonically
+    increasing. Under some circumstances, one value of these metrics may be
+    smaller than the previously fetched value. This can happen when a counter of
+    finite precision overflows, or when the PCP agent has been reset or
+    restarted, or when the PCP agent is exporting values from some underlying
+    instrumentation that is subject to some asynchronous discontinuity.</p>
+<p class="Pp">The environment variable <b>PCP_COUNTER_WRAP</b> may be set to
+    indicate that all such cases of a decreasing ``counter'' should be treated
+    as a counter overflow, and hence the values are assumed to have wrapped once
+    in the interval between consecutive samples. This ``wrapping'' behavior was
+    the default in earlier PCP versions, but by default has been disabled in PCP
+    version 1.3 and later.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">PCP</td>
+    <td class="foot-os">Performance Co-Pilot</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/pcp/">extra/pcp</a></dd>
+        <dt>Version:</dt>
+        <dd>7.0.5-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://pcp.io">https://pcp.io</a></dd>
+        <dt>Licenses:</dt>
+        <dd>GPL-2.0-or-later, LGPL-2.1-or-later, CC-BY-3.0</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/pcp/">/listing/extra/pcp/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#C_SYNOPSIS">C SYNOPSIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#COMPATIBILITY">COMPATIBILITY</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#DIAGNOSTICS">DIAGNOSTICS</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONMENT</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/pmFetch.3.en.txt">txt</a>, 
+        
+            <a href="/man/pmFetch.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

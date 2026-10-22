@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pg_rewind(1) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pg_rewind(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/postgresql/">postgresql</a></p>
+<p class="lic">Licences: PostgreSQL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PG_REWIND(1)</td>
+    <td class="head-vol">Documentation PostgreSQL 18.1</td>
+    <td class="head-rtitle">PG_REWIND(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pg_rewind — synchronise un répertoire de données PostgreSQL avec un autre répertoire de données qui en a été dérivé</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp HP"><b>pg_rewind</b> [<i>option</i>...] {<b>-D</b> |
+    <b>--target-pgdata</b>}<i> répertoire</i>
+    {<b>--source-pgdata=</b><b></b><i>répertoire</i> |
+    <b>--source-server=</b><b></b><i>chaine_connexion</i>}</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pg_rewind est un outil pour synchroniser un cluster PostgreSQL avec
+    une autre copie du même cluster, après que les lignes de temps des clusters aient
+    divergé. Un scénario typique est de remettre en ligne un ancien serveur primaire
+    après un basculement, en tant que réplica qui suit le nouveau serveur primaire.</p>
+<p class="Pp">Après une opération de rewind réussie, l'état du répertoire de données cible
+    est analogue à une sauvegarde de base du répertoire de données source. Contrairement à la prise d'une nouvelle sauvegarde de base ou à l'utilisation d'un outil comme rsync, pg_rewind ne nécessite pas de comparer ou de copier des blocs de relation inchangés dans le cluster. Seuls les blocs modifiés des fichiers de relation existants sont copiés ; tous les autres fichiers, y compris les nouveaux fichiers de relation, les fichiers de configuration et les segments WAL, sont copiés intégralement. Ainsi, l'opération de rewind est considérablement plus rapide que d'autres approches lorsque la base de données est volumineuse et qu'une petite fraction seulement des blocs diffère entre les clusters.</p>
+<p class="Pp">pg_rewind examine les historiques des lignes de temps des clusters source et cible pour déterminer le point où ils ont divergé, et s'attend à trouver des WAL dans le répertoire pg_wal du cluster cible remontant jusqu'au point de divergence. Le point de divergence peut être trouvé soit sur la ligne de temps cible, soit sur la ligne de temps source, soit sur leur ancêtre commun. Dans le scénario typique de basculement où le cluster cible a été arrêté peu après la divergence, ce n'est pas un problème, mais si le cluster cible a fonctionné longtemps après la divergence, ses anciens fichiers WAL pourraient ne plus être présents. Dans ce cas, vous pouvez les copier manuellement de l'archive WAL vers le répertoire pg_wal, ou exécuter pg_rewind avec l'option -c pour les récupérer automatiquement de l'archive WAL. L'utilisation de pg_rewind ne se limite pas au basculement, par exemple, un serveur réplica peut être promu, exécuter quelques transactions d'écriture, puis être "rewound" pour redevenir un réplica.</p>
+<p class="Pp">Après avoir exécuté pg_rewind, la relecture des WAL doit être terminée pour que le répertoire de données soit dans un état cohérent. Lorsque le serveur cible redémarre, il entrera en mode de récupération et relira tous les WAL générés sur le serveur source depuis le dernier checkpoint avant le point de divergence. Si certains des WAL n'étaient plus disponibles sur le serveur source lorsque pg_rewind a été exécuté, et n'ont donc pas pu être copiés par la session pg_rewind, ils doivent être rendus disponibles lorsque le serveur cible démarre. Ceci peut être fait en créant un fichier recovery.signal dans le répertoire de données cible et en configurant une commande restore_command appropriée dans postgresql.conf.</p>
+<p class="Pp">pg_rewind exige que le serveur cible ait l'option wal_log_hints activée dans postgresql.conf ou des sommes de contrôle de données activées lors de l'initialisation du cluster avec initdb. Aucune de ces options n'est activée par défaut actuellement. full_page_writes doit également être réglé sur on, mais il est activé par défaut.</p>
+<div class="Bd-indent">
+<br/>
+<b>Attention : Échecs pendant le Rewind</b>
+<br/>
+<p class="Pp">Si pg_rewind échoue pendant le traitement, le répertoire de données de la cible n'est probablement pas dans un état récupérable. Dans un tel cas, il est recommandé de prendre une nouvelle sauvegarde fraîche.</p>
+<p class="Pp">Comme pg_rewind copie intégralement les fichiers de configuration du serveur source, il peut être nécessaire de corriger la configuration utilisée pour la récupération avant de redémarrer le serveur cible, surtout si la cible est réintroduite en tant que réplica du serveur source. Si vous redémarrez le serveur après la fin de l'opération de rewind mais sans configurer la récupération, la cible pourrait de nouveau diverger du serveur primaire.</p>
+<p class="Pp">pg_rewind échouera immédiatement s'il trouve des fichiers sur lesquels il ne peut pas écrire directement. Cela peut se produire, par exemple, lorsque le serveur source et le serveur cible utilisent la même cartographie de fichiers pour les clés et certificats SSL en lecture seule. Si de tels fichiers sont présents sur le serveur cible, il est recommandé de les supprimer avant d'exécuter pg_rewind. Après avoir effectué le rewind, certains de ces fichiers peuvent avoir été copiés depuis la source, auquel cas il peut être nécessaire de supprimer les données copiées et de restaurer l'ensemble des liens utilisés avant le rewind.</p>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">pg_rewind accepte les arguments de ligne de commande suivants :</p>
+<p class="Pp"><b>-D </b><b></b><i>répertoire</i>
+  <br/>
+  <b>--target-pgdata=</b><b></b><i>répertoire</i></p>
+<div class="Bd-indent">Cette option spécifie le répertoire de données cible qui est synchronisé avec la source. Le serveur cible doit être arrêté proprement avant d'exécuter pg_rewind.</div>
+<p class="Pp"><b>--source-pgdata=</b><b></b><i>répertoire</i></p>
+<div class="Bd-indent">Spécifie le chemin d'accès au répertoire de données du serveur source avec lequel synchroniser la cible. Cette option nécessite que le serveur source soit arrêté proprement.</div>
+<p class="Pp"><b>--source-server=</b><b></b><i>chaine_connexion</i></p>
+<div class="Bd-indent">Spécifie une chaîne de connexion libpq pour se connecter au serveur PostgreSQL source afin de synchroniser la cible. La connexion doit être une connexion normale (non de réplication) avec un rôle disposant des permissions suffisantes pour exécuter les fonctions utilisées par pg_rewind sur le serveur source (voir la section Notes pour plus de détails) ou un rôle superutilisateur. Cette option nécessite que le serveur source soit en cours d'exécution et accepte les connexions.</div>
+<p class="Pp"><b>-R</b>
+  <br/>
+  <b>--write-recovery-conf</b></p>
+<div class="Bd-indent">Crée standby.signal et ajoute les paramètres de connexion à postgresql.auto.conf dans le répertoire de sortie. Le nom de la base de données (dbname) ne sera enregistré que si dbname a été spécifié explicitement dans la chaîne de connexion ou la variable d'environnement. --source-server est obligatoire avec cette option.</div>
+<p class="Pp"><b>-n</b>
+  <br/>
+  <b>--dry-run</b></p>
+<div class="Bd-indent">Fait tout sauf modifier réellement le répertoire cible.</div>
+<p class="Pp"><b>-N</b>
+  <br/>
+  <b>--no-sync</b></p>
+<div class="Bd-indent">Par défaut, <b>pg_rewind</b> attendra que tous les fichiers soient écrits en toute sécurité sur le disque. Cette option fait que <b>pg_rewind</b> retourne sans attendre, ce qui est plus rapide, mais signifie qu'un plantage ultérieur du système d'exploitation peut laisser le répertoire de données corrompu. Généralement, cette option est utile pour les tests mais ne doit pas être utilisée sur une installation de production.</div>
+<p class="Pp"><b>-P</b>
+  <br/>
+  <b>--progress</b></p>
+<div class="Bd-indent">Active le rapport de progression. L'activation de cette option fournira un rapport de progression approximatif lors de la copie des données depuis le cluster source.</div>
+<p class="Pp"><b>-c</b>
+  <br/>
+  <b>--restore-target-wal</b></p>
+<div class="Bd-indent">Utilise la <i>restore_command</i> définie dans la configuration du cluster cible pour récupérer les fichiers WAL de l'archive WAL si ces fichiers ne sont plus disponibles dans le répertoire pg_wal.</div>
+<p class="Pp"><b>--config-file=</b><b></b><i>nom_fichier</i></p>
+<div class="Bd-indent">Utilise le fichier de configuration principal du serveur spécifié pour le cluster cible. Ceci affecte pg_rewind lorsqu'il utilise en interne la commande postgres pour l'opération de rewind sur ce cluster (lors de la récupération de <i>restore_command</i> avec l'option <b>-c/--restore-target-wal</b> et lors de la finalisation forcée d'une récupération après arrêt brutal).</div>
+<p class="Pp"><b>--debug</b></p>
+<div class="Bd-indent">Affiche une sortie de débogage détaillée, principalement utile pour les développeurs qui déboguent pg_rewind.</div>
+<p class="Pp"><b>--no-ensure-shutdown</b></p>
+<div class="Bd-indent">pg_rewind exige que le serveur cible soit arrêté proprement avant le rewind. Par défaut, si le serveur cible n'est pas arrêté proprement, pg_rewind démarre le serveur cible en mode mono-utilisateur pour terminer d'abord la récupération après arrêt brutal, puis l'arrête. En passant cette option, pg_rewind saute cette étape et génère une erreur immédiatement si le serveur n'est pas arrêté proprement. Les utilisateurs sont alors censés gérer la situation eux-mêmes.</div>
+<p class="Pp"><b>--sync-method=</b><b></b><i>méthode</i></p>
+<div class="Bd-indent">Lorsqu'elle est réglée sur fsync, ce qui est la valeur par défaut, <b>pg_rewind</b> ouvrira et synchronisera récursivement tous les fichiers du répertoire de données. La recherche de fichiers suivra les liens symboliques pour le répertoire WAL et chaque tablespace configuré.
+<p class="Pp">Sous Linux, syncfs peut être utilisé à la place pour demander au système d'exploitation de synchroniser l'ensemble des systèmes de fichiers contenant le répertoire de données, les fichiers WAL, et chaque tablespace. Voir recovery_init_sync_method pour des informations sur les mises en garde à prendre en compte lors de l'utilisation de syncfs.</p>
+<p class="Pp">Cette option n'a aucun effet lorsque <b>--no-sync</b> est utilisé.</p>
+</div>
+<p class="Pp"><b>-V</b>
+  <br/>
+  <b>--version</b></p>
+<div class="Bd-indent">Affiche les informations de version, puis quitte.</div>
+<p class="Pp"><b>-?</b>
+  <br/>
+  <b>--help</b></p>
+<div class="Bd-indent">Affiche l'aide, puis quitte.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONNEMENT'><a class='permalink' href='#ENVIRONNEMENT'>ENVIRONNEMENT</a></h1>
+<p class="Pp">Lorsque l'option <b>--source-server</b> est utilisée, pg_rewind utilise également la variable d'environnement</p>
+</div>
+</section>
+</article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+s pris en charge par libpq (voir la section 32.15).
+</p>
+<p class="Pp">La variable d'environnement <b>PG_COLOR</b> spécifie si les messages de diagnostic doivent utiliser la couleur. Les valeurs possibles sont always, auto et
+    never.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">Lors de l'exécution de pg_rewind en utilisant un cluster en ligne comme source, un rôle ayant des autorisations suffisantes pour exécuter les fonctions utilisées par pg_rewind sur le cluster source peut être utilisé à la place d'un superutilisateur. Voici comment créer un tel rôle, nommé rewind_user ici :</p>
+<div class="Bd-indent">
+<pre>CREATE USER rewind_user LOGIN;
+GRANT EXECUTE ON function pg_catalog.pg_ls_dir(text, boolean, boolean) TO rewind_user;
+GRANT EXECUTE ON function pg_catalog.pg_stat_file(text, boolean) TO rewind_user;
+GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text) TO rewind_user;
+GRANT EXECUTE ON function pg_catalog.pg_read_binary_file(text, bigint, bigint, boolean) TO rewind_user;</pre>
+</div>
+<section class="Ss">
+<h2 class="Ss" id='Comment_ça_marche'><a class='permalink' href='#Comment_ça_marche'>Comment ça marche</a></h2>
+<p class="Pp">L'idée de base est de copier toutes les modifications au niveau du système de fichiers du cluster source vers le cluster cible :</p>
+<div class="Bd-indent"> 1. Scanner le journal WAL du cluster cible, en commençant par le dernier point de contrôle avant le moment où l'historique de la chronologie du cluster source s'est séparé de celui du cluster cible. Pour chaque enregistrement WAL, enregistrer tous les blocs de données qui ont été touchés. Cela produit une liste de tous les blocs de données qui ont été modifiés dans le cluster cible après la séparation du cluster source. Si certains fichiers WAL ne sont plus disponibles, essayez de relancer pg_rewind avec l'option <b>-c</b> pour rechercher les fichiers manquants dans l'archive WAL.</div>
+<div class="Bd-indent"> 2. Copier tous ces blocs modifiés du cluster source vers le cluster cible, soit en utilisant l'accès direct au système de fichiers (<b>--source-pgdata</b>), soit via SQL (<b>--source-server</b>). Les fichiers de relations sont maintenant dans un état équivalent au moment du dernier point de contrôle complété avant le moment où les chronologies WAL de la source et de la cible ont divergé, plus l'état actuel sur la source de tout bloc modifié sur la cible après cette divergence.</div>
+<div class="Bd-indent"> 3. Copier tous les autres fichiers, y compris les nouveaux fichiers de relations, les segments WAL, pg_xact et les fichiers de configuration du cluster source vers le cluster cible. Similairement aux sauvegardes de base, le contenu des répertoires pg_dynshmem/, pg_notify/, pg_replslot/, pg_serial/, pg_snapshots/, pg_stat_tmp/ et pg_subtrans/ est omis des données copiées depuis le cluster source. Les fichiers backup_label, tablespace_map, pg_internal.init, postmaster.opts, postmaster.pid et .DS_Store, ainsi que tout fichier ou répertoire commençant par pgsql_tmp, sont omis.</div>
+<div class="Bd-indent"> 4. Créer un fichier backup_label pour commencer la relecture WAL au point de contrôle créé lors du basculement et configurer le fichier pg_control avec un LSN de cohérence minimum défini comme le résultat de pg_current_wal_insert_lsn() lors du rewind à partir d'une source vivante ou du dernier LSN de point de contrôle lors du rewind à partir d'une source arrêtée.</div>
+<div class="Bd-indent"> 5. Lors du démarrage de la cible, PostgreSQL relit tous les WAL nécessaires, ce qui donne un répertoire de données dans un état cohérent.</div>
+</section>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025</td>
+    <td class="foot-os">PostgreSQL 18.1</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/postgresql/">extra/postgresql</a></dd>
+        <dt>Version :</dt>
+        <dd>18.1-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.postgresql.org/">https://www.postgresql.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>PostgreSQL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/postgresql/">/listing/extra/postgresql/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONNEMENT</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pg_rewind.1.fr.txt">txt</a>, 
+        
+            <a href="/man/pg_rewind.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

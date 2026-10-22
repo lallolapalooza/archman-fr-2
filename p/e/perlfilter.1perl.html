@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlfilter(1perl) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlfilter.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLFILTER(1perl)</td>
+    <td class="head-vol">Guide de Référence des Programmeurs Perl</td>
+    <td class="head-rtitle">PERLFILTER(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlfilter - Filtres source</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cet article traite d'une fonctionnalité peu connue de Perl appelée
+    <i>filtres source</i>. Les filtres source modifient le texte du programme
+    d'un module avant que Perl ne le voie, un peu comme un préprocesseur C modifie
+    le texte source d'un programme C avant que le compilateur ne le voie. Cet article
+    vous en dit plus sur ce que sont les filtres source, comment ils fonctionnent,
+    et comment écrire les vôtres.</p>
+<p class="Pp">L'objectif initial des filtres source était de permettre le chiffrement
+    du code source de votre programme pour en empêcher la lecture fortuite. Ce n'est
+    pas leur seule utilité, comme vous ne tarderez pas à le découvrir. Mais d'abord,
+    les bases.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONCEPTS'><a class='permalink' href='#CONCEPTS'>CONCEPTS</a></h1>
+<p class="Pp">Avant que l'interpréteur Perl ne puisse exécuter un script Perl, il
+    doit d'abord le lire depuis un fichier pour le charger en mémoire afin de
+    l'analyser et de le compiler. Si ce script inclut lui-même d'autres scripts
+    avec une instruction
+    <span class="Li">&quot;use&quot;</span> ou
+    <span class="Li">&quot;require&quot;</span>, alors chacun de ces scripts
+    devra également être lu à partir de leurs fichiers respectifs.</p>
+<p class="Pp">Considérez maintenant chaque connexion logique entre l'analyseur
+    Perl et un fichier individuel comme un <i>flux source</i>. Un flux source est
+    créé lorsque l'analyseur Perl ouvre un fichier, il continue d'exister pendant
+    que le code source est chargé en mémoire, et il est détruit lorsque Perl a
+    terminé l'analyse du fichier. Si l'analyseur rencontre une instruction
+    <span class="Li">&quot;require&quot;</span> ou
+    <span class="Li">&quot;use&quot;</span> dans un flux source, un nouveau
+    flux distinct est créé spécifiquement pour ce fichier.</p>
+<p class="Pp">Le diagramme ci-dessous représente un seul flux source, avec le flux
+    du code source depuis un fichier de script Perl à gauche vers l'analyseur
+    Perl à droite. C'est ainsi que Perl fonctionne normalement.</p>
+<pre>fichier -------&gt; analyseur</pre>
+<p class="Pp">Il y a deux points importants à retenir :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Bien qu'il puisse y avoir un nombre quelconque de flux source en
+      existence à un moment donné, un seul sera actif.</dd>
+  <dt>2.</dt>
+  <dd>Chaque flux source est associé à un seul fichier.</dd>
+</dl>
+<p class="Pp">Un filtre source est un type spécial de module Perl qui intercepte
+    et modifie un flux source avant qu'il n'atteigne l'analyseur. Un filtre source
+    modifie notre diagramme comme suit :</p>
+<pre>fichier ----&gt; filtre ----&gt; analyseur</pre>
+<p class="Pp">Si cela n'a pas beaucoup de sens, considérez l'analogie d'un pipeline
+    de commandes. Supposons que vous ayez un script shell stocké dans le fichier
+    compressé <i>trial.gz</i>. La simple commande pipeline ci-dessous exécute le
+    script sans avoir besoin de créer un fichier temporaire pour conserver le
+    fichier décompressé.</p>
+<pre>gunzip -c trial.gz | sh</pre>
+<p class="Pp">Dans ce cas, le flux de données du pipeline peut être représenté
+    comme suit :</p>
+<pre>trial.gz ----&gt; gunzip ----&gt; sh</pre>
+<p class="Pp">Avec les filtres source, vous pouvez stocker le texte de votre script
+    compressé et utiliser un filtre source pour le décompresser pour l'analyseur
+    Perl :</p>
+<pre> programme Perl
+ compressé   ----&gt; filtre source ----&gt; analyseur</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION_DES_FILTRES'><a class='permalink' href='#UTILISATION_DES_FILTRES'>UTILISATION DES FILTRES</a></h1>
+<p class="Pp">Alors, comment utilisez-vous un filtre source dans un script Perl ?
+    Ci-dessus, j'ai dit qu'un filtre source n'est qu'un type spécial de module.
+    Comme tous les modules Perl, un filtre source est appelé avec une instruction
+    use.</p>
+<p class="Pp">Disons que vous voulez passer votre source Perl à travers le préprocesseur
+    C avant l'exécution. Il se trouve que la distribution des filtres source est
+    livrée avec un module de filtre de préprocesseur C appelé Filter::cpp.</p>
+<p class="Pp">Voici un exemple de programme,
+    <span class="Li">&quot;cpp_test&quot;</span>, qui utilise ce filtre. Les numéros
+    de ligne ont été ajoutés pour permettre de référencer facilement des lignes
+    spécifiques.</p>
+<pre>1: use Filter::cpp;
+2: #define TRUE 1
+3: $a = TRUE;
+4: print &quot;a = $a\n&quot;;</pre>
+<p class="Pp">Lorsque vous exécutez ce script, Perl crée un flux source pour le
+    fichier. Avant que l'analyseur ne traite aucune des lignes du fichier, le flux
+    source ressemble à ceci :</p>
+<pre>cpp_test ---------&gt; analyseur</pre>
+<p class="Pp">La ligne 1,
+    <span class="Li">&quot;use Filter::cpp&quot;</span>, inclut et installe le module
+    filtre <span class="Li">&quot;cpp&quot;</span>. Tous les filtres source
+    fonctionnent de cette manière. L'instruction use est compilée et exécutée
+    au moment de la compilation, avant que le reste du fichier ne soit lu, et
+    elle attache le filtre cpp au flux source en arrière-plan. Maintenant, le flux
+    de données ressemble à ceci :</p>
+<pre>cpp_test ----&gt; filtre cpp ----&gt; analyseur</pre>
+<p class="Pp">Lorsque l'analyseur lit la deuxième ligne et les lignes suivantes à
+    partir du flux source, il les fait passer par le filtre source
+    <span class="Li">&quot;cpp&quot;</span> avant de les traiter. Le filtre
+    <span class="Li">&quot;cpp&quot;</span> fait simplement passer chaque ligne
+    par le véritable préprocesseur C. La sortie du préprocesseur C est ensuite
+    réinsérée dans le flux source par le filtre.</p>
+<pre>               .-&gt; cpp --.
+               |         |
+               |         |
+               |       &lt;-'
+cpp_test ----&gt; filtre cpp ----&gt; analyseur</pre>
+<p class="Pp">L'analyseur voit alors le code suivant :</p>
+<pre>use Filter::cpp;
+$a = 1;
+print &quot;a = $a\n&quot;;</pre>
+<p class="Pp">Considérons ce qui se passe lorsque le code filtré inclut un autre
+    module avec use :</p>
+<pre>1: use Filter::cpp;
+2: #define TRUE 1
+3: use Fred;
+4: $a = TRUE;
+5: print &quot;a = $a\n&quot;;</pre>
+<p class="Pp">Le filtre <span class="Li">&quot;cpp&quot;</span> ne s'applique pas
+    au texte du module Fred, mais uniquement au texte du fichier qui l'a utilisé
+    (<span class="Li">&quot;cpp_test&quot;</span>). Bien que l'instruction use
+    à la ligne 3 passe par le filtre cpp, le module qui est inclus
+    (<span class="Li">&quot;Fred&quot;</span>) ne l'est pas. Les flux source
+    ressemblent à ceci après que la ligne 3 a été analysée et avant que la ligne
+    4 ne soit analysée :</p>
+<pre>cpp_test ---&gt; filtre cpp ---&gt; analyseur (INACTIF)
+Fred.pm ----&gt; analyseur</pre>
+<p class="Pp">Comme vous pouvez le voir, un nouveau flux a été créé pour lire la
+    source de <span class="Li">&quot;Fred.pm&quot;</span>. Ce flux restera actif
+    jusqu'à ce que tout <span class="Li">&quot;Fred.pm&quot;</span> ait été
+    analysé. Le flux source pour
+    <span class="Li">&quot;cpp_test&quot;</span> existera toujours, mais il sera
+    inactif. Une fois que l'analyseur aura fini de lire Fred.pm, le flux source qui
+    lui est associé sera détruit. Le flux source pour
+    <span class="Li">&quot;cpp_test&quot;</span> redevient alors actif et
+    l'analyseur lit la ligne 4 et les lignes suivantes à partir de
+    <span class="Li">&quot;cpp_test&quot;</span>.</p>
+<p class="Pp">Vous pouvez utiliser plus d'un filtre source sur un seul fichier.
+    De même, vous pouvez réutiliser le même filtre dans autant de fichiers que vous
+    le souhaitez.</p>
+<p class="Pp">Par exemple, si vous avez un fichier source encodé en uuencode et
+    compressé, il est possible d'empiler un filtre de décodage uuencode et un filtre
+    de décompression comme ceci :</p>
+<pre>use Filter::uudecode; use Filter::uncompress;
+M'XL(&quot;.H&lt;US4''V9I;F%L')Q;&gt;7/;1I;_&gt;_I3=&amp;E=%:F*I&quot;T?22Q/
+M6]9*&lt;IQCO*XFT&quot;0[PL%%'Y+IG?WN^ZYN-$'J.[.JE$,20/?K=_[&gt;
+...</pre>
+<p class="Pp">Une fois la première ligne traitée, le flux ressemblera à ceci :</p>
+<pre>fichier ---&gt; décodage uu ---&gt; décompression ---&gt; analyseur
+            filtre            filtre</pre>
+<p class="Pp">Les données circulent à travers les filtres dans le même ordre qu'elles
+    apparaissent dans le fichier source. Le filtre de décodage uuencode est apparu
+    avant le filtre de décompression, donc le fichier source sera d'abord décodé en
+    uuencode, puis décompressé.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ECRIRE_UN_FILTRE_SOURCE'><a class='permalink' href='#ECRIRE_UN_FILTRE_SOURCE'>ECRIRE UN FILTRE SOURCE</a></h1>
+<p class="Pp">Il y a trois façons d'écrire votre propre filtre source. Vous pouvez
+    l'écrire en C, utiliser un programme externe comme filtre, ou écrire le filtre
+    en Perl. Je ne vais pas les couvrir en détail, je vais donc m'en débarrasser d'abord.
+    Écrire le filtre en Perl est le plus pratique, je consacrerai donc le plus
+    d'espace à cela.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ECRIRE_UN_FILTRE_SOURCE_EN_C'><a class='permalink' href='#ECRIRE_UN_FILTRE_SOURCE_EN_C'>ECRIRE UN FILTRE SOURCE EN C</a></h1>
+<p class="Pp">La première des trois techniques disponibles consiste à écrire le
+    filtre entièrement en C. Le module externe que vous créez s'interface directement
+    avec les points d'accroche des filtres source fournis par Perl.</p>
+<p class="Pp">L'avantage de cette technique est que vous avez un contrôle total sur
+    l'implémentation de votre filtre. Le gros inconvénient est la complexité accrue
+    nécessaire pour écrire le filtre - non seulement vous devez comprendre les points
+    d'accroche des filtres source, mais vous avez également besoin d'une connaissance
+    raisonnable des entrailles de Perl. L'une des rares fois où cela vaut la peine
+    de faire cet effort est lors de l'écriture d'un brouilleur de source. Le filtre
+    <span class="Li">&quot;decrypt&quot;</span> (qui déchiffre la source avant
+    que Perl ne l'analyse) inclus avec la distribution des filtres source est un
+    exemple de filtre source C (voir Filtres de déchiffrement, ci-dessous).</p>
+<dl class="Bl-tag">
+  <dt id="Filtres_de_déchiffrement"><a class="permalink" href="#Filtres_de_déchiffrement"><b>Filtres de déchiffrement</b></a></dt>
+  <dd>Tous les filtres de déchiffrement fonctionnent sur le</dd>
+</dl>
+</div>
+</section>
+                
+            </article>
+        </main>
+    </body>
+</html>
+en principe de la « sécurité par
+      l'obscurité ». Quelle que soit la qualité de votre filtre de déchiffrement
+      et la robustesse de votre algorithme de chiffrement, toute personne
+      suffisamment déterminée pourra récupérer le code source original. La raison
+      en est assez simple : pour exécuter votre programme, Perl doit analyser son
+      code source. Cela signifie que Perl doit disposer de toutes les informations
+      nécessaires pour déchiffrer votre programme, et cela signifie que ces
+      informations sont également disponibles pour quiconque peut exécuter le
+      programme.
+    <p class="Pp">Cela étant dit, un certain nombre de mesures peuvent être prises
+        pour compliquer la vie du lecteur potentiel. La plus importante : écrivez
+        votre filtre de déchiffrement en C et liez statiquement le module de
+        déchiffrement à l'exécutable Perl. Pour d'autres conseils visant à
+        compliquer la vie du lecteur potentiel, consultez le fichier
+        <i>decrypt.pm</i> dans la distribution des filtres source.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CRÉER_UN_FILTRE_SOURCE_EN_TANT_QU’ÉXÉCUTABLE_SÉPARÉ'><a class='permalink' href='#CRÉER_UN_FILTRE_SOURCE_EN_TANT_QU’ÉXÉCUTABLE_SÉPARÉ'>CRÉER   UN FILTRE SOURCE EN TANT QU’ÉXÉCUTABLE   SÉPARÉ</a></h1>
+<p class="Pp">Une alternative à l'écriture du filtre en C consiste à créer un
+    exécutable séparé dans le langage de votre choix. L'exécutable séparé lit
+    depuis l'entrée standard, effectue le traitement nécessaire et écrit les
+    données filtrées vers la sortie standard.
+    <span class="Li">&quot;Filter::cpp&quot;</span> est un exemple de filtre source
+    implémenté sous forme d'exécutable séparé - l'exécutable est le préprocesseur
+    C fourni avec votre compilateur C.</p>
+<p class="Pp">La distribution des filtres source inclut deux modules qui simplifient
+    cette tâche : <span class="Li">&quot;Filter::exec&quot;</span> et
+    <span class="Li">&quot;Filter::sh&quot;</span>. Tous deux vous permettent
+    d'exécuter n'importe quel exécutable externe. Tous deux utilisent un
+    coprocesseur pour contrôler le flux de données vers et depuis l'exécutable
+    externe. (Pour plus de détails sur les coprocesseurs, voir Stephens, W.R.,
+    &quot;Advanced Programming in the UNIX Environment.&quot; Addison-Wesley, ISBN
+    0-210-56317-7, pages 441-445.) La différence entre les deux est que
+    <span class="Li">&quot;Filter::exec&quot;</span> démarre directement la commande
+    externe, tandis que <span class="Li">&quot;Filter::sh&quot;</span> démarre un
+    shell pour exécuter la commande externe. (Unix utilise le shell Bourne ; NT
+    utilise le shell cmd.) Le démarrage d'un shell vous permet d'utiliser les
+    métacaractères et les facilités de redirection du shell.</p>
+<p class="Pp">Voici un exemple de script qui utilise
+    <span class="Li">&quot;Filter::sh&quot;</span> :</p>
+<pre>use Filter::sh 'tr XYZ PQR';
+$a = 1;
+print &quot;XYZ a = $a\n&quot;;</pre>
+<p class="Pp">La sortie que vous obtiendrez lorsque le script sera exécuté :</p>
+<pre>PQR a = 1</pre>
+<p class="Pp">Écrire un filtre source sous forme d'exécutable séparé fonctionne
+    bien, mais cela entraîne une légère pénalité de performance. Par exemple, si
+    vous exécutez le petit exemple ci-dessus, un sous-processus séparé sera créé
+    pour exécuter la commande Unix <span class="Li">&quot;tr&quot;</span>. Chaque
+    utilisation du filtre nécessite son propre sous-processus. Si la création de
+    sous-processus est coûteuse sur votre système, vous pourriez envisager l'une
+    des autres options pour créer des filtres source.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ÉCRIRE_UN_FILTRE_SOURCE_EN_PERL'><a class='permalink' href='#ÉCRIRE_UN_FILTRE_SOURCE_EN_PERL'>ÉCRIRE   UN FILTRE SOURCE EN PERL</a></h1>
+<p class="Pp">L'option la plus simple et la plus portable pour créer votre propre
+    filtre source est de l'écrire entièrement en Perl. Pour le distinguer des deux
+    techniques précédentes, je l'appellerai filtre source Perl.</p>
+<p class="Pp">Pour comprendre comment écrire un filtre source Perl, nous avons
+    besoin d'un exemple à étudier. Voici un filtre source complet qui effectue le
+    déchiffrement rot13. (Rot13 est un schéma de chiffrement très simple utilisé
+    dans les publications Usenet pour masquer le contenu des messages offensants.
+    Il décale chaque lettre de treize positions, de sorte que A devienne N, B
+    devienne O, et Z devienne M.)</p>
+<pre>package Rot13;
+use Filter::Util::Call;
+sub import {
+   my ($type) = @_;
+   my ($ref) = [];
+   filter_add(bless $ref);
+}
+sub filter {
+   my ($self) = @_;
+   my ($status);
+   tr/n-za-mN-ZA-M/a-zA-Z/
+      if ($status = filter_read()) &gt; 0;
+   $status;
+}
+1;</pre>
+<p class="Pp">Tous les filtres source Perl sont implémentés en tant que classes
+    Perl et ont la même structure de base que l'exemple ci-dessus.</p>
+<p class="Pp">Tout d'abord, nous incluons le module
+    <span class="Li">&quot;Filter::Util::Call&quot;</span>, qui exporte un certain
+    nombre de fonctions dans l'espace de noms de votre filtre. Le filtre montré
+    ci-dessus utilise deux de ces fonctions, <span class="Li">filter_add()</span>
+    et <span class="Li">filter_read()</span>.</p>
+<p class="Pp">Ensuite, nous créons l'objet filtre et l'associons au flux source en
+    définissant la fonction <span class="Li">&quot;import&quot;</span>. Si vous
+    connaissez suffisamment bien Perl, vous savez que
+    <span class="Li">&quot;import&quot;</span> est appelé automatiquement chaque
+    fois qu'un module est inclus avec une instruction use. Cela fait de
+    <span class="Li">&quot;import&quot;</span> l'endroit idéal pour créer et
+    installer un objet filtre.</p>
+<p class="Pp">Dans l'exemple de filtre, l'objet (<span class="Li">$ref</span>)
+    est béni (blessed) comme n'importe quel autre objet Perl. Notre exemple utilise
+    un tableau anonyme, mais ce n'est pas une exigence. Étant donné que cet exemple
+    n'a pas besoin de stocker d'informations de contexte, nous aurions tout aussi
+    bien pu utiliser une référence scalaire ou de hachage. La section suivante
+    démontre les données de contexte.</p>
+<p class="Pp">L'association entre l'objet filtre et le flux source est établie
+    avec la fonction <span class="Li">filter_add()</span>. Celle-ci prend un
+    objet filtre comme paramètre (<span class="Li">$ref</span> dans ce cas) et
+    l'installe dans le flux source.</p>
+<p class="Pp">Enfin, il y a le code qui effectue réellement le filtrage. Pour ce
+    type de filtre source Perl, tout le filtrage est effectué dans une méthode
+    appelée <span class="Li">filter()</span>. (Il est également possible
+    d'écrire un filtre source Perl à l'aide d'une fermeture (closure). Voir la page
+    man <span class="Li">&quot;Filter::Util::Call&quot;</span> pour plus de
+    détails.) Elle est appelée chaque fois que l'analyseur Perl a besoin d'une
+    autre ligne source à traiter. La méthode <span class="Li">filter()</span>, à
+    son tour, lit les lignes du flux source à l'aide de la fonction
+    <span class="Li">filter_read()</span>.</p>
+<p class="Pp">Si une ligne était disponible à partir du flux source,
+    <span class="Li">filter_read()</span> renvoie une valeur de statut supérieure
+    à zéro et ajoute la ligne à <span class="Li">$_</span>. Une valeur de statut
+    de zéro indique la fin du fichier, moins de zéro signifie une erreur. La
+    fonction filtre elle-même est censée retourner son statut de la même manière,
+    et placer la ligne filtrée qu'elle souhaite écrire dans le flux source dans
+    <span class="Li">$_</span>. L'utilisation de <span class="Li">$_</span>
+    explique la concision de la plupart des filtres source Perl.</p>
+<p class="Pp">Afin d'utiliser le filtre rot13, nous avons besoin d'un moyen d'encoder
+    le fichier source au format rot13. Le script ci-dessous,
+    <span class="Li">&quot;mkrot13&quot;</span>, fait exactement cela.</p>
+<pre>die &quot;usage mkrot13 filename\n&quot; unless @ARGV;
+my $in = $ARGV[0];
+my $out = &quot;$in.tmp&quot;;
+open(IN, &quot;&lt;$in&quot;) or die &quot;Cannot open file $in: $!\n&quot;;
+open(OUT, &quot;&gt;$out&quot;) or die &quot;Cannot open file $out: $!\n&quot;;
+print OUT &quot;use Rot13;\n&quot;;
+while (&lt;IN&gt;) {
+   tr/a-zA-Z/n-za-mN-ZA-M/;
+   print OUT;
+}
+close IN;
+close OUT;
+unlink $in;
+rename $out, $in;</pre>
+<p class="Pp">Si nous chiffrons ceci avec
+    <span class="Li">&quot;mkrot13&quot;</span> :</p>
+<pre>print &quot; hello fred \n&quot;;</pre>
+<p class="Pp">le résultat sera le suivant :</p>
+<pre>use Rot13;
+cevag &quot;uryyb serq\a&quot;;</pre>
+<p class="Pp">L'exécution produit la sortie suivante :</p>
+<pre>hello fred</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISER_LE_CONTRÔLE:_LE_FILTRE_DE_DÉBOGAGE'><a class='permalink' href='#UTILISER_LE_CONTRÔLE:_LE_FILTRE_DE_DÉBOGAGE'>UTILISER   LE CONTRÔLE : LE FILTRE DE DÉBOGAGE</a></h1>
+<p class="Pp">L'exemple rot13 était un exemple trivial. Voici une autre
+    démonstration qui présente quelques fonctionnalités supplémentaires.</p>
+<p class="Pp">Disons que vous souhaitiez inclure beaucoup de code de débogage dans
+    votre script Perl pendant le développement, mais que vous ne souhaitiez pas
+    qu'il soit disponible dans le produit final. Les filtres source offrent une
+    solution. Afin de simplifier l'exemple, supposons que vous souhaitiez que la
+    sortie de débogage soit contrôlée par une variable d'environnement,
+    <span class="Li">&quot;DEBUG&quot;</span>. Le code de débogage est activé si la
+    variable existe, sinon il est désactivé.</p>
+<p class="Pp">Deux lignes marqueurs spéciales encadreront le code de débogage, comme
+  suit :</p>
+<pre>## DEBUG_BEGIN
+if ($year &gt; 1999) {
+   warn &quot;Debug: millennium bug in year $year\n&quot;;
+}
+## DEBUG_END</pre>
+<p class="Pp">Le filtre garantit que Perl analyse le code entre les marqueurs
+    &lt;DEBUG_BEGIN&gt; et <span class="Li">&quot;DEBUG_END&quot;</span> uniquement
+    lorsque la variable d'environnement
+    <span class="Li">&quot;DEBUG&quot;</span> existe. Cela signifie que lorsque
+    <span class="Li">&quot;DEBUG&quot;</span> existe, le code ci-dessus doit être
+    transmis sans modification par le filtre. Les lignes marqueurs peuvent
+    également être transmises telles quelles, car l'analyseur Perl les verra comme
+    des lignes de commentaire. Lorsque <span class="Li">&quot;DEBUG&quot;</span>
+    n'est pas défini, nous devons trouver un moyen de désactiver le code de
+    débogage. Une façon simple d'y parvenir est de convertir les lignes entre les
+    deux marqueurs en commentaires :</p>
+<pre>## DEBUG_BEGIN
+#if ($year &gt; 1999) {
+#     warn &quot;Debug: millennium bug in year $year\n&quot;;
+#}
+## DEBUG_END</pre>
+<p class="Pp">Voici le filtre Debug complet :</p>
+<pre>package Debug;
+use v5.36;
+use Filter::Util::Call;
+use constant TRUE =&gt; 1;
+use constant FALSE =&gt; 0;
+sub import {
+   my ($type) = @_;
+   my (%context) = (
+     Enabled =&gt; defined $ENV{DEBUG},
+     InTraceBlock =&gt; FALSE,
+     Filename =&gt; (caller)[1],
+     LineNo =&gt; 0,
+     LastBegin =&gt; 0,
+   );
+   filter_add(bless \%context);
+}
+sub Die {
+   my ($self) = shift;
+   my ($message) = shift;
+   my ($line_no) = shift || $self-&gt;{LastBegin};
+   die &quot;$message at $self-&gt;{Filename} line $line_no.\n&quot;
+}
+sub filter {
+   my ($self) = @_;
+   my ($status);
+   $status = filter_read();
+   ++ $self-&gt;{LineNo};
+   # deal with EOF/error first
+   if ($status &lt;= 0) {
+       $self-&gt;Die(&quot;DEBUG_BEGIN has no DEBUG_END&quot;)
+           if $self-&gt;{InTraceBlock};
+       return $status;
+   }
+   if ($self-&gt;{InTraceBlock}) {
+      if (/^\s*##\s*DEBUG_BEGIN/ ) {
+          $self-&gt;Die(&quot;Nested DEBUG_BEGIN&quot;, $self-&gt;{LineNo})
+      } elsif (/^\s*##\s*DEBUG_END/) {
+          $self-&gt;{InTraceBlock} = FALSE;
+      }
+      # comment out the debug lines when the filter is disabled
+      s/^/#/ if ! $self-&gt;{Enabled};
+   } elsif ( /^\s*##\s*DEBUG_BEGIN/ ) {
+      $self-&gt;{InTraceBlock} = TRUE;
+      $self-&gt;{LastBegin} = $self-&gt;{LineNo};
+   } elsif ( /^\s*##\s*DEBUG_END/ ) {
+      $self-&gt;Die(&quot;DEBUG_END has no DEBUG_BEGIN&quot;, $self-&gt;{LineNo});
+   }
+   return $status;
+}
+1;</pre>
+<p class="Pp">La grande différence entre ce filtre et l'exemple précédent est
+    l'utilisation de données de contexte dans l'objet filtre. L'objet filtre est
+    basé sur une référence de hachage (hash reference) et est utilisé pour conserver
+    diverses informations de contexte entre les appels à la fonction filtre. Tous
+    les champs du hachage, sauf deux, sont utilisés pour le rapport d'erreurs. Le
+    premier de ces deux champs, Enabled, est utilisé par le filtre pour déterminer si
+    le code de débogage doit être transmis à l'analyseur Perl. Le second, InTraceBlock,
+    est vrai lorsque le filtre a rencontré un
+    <span class="Li">&quot;DEBUG_BEGIN</span>
+&quot;</span> ligne, mais n'a pas encore
+    rencontré la ligne suivante <span class="Li">&quot;DEBUG_END&quot;</span>.</p>
+<p class="Pp">Si vous ignorez toute la vérification des erreurs que la plupart du
+    code effectue, l'essence du filtre est la suivante :</p>
+<pre>sub filter {
+   my ($self) = @_;
+   my ($status);
+   $status = filter_read();
+   # traite EOF/erreur d'abord
+   return $status if $status &lt;= 0;
+   if ($self-&gt;{InTraceBlock}) {
+      if (/^\s*##\s*DEBUG_END/) {
+         $self-&gt;{InTraceBlock} = FALSE
+      }
+      # commente les lignes de débogage lorsque le filtre est désactivé
+      s/^/#/ if ! $self-&gt;{Enabled};
+   } elsif ( /^\s*##\s*DEBUG_BEGIN/ ) {
+      $self-&gt;{InTraceBlock} = TRUE;
+   }
+   return $status;
+}</pre>
+<p class="Pp">Attention : tout comme le préprocesseur C ne connaît pas le C, le
+    filtre Debug ne connaît pas Perl. Il peut être facilement trompé :</p>
+<pre>print &lt;&lt;EOM;
+##DEBUG_BEGIN
+EOM</pre>
+<p class="Pp">Mis à part ces détails, vous pouvez constater qu'on peut accomplir
+    beaucoup de choses avec une quantité modeste de code.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONCLUSION'><a class='permalink' href='#CONCLUSION'>CONCLUSION</a></h1>
+<p class="Pp">Vous avez maintenant une meilleure compréhension de ce qu'est un filtre
+    source, et vous pourriez même avoir une utilité pour eux. Si vous avez envie de
+    jouer avec les filtres source mais que vous avez besoin d'un peu d'inspiration,
+    voici quelques fonctionnalités supplémentaires que vous pourriez ajouter au
+    filtre Debug.</p>
+<p class="Pp">Tout d'abord, une chose facile. Plutôt que d'avoir du code de débogage
+    qui est tout ou rien, il serait beaucoup plus utile de pouvoir contrôler quels
+    blocs spécifiques de code de débogage sont inclus. Essayez d'étendre la syntaxe
+    des blocs de débogage pour permettre l'identification de chacun. Le contenu de la
+    variable d'environnement <span class="Li">&quot;DEBUG&quot;</span> peut
+    alors être utilisé pour contrôler quels blocs sont inclus.</p>
+<p class="Pp">Une fois que vous pouvez identifier des blocs individuels, essayez de
+    permettre leur imbrication. Ce n'est pas difficile non plus.</p>
+<p class="Pp">Voici une idée intéressante qui n'implique pas le filtre Debug.
+    Actuellement, les sous-routines Perl ont un support assez limité pour les listes
+    de paramètres formels. Vous pouvez spécifier le nombre de paramètres et leur type,
+    mais vous devez toujours les extraire manuellement du tableau <span class="Li">@_</span>
+    vous-même. Écrivez un filtre source qui vous permet d'avoir une liste de
+    paramètres nommés. Un tel filtre transformerait ceci :</p>
+<pre>sub MySub ($first, $second, @rest) { ... }</pre>
+<p class="Pp">en ceci :</p>
+<pre>sub MySub($$@) {
+   my ($first) = shift;
+   my ($second) = shift;
+   my (@rest) = @_;
+   ...
+}</pre>
+<p class="Pp">Enfin, si vous vous sentez prêt pour un vrai défi, essayez d'écrire
+    un préprocesseur de macros Perl complet en tant que filtre source. Empruntez
+    les fonctionnalités utiles du préprocesseur C et de tout autre processeur de
+    macros que vous connaissez. La partie délicate sera de choisir quelle quantité
+    de connaissance de la syntaxe de Perl vous voulez que votre filtre ait.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LIMITATIONS'><a class='permalink' href='#LIMITATIONS'>LIMITATIONS</a></h1>
+<p class="Pp">Les filtres source ne fonctionnent qu'au niveau des chaînes de caractères,
+    ils sont donc très limités dans leur capacité à modifier le code source à la volée.
+    Ils ne peuvent pas détecter les commentaires, les chaînes de caractères entre
+    guillemets, les here-docs, ils ne remplacent pas un vrai analyseur. La seule
+    utilisation stable pour les filtres source est le chiffrement, la compression, ou
+    le byteloader, pour traduire le code binaire en code source.</p>
+<p class="Pp">Voir par exemple les limitations dans Switch, qui utilise des filtres
+    source, et donc ne fonctionne pas à l'intérieur d'un eval de chaîne, la présence
+    de regex avec des sauts de ligne intégrés spécifiés avec des délimiteurs bruts
+    <span class="Li">&quot;/.../&quot;</span> et qui n'ont pas de modificateur
+    <span class="Li">&quot;//x&quot;</span> sont indiscernables des blocs de code
+    commençant par l'opérateur de division <span class="Li">&quot;/&quot;</span>.
+    Comme solution de contournement, vous devez utiliser <span class="Li">&quot;m/.../&quot;</span>
+    ou <span class="Li">&quot;m?...?&quot;</span> pour de tels motifs. De plus, la
+    présence d'expressions régulières spécifiées avec des délimiteurs bruts
+    <span class="Li">&quot;?...?&quot;</span> peut provoquer des erreurs mystérieuses.
+    La solution de contournement est d'utiliser <span class="Li">&quot;m?...?&quot;</span>
+    à la place. Voir <a href='https://metacpan.org/pod/Switch#LIMITATIONS'>https://metacpan.org/pod/Switch#LIMITATIONS</a>.</p>
+<p class="Pp">Actuellement, le contenu du bloc <span class="Li">&quot;__DATA__&quot;</span>
+    n'est pas filtré.</p>
+<p class="Pp">Actuellement, les longueurs des tampons internes sont limitées à 32 bits
+    uniquement.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THINGS_TO_LOOK_OUT_FOR'><a class='permalink' href='#THINGS_TO_LOOK_OUT_FOR'>CHOSES   À SURVEILLER</a></h1>
+<dl class="Bl-tag">
+  <dt id="Some"><a class="permalink" href="#Some">Certains Filtres Altèrent la
+    Poignée &quot;DATA&quot;</a></dt>
+  <dd>Certains filtres source utilisent la poignée <span class="Li">&quot;DATA&quot;</span>
+      pour lire le programme appelant. Lors de l'utilisation de ces filtres source,
+      vous ne pouvez pas vous fier à cette poignée, ni attendre un comportement
+      particulier lors de son utilisation. Les filtres basés sur Filter::Util::Call
+      (et donc Filter::Simple) ne modifient pas le fichier <span class="Li">&quot;DATA&quot;</span>,
+      mais d'un autre côté ignorent totalement le texte après <span class="Li">&quot;__DATA__&quot;</span>.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REQUIREMENTS'><a class='permalink' href='#REQUIREMENTS'>EXIGENCES</a></h1>
+<p class="Pp">La distribution Source Filters est disponible sur CPAN, dans</p>
+<pre>CPAN/modules/by-module/Filter</pre>
+<p class="Pp">À partir de Perl 5.8, Filter::Util::Call (la partie centrale de la
+    distribution Source Filters) fait partie de la distribution Perl standard. Est
+    également inclus une interface plus conviviale appelée Filter::Simple, par Damian
+    Conway.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Paul Marquess &lt;Paul.Marquess@btinternet.com&gt;</p>
+<p class="Pp">Reini Urban &lt;rurban@cpan.org&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Copyrights'><a class='permalink' href='#Copyrights'>Droits d'auteur</a></h1>
+<p class="Pp">La première version de cet article est parue dans The Perl Journal #11,
+    et est copyright 1998 The Perl Journal. Elle apparaît avec l'aimable autorisation
+    de Jon Orwant et The Perl Journal. Ce document peut être distribué sous les mêmes
+    termes que Perl lui-même.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#CONCEPTS">CONCEPTS</a></li>
+        
+            <li><a href="#USING_FILTERS">UTILISATION DES FILTRES</a></li>
+        
+            <li><a href="#WRITING_A_SOURCE_FILTER">ÉCRITURE D'UN FILTRE SOURCE</a></li>
+        
+            <li><a href="#WRITING_A_SOURCE_FILTER_IN_C">ÉCRITURE D'UN FILTRE SOURCE EN C</a></li>
+        
+            <li><a href="#CREATING_A_SOURCE_FILTER_AS_A_SEPARATE_EXECUTABLE">CRÉATION D'UN FILTRE SOURCE COMME EXÉCUTABLE SÉPARÉ</a></li>
+        
+            <li><a href="#WRITING_A_SOURCE_FILTER_IN_PERL">ÉCRITURE D'UN FILTRE SOURCE EN PERL</a></li>
+        
+            <li><a href="#USING_CONTEXT:_THE_DEBUG_FILTER">UTILISATION DU CONTEXTE : LE FILTRE DEBUG</a></li>
+        
+            <li><a href="#CONCLUSION">CONCLUSION</a></li>
+        
+            <li><a href="#LIMITATIONS">LIMITATIONS</a></li>
+        
+            <li><a href="#THINGS_TO_LOOK_OUT_FOR">CHOSES À SURVEILLER</a></li>
+        
+            <li><a href="#REQUIREMENTS">EXIGENCES</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#Copyrights">Droits d'auteur</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlfilter.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlfilter.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

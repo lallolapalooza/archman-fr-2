@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perf-script-perl(1) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perf-script-perl(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/perf/">perf</a></p>
+<p class="lic">Licences: GPL-2.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERF-SCRIPT-PERL(1)</td>
+    <td class="head-vol">perf Manual</td>
+    <td class="head-rtitle">PERF-SCRIPT-PERL(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+<p class="Pp">perf-script-perl - Process trace data with a Perl script</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SYNOPSIS"><a class="permalink" href="#SYNOPSIS">SYNOPSIS</a></h1>
+<pre><i>perf script</i> [-s [Perl]:script[.pl] ]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+<p class="Pp">This perf script option is used to process perf script data using
+    perf&#x2019;s built-in Perl interpreter. It reads and processes the input
+    file and displays the results of the trace analysis implemented in the given
+    Perl script, if any.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="STARTER_SCRIPTS"><a class="permalink" href="#STARTER_SCRIPTS">STARTER   SCRIPTS</a></h1>
+<p class="Pp">You can avoid reading the rest of this document by running <i>perf
+    script -g perl</i> in the same directory as an existing perf.data trace
+    file. That will generate a starter script containing a handler for each of
+    the event types in the trace file; it simply prints every available field
+    for each event in the trace file.</p>
+<p class="Pp">You can also look at the existing scripts in
+    ~/libexec/perf-core/scripts/perl for typical examples showing how to do
+    basic things like aggregate event data, print results, etc. Also, the
+    check-perf-script.pl script, while not interesting for its results, attempts
+    to exercise all of the main scripting features.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="EVENT_HANDLERS"><a class="permalink" href="#EVENT_HANDLERS">EVENT   HANDLERS</a></h1>
+<p class="Pp">When perf script is invoked using a trace script, a user-defined
+    <i>handler function</i> is called for each event in the trace. If
+    there&#x2019;s no handler function defined for a given event type, the event
+    is ignored (or passed to a <i>trace_unhandled</i> function, see below) and
+    the next event is processed.</p>
+<p class="Pp">Most of the event&#x2019;s field values are passed as arguments to
+    the handler function; some of the less common ones aren&#x2019;t - those are
+    available as calls back into the perf executable (see below).</p>
+<p class="Pp">As an example, the following perf record command can be used to
+    record all sched_wakeup events in the system:</p>
+<div class="Bd-indent">
+<pre># perf record -a -e sched:sched_wakeup</pre>
+</div>
+<p class="Pp">Traces meant to be processed using a script should be recorded
+    with the above option: -a to enable system-wide collection.</p>
+<p class="Pp">The format file for the sched_wakeup event defines the following
+    fields (see /sys/kernel/tracing/events/sched/sched_wakeup/format):</p>
+<div class="Bd-indent">
+<pre>.ft C
+ format:
+        field:unsigned short common_type;
+        field:unsigned char common_flags;
+        field:unsigned char common_preempt_count;
+        field:int common_pid;
+        field:char comm[TASK_COMM_LEN];
+        field:pid_t pid;
+        field:int prio;
+        field:int success;
+        field:int target_cpu;
+.ft</pre>
+</div>
+<p class="Pp">The handler function for this event would be defined as:</p>
+<div class="Bd-indent">
+<pre>.ft C
+sub sched::sched_wakeup
+{
+   my ($event_name, $context, $common_cpu, $common_secs,
+       $common_nsecs, $common_pid, $common_comm,
+       $comm, $pid, $prio, $success, $target_cpu) = @_;
+}
+.ft</pre>
+</div>
+<p class="Pp">The handler function takes the form subsystem::event_name.</p>
+<p class="Pp">The $common_* arguments in the handler&#x2019;s argument list are
+    the set of arguments passed to all event handlers; some of the fields
+    correspond to the common_* fields in the format file, but some are
+    synthesized, and some of the common_* fields aren't common enough to
+    to be passed to every event as arguments but are available as library
+    functions.</p>
+<p class="Pp">Here&#x2019;s a brief description of each of the invariant event
+    args:</p>
+<div class="Bd-indent">
+<pre>$event_name                the name of the event as text
+$context                   an opaque 'cookie' used in calls back into perf
+$common_cpu                the cpu the event occurred on
+$common_secs               the secs portion of the event timestamp
+$common_nsecs              the nsecs portion of the event timestamp
+$common_pid                the pid of the current task
+$common_comm               the name of the current process</pre>
+</div>
+<p class="Pp">All of the remaining fields in the event&#x2019;s format file have
+    counterparts as handler function arguments of the same name, as can be seen
+    in the example above.</p>
+<p class="Pp">The above provides the basics needed to directly access every
+    field of every event in a trace, which covers 90% of what you need to know
+    to write a useful trace script. The sections below cover the rest.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SCRIPT_LAYOUT"><a class="permalink" href="#SCRIPT_LAYOUT">SCRIPT   LAYOUT</a></h1>
+<p class="Pp">Every perf script Perl script should start by setting up a Perl
+    module search path and 'use'ing a few support modules (see module
+    descriptions below):</p>
+<div class="Bd-indent">
+<pre>.ft C
+ use lib "$ENV{'PERF_EXEC_PATH'}/scripts/perl/Perf-Trace-Util/lib";
+ use lib "./Perf-Trace-Util/lib";
+ use Perf::Trace::Core;
+ use Perf::Trace::Context;
+ use Perf::Trace::Util;
+.ft</pre>
+</div>
+<p class="Pp">The rest of the script can contain handler functions and support
+    functions in any order.</p>
+<p class="Pp">Aside from the event handler functions discussed above, every
+    script can implement a set of optional functions:</p>
+<p class="Pp"><b>trace_begin</b>, if defined, is called before any event is
+    processed and gives scripts a chance to do setup tasks:</p>
+<div class="Bd-indent">
+<pre>.ft C
+ sub trace_begin
+ {
+ }
+.ft</pre>
+</div>
+<p class="Pp"><b>trace_end</b>, if defined, is called after all events have been
+    processed and gives scripts a chance to do end-of-script tasks, such as
+    display results:</p>
+<div class="Bd-indent">
+<pre>.ft C
+sub trace_end
+{
+}
+.ft</pre>
+</div>
+<p class="Pp"><b>trace_unhandled</b>, if defined, is called after for any event
+    that doesn't have a handler explicitly defined for it. The standard
+    set of common arguments are passed into it:</p>
+<div class="Bd-indent">
+<pre>.ft C
+sub trace_unhandled
+{
+    my ($event_name, $context, $common_cpu, $common_secs,
+        $common_nsecs, $common_pid, $common_comm) = @_;
+}
+.ft</pre>
+</div>
+<p class="Pp">The remaining sections provide descriptions of each of the
+    available built-in perf script Perl modules and their associated
+  functions.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AVAILABLE_MODULES_AND_FUNCTIONS"><a class="permalink" href="#AVAILABLE_MODULES_AND_FUNCTIONS">AVAILABLE   MODULES AND FUNCTIONS</a></h1>
+<p class="Pp">The following sections describe the functions and variables
+    available via the various Perf::Trace::* Perl modules. To use the functions
+    and variables from the given module, add the corresponding <i>use
+    Perf::Trace::XXX</i> line to your perf script script.</p>
+<section class="Ss">
+<h2 class="Ss" id="Perf::Trace::Core_Module"><a class="permalink" href="#Perf::Trace::Core_Module">Perf::Trace::Core   Module</a></h2>
+<p class="Pp">These functions provide some essential functions to user
+  scripts.</p>
+<p class="Pp">The <b>flag_str</b> and <b>symbol_str</b> functions provide
+    human-readable strings for flag and symbolic fields. These correspond to the
+    strings and values parsed from the <i>print fmt</i> fields of the event
+    format files:</p>
+<div class="Bd-indent">
+<pre>flag_str($event_name, $field_name, $field_value) - returns the string representation corresponding to $field_value for the flag field $field_name of event $event_name
+symbol_str($event_name, $field_name, $field_value) - returns the string representation corresponding to $field_value for the symbolic field $field_name of event $event_name</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Perf::Trace::Context_Module"><a class="permalink" href="#Perf::Trace::Context_Module">Perf::Trace::Context   Module</a></h2>
+<p class="Pp">Some of the <i>common</i> fields in the event format file
+    aren't all that common, but need to be made accessible to user
+    scripts nonetheless.</p>
+<p class="Pp">Perf::Trace::Context defines a set of functions that can be used
+    to access this data in the context of the current event. Each of these
+    functions expects a $context variable, which is the same as the $context
+    variable passed into every event handler as the second argument.</p>
+<div class="Bd-indent">
+<pre>common_pc($context) - returns common_preempt count for the current event
+common_flags($context) - returns common_flags for the current event
+common_lock_depth($context) - returns common_lock_depth for the current event</pre>
+</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Perf::Trace::Util_Module"><a class="permalink" href="#Perf::Trace::Util_Module">Perf::Trace::Util   Module</a></h2>
+<p class="Pp">Various utility functions for use with perf script:</p>
+<div class="Bd-indent">
+<pre>nsecs($secs, $nsecs) - returns total nsecs given secs/nsecs pair
+nsecs_secs($nsecs) - returns whole secs portion given nsecs
+nsecs_nsecs($nsecs) - returns nsecs remainder given nsecs
+nsecs_str($nsecs) - returns printable string in the form secs.nsecs
+avg($total, $n) - returns average given a sum and a total number of values</pre>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE   ALSO</a></h1>
+<p class="Pp"><a href="/man/perf-script.1.en">perf-scr</a></p>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>perf-script-perl(1)</title>
+        <link rel="stylesheet" href="/style.css">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <section class="man-page">
+<h1 id="NAME">NAME</h1>
+<p class="man-synopsis">
+  <code>perf-script-perl</code> - Interface de script Perl pour les scripts perf.
+</p>
+
+<h1 id="SYNOPSIS">SYNOPSIS</h1>
+<p class="man-synopsis">
+  <code>perf script [ --perl script.pl ]</code>
+</p>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+<p>
+  L'outil <code>perf script</code> permet d'afficher les données de trace collectées par le noyau Linux.
+  Il peut exporter les données dans divers formats, notamment un format interprétable par des scripts Perl.
+  L'option <code>--perl</code> permet de spécifier un script Perl qui sera exécuté pour traiter et afficher les données de trace.
+</p>
+
+<h1 id="STARTER_SCRIPTS">STARTER SCRIPTS</h1>
+<p>
+  L'exécutable <code>perf-script-perl</code> est un script de démarrage qui simplifie l'utilisation de <code>perf script --perl</code>.
+  Il permet de lancer directement un script Perl en le passant comme argument.
+</p>
+
+<h1 id="EVENT_HANDLERS">EVENT HANDLERS</h1>
+<p>
+  Les scripts Perl utilisés avec <code>perf script</code> peuvent définir des gestionnaires d'événements personnalisés.
+  Ces gestionnaires sont des fonctions Perl qui sont appelées pour chaque événement de trace collecté.
+  Le script Perl peut ainsi analyser, filtrer ou reformatter les données d'événements.
+</p>
+
+<h1 id="SCRIPT_LAYOUT">SCRIPT LAYOUT</h1>
+<p>
+  Un script Perl typique pour <code>perf script</code> doit inclure des fonctions qui correspondent aux événements de trace que vous souhaitez gérer.
+  Par exemple, vous pourriez avoir une fonction nommée <code>on_event_syscall</code> pour gérer les événements liés aux appels système.
+</p>
+
+<h1 id="AVAILABLE_MODULES_AND_FUNCTIONS">AVAILABLE MODULES AND FUNCTIONS</h1>
+<p>
+  Le script Perl a accès à plusieurs modules et fonctions fournis par l'outil <code>perf</code> pour interagir avec les données de trace.
+  Ces modules permettent d'accéder aux informations sur les événements, les processus, les symboles, etc.
+  La documentation de <code>perf-script-perl</code> fournit une liste détaillée des modules et fonctions disponibles.
+</p>
+
+<h1 id="SEE_ALSO">SEE ALSO</h1>
+<p>
+  <code><a href="/man/perf.1">perf(1)</a></code>
+</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2023-02-02</td>
+    <td class="foot-os">perf</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/perf/">extra/perf</a></dd>
+        <dt>Version :</dt>
+        <dd>6.17-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.kernel.org">https://www.kernel.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/perf/">/listing/extra/perf/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#STARTER_SCRIPTS">SCRIPTS DE DÉMARRAGE</a></li>
+        
+            <li><a href="#EVENT_HANDLERS">GESTIONNAIRES D'ÉVÉNEMENTS</a></li>
+        
+            <li><a href="#SCRIPT_LAYOUT">STRUCTURE DU SCRIPT</a></li>
+        
+            <li><a href="#AVAILABLE_MODULES_AND_FUNCTIONS">MODULES ET FONCTIONS DISPONIBLES</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perf-script-perl.1.fr.txt">txt</a>, 
+        
+            <a href="/man/perf-script-perl.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

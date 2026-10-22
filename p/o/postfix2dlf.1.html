@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>postfix2dlf(1) — Arch manual pages</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">postfix2dlf(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/lire/">lire</a></p>
+<p class="lic">Licences: GPL-2.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">POSTFIX2DLF.IN(1)</td>
+    <td class="head-vol">LogReport's Lire Documentation</td>
+    <td class="head-rtitle">POSTFIX2DLF.IN(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Pp">postfix2dlf - convert postfix logfiles to dlf format</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><b>postfix2dlf</b></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">postfix2dlf convertit un fichier journal postfix en un fichier au format DLF (Distilled Log Format) de Lire. Il appelle <a href='/man/postfix2dlf_pre.1.en'>postfix2dlf_pre(1)</a> et <a href='/man/postfix2dlf_main.1.en'>postfix2dlf_main(1)</a> pour effectuer le travail réel. Il s'attend à lire le fichier journal depuis l'entrée standard (stdin) et imprime le format DLF sur la sortie standard (stdout). Les messages de diagnostic sont imprimés sur la sortie d'erreur (stderr). Ce script est appelé par <a href='/man/lr_log2xml.1.en'>lr_log2xml(1)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RATIONALE'><a class='permalink' href='#RATIONALE'>RATIONALE</a></h1>
+<p class="Pp">L'architecture de postfix2dlf est assez différente des autres convertisseurs dlf d'e-mails. Ceci est dû au fait que lors de l'analyse d'un fichier journal postfix, il n'y a <i>aucun</i> signe indiquant si un message a été livré à tous les destinataires. (Dans un journal sendmail, il y a un champ rcpts=, qui peut être utilisé à cette fin.)</p>
+<p class="Pp">Il existe plusieurs solutions de contournement pour gérer un tel journal. 1 : garder une trace de tous les identifiants de file d'attente (queueid) avec leurs informations d'origine pendant le traitement de l'ensemble du fichier journal. Ceci consomme trop de mémoire. 2 : utiliser une heuristique de 10 secondes : supposer qu'un message ne restera jamais plus de 10 secondes dans la file d'attente. Ou, alternativement, supposer qu'il n'y aura pas plus de <span class="Li">$LR_POSTFIX_MAX_QUEUE_SIZE</span> messages dans la file d'attente simultanément. Ceci est trop sujet aux erreurs. 3 : utiliser <a href='/man/sort.1.en'>sort(1)</a> pour trier les lignes du journal par identifiant de file d'attente. C'est ce que nous faisions auparavant. Cependant, nous ne savons pas à l'avance quel champ contiendra l'identifiant de la file d'attente (les fichiers journaux traités par le syslog de Sun Solaris auront leur identifiant de file d'attente à une position différente, par exemple). Calculer cette position impliquerait d'analyser le journal deux fois.</p>
+<p class="Pp">Nous avons choisi une variation de la troisième alternative : nous stockons les informations que nous aurions obtenues avec <a href='/man/sort.1.en'>sort(1)</a> dans un fichier de base de données (db file). Pendant la construction de ce fichier de base de données, qui contient une correspondance entre les identifiants de file d'attente et le nombre de lignes avec cet identifiant, nous effectuons autant de pré-traitement que possible. Le journal prétraité est imprimé dans un fichier temporaire (tmpfile). La structure du journal prétraité est la même que celle du journal brut : une ligne de journal brut donne une ligne prétraitée. Le journal prétraité est converti en DLF par <a href='/man/lr_postfix2dlf_main.1.en'>lr_postfix2dlf_main(1)</a>, en utilisant les informations du fichier de base de données.</p>
+<p class="Pp">Un effet secondaire intéressant de cette méthode de traitement est que le journal est traité dans l'ordre chronologique d'origine.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE'><a class='permalink' href='#EXAMPLE'>EXAMPLE</a></h1>
+<p class="Pp">Un fichier journal</p>
+<pre>Dec 1 04:02:56 internetsrv postfix/pickup[20919]: 
+ 693A3578E: uid=0 from=&lt;root&gt;
+Dec 1 04:02:56 internetsrv postfix/cleanup[20921]: 
+ 693A3578E: message-id=&lt;john.doe.1@example.com&gt;
+Dec 1 04:02:57 internetsrv postfix/qmgr[20164]: 693A3578E: 
+ from=&lt;john.doe.2@example.com&gt;, size=617 (queue active)
+Dec 1 04:02:57 internetsrv postfix/cleanup[20921]: 
+ E325C578D: message-id=&lt;john.doe.1@example.com&gt;
+Dec 1 04:02:58 internetsrv postfix/local[20924]: 
+ 693A3578E: to=&lt;john.doe.2@example.com&gt;, relay=local, 
+ delay=3, status=sent (forwarded as E325C578D)
+Dec 1 04:02:58 internetsrv postfix/qmgr[20164]: E325C578D: 
+ from=&lt;john.doe.2@example.com&gt;, size=769 (queue active)
+Dec 1 04:02:59 internetsrv postfix/smtp[20925]: E325C578D: 
+ to=&lt;john.doe.3@example.com&gt;, 
+ relay=1.example.com.vp.pt[10.0.0.1], delay=2, status=sent 
+ (250 Requested mail action Ok.)
+Dec 1 06:58:22 internetsrv postfix/smtpd[21142]: connect 
+ from 2.example.com.fi[10.0.0.2]
+Dec 1 06:58:23 internetsrv postfix/smtpd[21142]: 
+ 42BFE578D: client=2.example.com.fi[10.0.0.2]
+Dec 1 06:58:24 internetsrv postfix/cleanup[21143]: 
+ 42BFE578D: message-id=&lt;john.doe.4@example.com&gt;
+Dec 1 06:58:24 internetsrv postfix/qmgr[20164]: 42BFE578D: 
+ from=&lt;john.doe.5@example.com&gt;, size=2473 (queue active)
+Dec 1 06:58:26 internetsrv postfix/smtp[21145]: 42BFE578D: 
+ to=&lt;john.doe.6@example.com&gt;, 
+ relay=1.example.com.vp.pt[10.0.0.1], delay=3, status=sent 
+ (250 Requested mail action Ok.)
+Dec 1 06:59:22 internetsrv postfix/smtpd[21142]: 
+ disconnect from 2.example.com.fi[10.0.0.2]
+Dec 1 07:08:28 internetsrv postfix/smtpd[21160]: connect 
+ from 2.example.com.fi[10.0.0.2]
+Dec 1 07:08:28 internetsrv postfix/smtpd[21160]: 
+ C7B39578D: client=2.example.com.fi[10.0.0.2]
+Dec 1 07:08:29 internetsrv postfix/cleanup[21161]: 
+ C7B39578D: message-id=&lt;john.doe.7@example.com&gt;
+Dec 1 07:08:29 internetsrv postfix/qmgr[20164]: C7B39578D: 
+ from=&lt;john.doe.8@example.com&gt;, size=2173 (queue active)
+Dec 1 07:08:32 internetsrv postfix/smtp[21163]: C7B39578D: 
+ to=&lt;john.doe.9@example.com&gt;, 
+ relay=3.example.com.vp.pt[10.0.0.3], delay=4, status=sent 
+ (250 Requested mail action Ok.)
+Dec 1 07:08:33 internetsrv postfix/smtpd[21160]: 
+ disconnect from 2.example.com.fi[10.0.0.2]
+Dec 1 07:18:42 internetsrv postfix/smtpd[21166]: connect 
+ from 2.example.com.fi[10.0.0.2]</pre>
+<p class="Pp">sera converti en</p>
+<pre>1007175776 internetsrv 693A3578E &lt;john.doe.1@example.com&gt;
+ john.doe.2 example.com localhost 127.0.0.1 617 3 0
+ john.doe.2 example.com localhost 127.0.0.1 sent
+ (forwarded_as_e325c578d)
+1007175779 internetsrv E325C578D &lt;john.doe.1@example.com&gt;
+ john.doe.2 example.com localhost 127.0.0.1 769 2 0
+ john.doe.3 example.com 1.example.com.vp.pt 10.0.0.1 sent
+ (250_requested_mail_action_ok.)
+1007186303 internetsrv 42BFE578D &lt;john.doe.4@example.com&gt;
+ john.doe.5 example.com 2.example.com.fi 10.0.0.2 2473 3 0
+ john.doe.6 example.com 1.example.com.vp.pt 10.0.0.1 sent
+ (250_requested_mail_action_ok.)
+1007186908 internetsrv C7B39578D &lt;john.doe.7@example.com&gt;
+ john.doe.8 example.com 2.example.com.fi 10.0.0.2 2173 4 0
+ john.doe.9 example.com 3.example.com.vp.pt 10.0.0.3 sent
+ (250_requested_mail_action_ok.)</pre>
+<p class="Pp">postfix2dlf sera rarement utilisé seul, mais sera plus probablement appelé par lr_log2report :</p>
+<pre>$ lr_log2report postfix &lt; /var/log/mail.log &gt; report</pre>
+<p class="Pp">. Si vous souhaitez vraiment exécuter ce script de manière autonome (par exemple, pour le débogage), exécutez-le comme ceci :</p>
+<pre>$ LR_SERVICE=email LR_ID=`date +%s` /chemin/vers/lire/convertors/postfix2dlf &lt; /var/log/mail.log &gt; mail.dlf</pre>
+<p class="Pp">. Assurez-vous que /chemin/vers/libexec/lire et /chemin/vers/lire/convertors sont dans votre PATH, et assurez-vous que TMPDIR, LR_DBFILE et LR_DBDIR sont définis. Vous pourriez sourcer manuellement /chemin/vers/etc/lire/profile_lean et /chemin/vers/etc/lire/defaults pour y parvenir.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LOGFORMAT'><a class='permalink' href='#LOGFORMAT'>LOGFORMAT</a></h1>
+<p class="Pp">Les journaux de Postfix ressemblent à ceci :</p>
+<section class="Ss">
+<h2 class="Ss" id='from_local_to_remote'><a class='permalink' href='#from_local_to_remote'>de local vers distant</a></h2>
+<pre>postfix/pickup[81586]: 094BE204: uid=1001 from=&lt;edwin&gt;
+postfix/cleanup[81683]: 094BE204: 
+ message-id=&lt;20000531080729.L39824@cgmd76206.c.nl&gt;
+postfix/qmgr[13460]: 094BE204: 
+ from=&lt;edwin@cgmd76206.c.nl&gt;, size=1717 (queue active)
+postfix/smtp[81685]: 094BE204: to=&lt;r.moeskops@c.nl&gt;, 
+ relay=smtp.c.nl[212.83.68.146], delay=4, status=sent (250 
+ Message received: 
+ 20000531060722.ZCOV13476.relay02@cgmd76206.c.nl)</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='from_local_to_local'><a class='permalink' href='#from_local_to_local'>de local vers local</a></h2>
+<pre>postfix/pickup[81849]: 473B9204: uid=1001 from=&lt;edwin&gt;
+postfix/cleanup[81916]: 473B9204: 
+ message-id=&lt;200005310901.LAA56567@kludge.mpn.cp.p.com&gt;
+postfix/qmgr[13460]: 473B9204: 
+ from=&lt;edwin@cgmd76206.c.nl&gt;, size=1997 (queue active)
+postfix/local[81918]: 473B9204: to=&lt;edwin@cgmd76206.c.nl&gt;, 
+ relay=local, delay=0, status=sent 
+ (&quot;|exec /usr/local/bin/procmail -t&quot;)</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='from_remote_to_local'><a class='permalink' href='#from_remote_to_local'>de distant vers local</a></h2>
+<pre>postfix/smtpd[82056]: A17131C5: 
+ client=gw-nl1.o-it.com[193.79.128.34]
+postfix/cleanup[82057]: A17131C5: 
+ message-id=&lt;023201bfcad1$16365ba0$775910ac@ehvbos.nl.oit.com&gt;
+postfix/qmgr[13460]: A17131C5: 
+ from=&lt;Jan.Stap@nl.o-it.com&gt;, size=1692 (queue active)
+postfix/local[82059]: A17131C5: 
+ to=&lt;majordomo-org@cgmd76206.c.nl&gt;, relay=local, delay=1, 
+ status=sent (&quot;|/usr/local/majordomo/wrapper majordomo&quot;)</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='from_remote_to_remote'><a class='permalink' href='#from_remote_to_remote'>de distant vers distant</a></h2>
+<pre>postfix/smtpd[58567]: connect from 
+ kweetal.t.nl[131.155.2.7]
+postfix/smtpd[58567]: 9A16E229: 
+ client=kweetal.t.nl[131.155.2.7]
+postfix/cleanup[58570]: 9A16E229: 
+ message-id=&lt;200006041246.OAA23888@bw2.baub.bwk.t.nl&gt;
+postfix/qmgr[236]: 9A16E229: 
+ from=&lt;edwin@bw2.baub.bwk.t.nl&gt;, size=774 (queue active)
+postfix/smtpd[58567]: disconnect from 
+ kweetal.t.nl[131.155.2.7]
+postfix/smtp[58574]: 9A16E229: to=&lt;joostvb@x.nl&gt;, 
+ relay=mx3.x.nl[194.109.6.48], delay=15, status=sent (250 
+ OAA23290 Message accepted for delivery)</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PERFORMANCE'><a class='permalink' href='#PERFORMANCE'>PERFORMANCE</a></h1>
+<p class="Pp">Nous avons exécuté la suite postfix2dlf sur un fichier journal postfix de 24 Mo</p>
+</section>
+</div>
+</section>
+                
+            </article>
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>postfix2dlf(1) - Lire manual pages</title>
+        <link rel="stylesheet" href="/css/main.css" />
+        <link rel="stylesheet" href="/css/man.css" />
+        <link rel="stylesheet" href="/css/theme.css" />
+        <link rel="stylesheet" href="/css/typography.css" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+    </head>
+    <body>
+        
+        
+        <main class="container">
+            <article>
+                
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Nm">postfix2dlf</p>
+<p class="Nd">convert Postfix logfile to DLF format</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="In"><b>postfix2dlf</b> [<b>-v</b>] [<b>-f</b>] [<b>-m</b>] [<b>-c</b> <i>config</i>] [<b>-o</b> <i>output</i>] [<i>logfile</i>]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">This program converts a Postfix logfile to the DLF format. It
+    is mainly useful for historical logfiles that you want to analyse with
+    <a href='/man/lr_log2report.1.en'>lr_log2report(1)</a>.</p>
+<p class="Pp">It is split in two parts:</p>
+<p class="Pp"><b>postfix2dlf_pre</b> reads the logfile and converts it to an
+    intermediate DLF format file. This takes about the same amount of disk
+    space as the original logfile.</p>
+<p class="Pp"><b>postfix2dlf_main</b> reads the intermediate file, filters it
+    and produces the final DLF file.</p>
+<p class="Pp">The logfile can be empty or rotated. If empty, it's skipped. If
+    rotated, it's assumed to be gzipped. You will need to have the <a href="http://gzip.org/">gzip</a>
+    binary available.</p>
+<p class="Pp">The intermediate file is removed when done.</p>
+<p class="Pp">The options are:</p>
+<dl class="Bl-tag">
+<dt><b>-v</b></dt>
+<dd>Verbose mode. Prints progress and other useful info.</dd>
+<dt><b>-f</b></dt>
+<dd>Force. Overwrite existing output file.</dd>
+<dt><b>-m</b></dt>
+<dd>Use message-id instead of queue-id. Useful when you want to track mail
+      over a longer time span, or across different MTAs.</dd>
+<dt><b>-c</b> <i>config</i></dt>
+<dd>Read config from <i>config</i> instead of the default.</dd>
+<dt><b>-o</b> <i>output</i></dt>
+<dd>Write DLF output to <i>output</i> instead of standard output.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RATIONALE'><a class='permalink' href='#RATIONALE'>RATIONALE</a></h1>
+<p class="Pp">The Postfix logfile format is difficult to parse and extract
+    information from. This utility converts it to a simpler format, that is
+    easier to process.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE'><a class='permalink' href='#EXAMPLE'>EXAMPLE</a></h1>
+<p class="Pp">Convert the maillog file to DLF format and save it to
+    /tmp/maillog.dlf:</p>
+<pre>postfix2dlf -o /tmp/maillog.dlf &lt; /var/log/maillog</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LOGFORMAT'><a class='permalink' href='#LOGFORMAT'>LOGFORMAT</a></h1>
+<p class="Pp">The utility expects the standard Postfix logfile format. For
+    example:</p>
+<pre>Jul 11 15:10:09 myhost postfix/smtpd[12345]: AB12345678: client=myclient[192.168.0.1]</pre>
+<p class="Pp">The relevant information that is extracted is:</p>
+<ul class="Bl-bullet">
+<li id="logformat-1">Timestamp</li>
+<li id="logformat-2">Hostname</li>
+<li id="logformat-3">Queue-id</li>
+<li id="logformat-4">Process name</li>
+<li id="logformat-5">Message</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PERFORMANCE'><a class='permalink' href='#PERFORMANCE'>PERFORMANCE</a></h1>
+<p class="Pp">The following logfile was converted:</p>
+<pre class="li">logfile. Results
+    were:</pre>
+<pre>postfix2dlf_pre info read 195257 lines; output 177027 DLF lines; 3 errors
+postfix2dlf_pre info memory stats: vsize=5900Krss=4508K majflt=430
+postfix2dlf_pre info elapsed time in seconds real=626 user=449.16 system=8.7
+postfix2dlf_main info read 177027 lines; output 61671 DLF lines; 0 errors
+postfix2dlf_main info memory stats: vsize=5976Krss=4656K majflt=427
+postfix2dlf_main info elapsed time in seconds real=245 user=152.05 system=4.15</pre>
+<p class="Pp">.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLES'><a class='permalink' href='#EXAMPLES'>EXAMPLES</a></h1>
+<p class="Pp">postfix2dlf will be rarely used on its own, but is more likely
+    called by lr_log2report:</p>
+<pre>$ lr_run lr_log2report postfix &lt; /var/log/maillog</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BUGS</a></h1>
+<p class="Pp">This script needs a lot of space in TMPDIR: it creates a tmpfile
+    which is about the same in size as the raw log it's being fed.</p>
+<p class="Pp">Occasionally, postfix reuses its queueids very fast. We can't cope
+    with this.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THANKS'><a class='permalink' href='#THANKS'>THANKS</a></h1>
+<p class="Pp">Brad Knowles, for supplying patches. Emanuele &quot;luca&quot; for
+    pointing out the lmtp delivery.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE   ALSO</a></h1>
+<p class="Pp"><a href='/man/postfix2dlf_main.1.en'>postfix2dlf_main(1)</a>, <a href='/man/postfix2dlf_pre.1.en'>postfix2dlf_pre(1)</a> and the
+    other email dlf convertors: <a href='/man/argomail2dlf.1.en'>argomail2dlf(1)</a>, <a href='/man/exim2dlf.1.en'>exim2dlf(1)</a>,
+    <a href='/man/nms2dlf.1.en'>nms2dlf(1)</a>, <a href='/man/qmail2dlf.1.en'>qmail2dlf(1)</a>, <a href='/man/sendmail2dlf.1.en'>sendmail2dlf(1)</a>; the caller
+    <a href='/man/lr_log2xml.1.en'>lr_log2xml(1)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp"><span class="Li">$Id:</span> postfix2dlf.in,v 1.40 2006/07/23
+    13:16:34 vanbaal Exp $</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright (C) 2000, 2001, 2002 Stichting LogReport Foundation
+    LogReport@LogReport.org</p>
+<p class="Pp">This program is part of Lire.</p>
+<p class="Pp">Lire is free software; you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by the Free
+    Software Foundation; either version 2 of the License, or (at your option)
+    any later version.</p>
+<p class="Pp">This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+    Public License for more details.</p>
+<p class="Pp">You should have received a copy of the GNU General Public License
+    along with this program (see COPYING); if not, check with
+    <a href='http://www.gnu.org/copyleft/gpl.html'>http://www.gnu.org/copyleft/gpl.html</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTHOR</a></h1>
+<p class="Pp">Joost van Baal, embrionic version by Edwin Groothuis.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-09-28</td>
+    <td class="foot-os">Lire 2.1.1</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/lire/">extra/lire</a></dd>
+        <dt>Version:</dt>
+        <dd>2.1.1-8</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://launchpad.net/ubuntu/trusty/+package/lire">https://launchpad.net/ubuntu/trusty/+package/lire</a></dd>
+        <dt>Licenses:</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/lire/">/listing/extra/lire/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#RATIONALE">RATIONALE</a></li>
+        
+            <li><a href="#EXAMPLE">EXAMPLE</a></li>
+        
+            <li><a href="#LOGFORMAT">LOGFORMAT</a></li>
+        
+            <li><a href="#PERFORMANCE">PERFORMANCE</a></li>
+        
+            <li><a href="#EXAMPLES">EXAMPLES</a></li>
+        
+            <li><a href="#BUGS">BUGS</a></li>
+        
+            <li><a href="#THANKS">THANKS</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#AUTHOR">AUTHOR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/postfix2dlf.1.en.txt">txt</a>, 
+        
+            <a href="/man/postfix2dlf.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>
+```
+
+```html
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>postfix2dlf(1) - Pages de manuel Lire</title>
+        <link rel="stylesheet" href="/css/main.css" />
+        <link rel="stylesheet" href="/css/man.css" />
+        <link rel="stylesheet" href="/css/theme.css" />
+        <link rel="stylesheet" href="/css/typography.css" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+    </head>
+    <body>
+        
+        
+        <main class="container">
+            <article>
+                
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Nm">postfix2dlf</p>
+<p class="Nd">convertir un fichier journal Postfix au format DLF</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNTAXE</a></h1>
+<p class="In"><b>postfix2dlf</b> [<b>-v</b>] [<b>-f</b>] [<b>-m</b>] [<b>-c</b> <i>config</i>] [<b>-o</b> <i>sortie</i>] [<i>fichier_journal</i>]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce programme convertit un fichier journal Postfix au format DLF. Il
+    est principalement utile pour les fichiers journaux historiques que vous
+    souhaitez analyser avec <a href='/man/lr_log2report.1.en'>lr_log2report(1)</a>.</p>
+<p class="Pp">Il est divisé en deux parties :</p>
+<p class="Pp"><b>postfix2dlf_pre</b> lit le fichier journal et le convertit en
+    un fichier de format DLF intermédiaire. Cela prend à peu près le même espace
+    disque que le journal original.</p>
+<p class="Pp"><b>postfix2dlf_main</b> lit le fichier intermédiaire, le filtre et
+    produit le fichier DLF final.</p>
+<p class="Pp">Le fichier journal peut être vide ou rotatif. S'il est vide, il est
+    ignoré. S'il est rotatif, on suppose qu'il est gzippé. Vous devrez avoir le
+    binaire <a href="http://gzip.org/">gzip</a> disponible.</p>
+<p class="Pp">Le fichier intermédiaire est supprimé une fois terminé.</p>
+<p class="Pp">Les options sont :</p>
+<dl class="Bl-tag">
+<dt><b>-v</b></dt>
+<dd>Mode verbeux. Affiche la progression et d'autres informations utiles.</dd>
+<dt><b>-f</b></dt>
+<dd>Forcer. Écrase le fichier de sortie existant.</dd>
+<dt><b>-m</b></dt>
+<dd>Utiliser l'identifiant de message au lieu de l'identifiant de file
+      d'attente. Utile lorsque vous souhaitez suivre un e-mail sur une période
+      plus longue, ou sur différents MTA.</dd>
+<dt><b>-c</b> <i>config</i></dt>
+<dd>Lire la configuration depuis <i>config</i> au lieu de celle par
+      défaut.</dd>
+<dt><b>-o</b> <i>sortie</i></dt>
+<dd>Écrire la sortie DLF dans <i>sortie</i> au lieu de la sortie standard.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RATIONALE'><a class='permalink' href='#RATIONALE'>MOTIF</a></h1>
+<p class="Pp">Le format du fichier journal Postfix est difficile à analyser et à
+    extraire des informations. Cet utilitaire le convertit en un format plus
+    simple, plus facile à traiter.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLE'><a class='permalink' href='#EXAMPLE'>EXEMPLE</a></h1>
+<p class="Pp">Convertir le fichier maillog au format DLF et l'enregistrer dans
+    /tmp/maillog.dlf :</p>
+<pre>postfix2dlf -o /tmp/maillog.dlf &lt; /var/log/maillog</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LOGFORMAT'><a class='permalink' href='#LOGFORMAT'>FORMAT DU JOURNAL</a></h1>
+<p class="Pp">L'utilitaire attend le format standard du fichier journal Postfix.
+    Par exemple :</p>
+<pre>Jul 11 15:10:09 myhost postfix/smtpd[12345]: AB12345678: client=myclient[192.168.0.1]</pre>
+<p class="Pp">Les informations pertinentes qui sont extraites sont :</p>
+<ul class="Bl-bullet">
+<li id="logformat-1">Horodatage</li>
+<li id="logformat-2">Nom d'hôte</li>
+<li id="logformat-3">Identifiant de file d'attente</li>
+<li id="logformat-4">Nom du processus</li>
+<li id="logformat-5">Message</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PERFORMANCE'><a class='permalink' href='#PERFORMANCE'>PERFORMANCE</a></h1>
+<p class="Pp">Le fichier journal suivant a été converti :</p>
+<pre class="li">journal. Résultats
+    obtenus :</pre>
+<pre>postfix2dlf_pre info lecture de 195257 lignes ; sortie de 177027 lignes DLF ; 3 erreurs
+postfix2dlf_pre info statistiques mémoire : vsize=5900K rss=4508K majflt=430
+postfix2dlf_pre info temps écoulé en secondes réel=626 utilisateur=449.16 système=8.7
+postfix2dlf_main info lecture de 177027 lignes ; sortie de 61671 lignes DLF ; 0 erreurs
+postfix2dlf_main info statistiques mémoire : vsize=5976K rss=4656K majflt=427
+postfix2dlf_main info temps écoulé en secondes réel=245 utilisateur=152.05 système=4.15</pre>
+<p class="Pp">.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLES'><a class='permalink' href='#EXAMPLES'>EXEMPLES</a></h1>
+<p class="Pp">postfix2dlf sera rarement utilisé seul, mais il est plus probable
+    qu'il soit appelé par lr_log2report :</p>
+<pre>$ lr_run lr_log2report postfix &lt; /var/log/maillog</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BOGUES</a></h1>
+<p class="Pp">Ce script a besoin de beaucoup d'espace dans TMPDIR : il crée un
+    fichier temporaire dont la taille est à peu près la même que celle du journal
+    brut qui lui est fourni.</p>
+<p class="Pp">Parfois, Postfix réutilise très rapidement ses identifiants de file
+    d'attente. Nous ne pouvons pas gérer cela.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THANKS'><a class='permalink' href='#THANKS'>REMERCIEMENTS</a></h1>
+<p class="Pp">Brad Knowles, pour avoir fourni des correctifs. Emanuele « luca »
+    pour avoir signalé la livraison LMTP.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/postfix2dlf_main.1.en'>postfix2dlf_main(1)</a>, <a href='/man/postfix2dlf_pre.1.en'>postfix2dlf_pre(1)</a> et les
+    autres convertisseurs DLF d'e-mails : <a href='/man/argomail2dlf.1.en'>argomail2dlf(1)</a>, <a href='/man/exim2dlf.1.en'>exim2dlf(1)</a>,
+    <a href='/man/nms2dlf.1.en'>nms2dlf(1)</a>, <a href='/man/qmail2dlf.1.en'>qmail2dlf(1)</a>, <a href='/man/sendmail2dlf.1.en'>sendmail2dlf(1)</a> ; l'appelant
+    <a href='/man/lr_log2xml.1.en'>lr_log2xml(1)</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp"><span class="Li">$Id:</span> postfix2dlf.in,v 1.40 2006/07/23
+    13:16:34 vanbaal Exp $</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>DROITS D'AUTEUR</a></h1>
+<p class="Pp">Copyright (C) 2000, 2001, 2002 Stichting LogReport Foundation
+    LogReport@LogReport.org</p>
+<p class="Pp">Ce programme fait partie de Lire.</p>
+<p class="Pp">Lire est un logiciel libre ; vous pouvez le redistribuer et/ou le
+    modifier selon les termes de la Licence Publique Générale GNU telle que
+    publiée par la Free Software Foundation ; soit la version 2 de la Licence,
+    soit (à votre choix) toute version ultérieure.</p>
+<p class="Pp">Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS
+    AUCUNE GARANTIE ; sans même la garantie implicite de COMMERCIALISATION ou
+    d'ADÉQUATION À UN USAGE PARTICULIER. Consultez la Licence Publique Générale
+    GNU pour plus de détails.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale
+    GNU avec ce programme (voir COPYING) ; sinon, contactez
+    <a href='http://www.gnu.org/copyleft/gpl.html'>http://www.gnu.org/copyleft/gpl.html</a>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTEUR</a></h1>
+<p class="Pp">Joost van Baal, version embryonnaire par Edwin Groothuis.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-09-28</td>
+    <td class="foot-os">Lire 2.1.1</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/lire/">extra/lire</a></dd>
+        <dt>Version :</dt>
+        <dd>2.1.1-8</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://launchpad.net/ubuntu/trusty/+package/lire">https://launchpad.net/ubuntu/trusty/+package/lire</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/lire/">/listing/extra/lire/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#RATIONALE">MOTIF</a></li>
+        
+            <li><a href="#EXAMPLE">EXEMPLE</a></li>
+        
+            <li><a href="#LOGFORMAT">FORMAT DU JOURNAL</a></li>
+        
+            <li><a href="#PERFORMANCE">PERFORMANCE</a></li>
+        
+            <li><a href="#EXAMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#BUGS">BOGUES</a></li>
+        
+            <li><a href="#THANKS">REMERCIEMENTS</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+            <li><a href="#COPYRIGHT">DROITS D'AUTEUR</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/postfix2dlf.1.en.txt">txt</a>, 
+        
+            <a href="/man/postfix2dlf.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlpragma(1perl) — Pages man d'Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlpragma.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OU GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLPRAGMA(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLPRAGMA(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlpragma - comment écrire un pragma utilisateur</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Un pragma est un module qui influence un aspect du comportement de Perl
+    au moment de la compilation ou de l'exécution, tel que
+    <span class="Li">&quot;strict&quot;</span> ou
+    <span class="Li">&quot;warnings&quot;</span>. Avec Perl 5.10, vous n'êtes plus
+    limité aux pragmas intégrés ; vous pouvez désormais créer des pragmas
+    utilisateurs qui modifient le comportement des fonctions utilisateur dans une
+    portée lexicale.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UN_EXEMPLE_DE_BASE'><a class='permalink' href='#UN_EXEMPLE_DE_BASE'>Un exemple de base</a></h1>
+<p class="Pp">Par exemple, disons que vous devez créer une classe implémentant des
+    opérateurs mathématiques surchargés, et que vous souhaitez fournir votre propre
+    pragma qui fonctionne de manière similaire à
+    <span class="Li">&quot;use integer;&quot;</span>. Vous aimeriez que ce code</p>
+<pre>use MyMaths;
+my $l = MyMaths-&gt;new(1.2);
+my $r = MyMaths-&gt;new(3.4);
+print &quot;A: &quot;, $l + $r, &quot;\n&quot;;
+use myint;
+print &quot;B: &quot;, $l + $r, &quot;\n&quot;;
+{
+    no myint;
+    print &quot;C: &quot;, $l + $r, &quot;\n&quot;;
+}
+print &quot;D: &quot;, $l + $r, &quot;\n&quot;;
+no myint;
+print &quot;E: &quot;, $l + $r, &quot;\n&quot;;</pre>
+<p class="Pp">produise la sortie suivante</p>
+<pre>A: 4.6
+B: 4
+C: 4.6
+D: 4
+E: 4.6</pre>
+<p class="Pp"><i>c'est-à-dire</i>, là où
+    <span class="Li">&quot;use myint;&quot;</span> est en vigueur, les opérations
+    d'addition sont forcées à l'entier, alors que par défaut elles ne le sont
+    pas, le comportement par défaut étant restauré via
+    <span class="Li">&quot;no myint;&quot;</span>.</p>
+<p class="Pp">L'implémentation minimale du paquet
+    <span class="Li">&quot;MyMaths&quot;</span> serait quelque chose comme ceci :</p>
+<pre>package MyMaths;
+use v5.36;
+use myint();
+use overload '+' =&gt; sub {
+    my ($l, $r) = @_;
+    # Passe 1 pour vérifier un niveau d'appel à partir d'ici
+    if (myint::in_effect(1)) {
+        int($$l) + int($$r);
+    } else {
+        $$l + $$r;
+    }
+};
+sub new {
+    my ($class, $value) = @_;
+    bless \$value, $class;
+}
+1;</pre>
+<p class="Pp">Notez comment nous chargeons le pragma utilisateur
+    <span class="Li">&quot;myint&quot;</span> avec une liste vide
+    <span class="Li">&quot;()&quot;</span> pour empêcher l'appel de son
+    <span class="Li">&quot;import&quot;</span>.</p>
+<p class="Pp">L'interaction avec la compilation de Perl se fait à l'intérieur du paquet
+    <span class="Li">&quot;myint&quot;</span> :</p>
+<pre>package myint;
+use v5.36;
+sub import {
+    $^H{&quot;myint/in_effect&quot;} = 1;
+}
+sub unimport {
+    $^H{&quot;myint/in_effect&quot;} = 0;
+}
+sub in_effect {
+    my $level = shift // 0;
+    my $hinthash = (caller($level))[10];
+    return $hinthash-&gt;{&quot;myint/in_effect&quot;};
+}
+1;</pre>
+<p class="Pp">Comme les pragmas sont implémentés comme des modules, comme tout autre
+    module, <span class="Li">&quot;use myint;&quot;</span> devient</p>
+<pre>BEGIN {
+    require myint;
+    myint-&gt;import();
+}</pre>
+<p class="Pp">et <span class="Li">&quot;no myint;&quot;</span> est</p>
+<pre>BEGIN {
+    require myint;
+    myint-&gt;unimport();
+}</pre>
+<p class="Pp">Par conséquent, les routines <span class="Li">&quot;import&quot;</span>
+    et <span class="Li">&quot;unimport&quot;</span> sont appelées au moment de la
+    <b>compilation</b> pour le code de l'utilisateur.</p>
+<p class="Pp">Les pragmas utilisateurs stockent leur état en écrivant dans la table de hachage magique
+    <span class="Li">&quot;%^H&quot;</span>, d'où ces deux routines la manipulent.
+    L'information d'état dans <span class="Li">&quot;%^H&quot;</span> est stockée dans
+    l'arbre d'options (optree), et peut être récupérée en lecture seule à
+    l'exécution avec <span class="Li">caller()</span>, à l'indice 10 de la liste
+    des résultats retournés. Dans le pragma d'exemple, la récupération est encapsulée
+    dans la routine <span class="Li">in_effect()</span>, qui prend comme paramètre
+    le nombre de cadres d'appel à remonter pour trouver la valeur du pragma dans
+    le script utilisateur. Cela utilise <span class="Li">caller()</span> pour
+    déterminer la valeur de <span class="Li">$^H{&quot;myint/in_effect&quot;}</span>
+    lorsque chaque ligne du script utilisateur a été appelée, et donc fournir les
+    sémantiques correctes dans la sous-routine implémentant l'addition surchargée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Nommage_des_clés'><a class='permalink' href='#Nommage_des_clés'>Nommage des clés</a></h1>
+<p class="Pp">Il n'y a qu'une seule <span class="Li">&quot;%^H&quot;</span>, mais un nombre arbitraire de
+    modules qui veulent utiliser sa sémantique de portée. Pour éviter de se marcher
+    sur les pieds, ils doivent s'assurer d'utiliser des clés différentes dans la table
+    de hachage. Il est donc conventionnel qu'un module n'utilise que des clés commençant
+    par le nom du module (le nom de son paquet principal) et un caractère
+    &quot;/&quot;. Après ce préfixe identifiant le module, le reste de la clé
+    est entièrement à la discrétion du module : il peut inclure n'importe quels
+    caractères. Par exemple, un module
+    <span class="Li">&quot;Foo::Bar&quot;</span> devrait utiliser des clés comme
+    <span class="Li">&quot;Foo::Bar/baz&quot;</span> et
+    <span class="Li">&quot;Foo::Bar/$%/_!&quot;</span>. Les modules suivant
+    cette convention interagissent tous bien entre eux.</p>
+<p class="Pp">Le cœur de Perl utilise une poignée de clés dans
+    <span class="Li">&quot;%^H&quot;</span> qui ne suivent pas cette convention,
+    car elles sont antérieures. Les clés qui suivent la convention n'entreront pas
+    en conflit avec les clés historiques du cœur.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Détails_d_implémentation'><a class='permalink' href='#Détails_d_implémentation'>Détails d'implémentation</a></h1>
+<p class="Pp">L'arbre d'options (optree) est partagé entre les threads. Cela signifie qu'il
+    est possible que l'optree survive au thread particulier (et donc à l'instance
+    de l'interpréteur) qui l'a créé, de sorte que les vrais scalaires Perl ne peuvent
+    pas être stockés dans l'optree. Au lieu de cela, une forme compacte est utilisée,
+    qui ne peut stocker que des valeurs entières (signées et non signées), des chaînes
+    ou <span class="Li">&quot;undef&quot;</span> - les références et les valeurs
+    flottantes sont converties en chaînes. Si vous avez besoin de stocker plusieurs
+    valeurs ou des structures complexes, vous devriez les sérialiser, par exemple avec
+    <span class="Li">&quot;pack&quot;</span>. La suppression d'une clé de table de
+    hachage de <span class="Li">&quot;%^H&quot;</span> est enregistrée, et comme
+    toujours, peut être distinguée de l'existence d'une clé avec la valeur
+    <span class="Li">&quot;undef&quot;</span> avec
+    <span class="Li">&quot;exists&quot;</span>.</p>
+<p class="Pp"><b>Ne</b> tentez pas de stocker des références à des structures de données sous forme
+    d'entiers qui sont récupérées via <span class="Li">&quot;caller&quot;</span> et reconverties, car
+    ce ne serait pas thread-safe. Les accès se feraient à la structure sans verrouillage
+    (ce qui n'est pas sûr pour les scalaires de Perl), et soit la structure fuirait, soit
+    elle devrait être libérée lorsque son thread créateur se termine, ce qui peut être
+    avant que l'optree qui y fait référence ne soit supprimé, si d'autres threads lui
+    survivent.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OU GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#UN_EXEMPLE_DE_BASE">Un exemple de base</a></li>
+        
+            <li><a href="#Nommage_des_clés">Nommage des clés</a></li>
+        
+            <li><a href="#Détails_d_implémentation">Détails d'implémentation</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlpragma.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlpragma.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

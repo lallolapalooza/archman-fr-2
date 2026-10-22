@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>passphrase-encoding(7ssl) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">passphrase-encoding(7ssl)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PASSPHRASE-ENCODING(7ssl)</td>
+    <td class="head-vol">OpenSSL</td>
+    <td class="head-rtitle">PASSPHRASE-ENCODING(7ssl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">passphrase-encoding - Comment les différentes parties d'OpenSSL traitent l'encodage des caractères des phrases de passe</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Dans le monde moderne avec toutes sortes d'encodages de caractères, le traitement des phrases de passe est devenu de plus en plus complexe. Cette page de manuel tente de donner un aperçu de la manière dont ce problème est actuellement abordé dans différentes parties de la bibliothèque OpenSSL.</p>
+<section class="Ss">
+<h2 class="Ss" id='Le_cas_général'><a class='permalink' href='#Le_cas_général'>Le cas général</a></h2>
+<p class="Pp">En règle générale, la bibliothèque OpenSSL ne traite pas les phrases de passe de manière spéciale, et fait confiance à l'application ou à l'utilisateur pour choisir un jeu de caractères approprié et s'y tenir pendant toute la durée de vie des objets affectés. Cela signifie que pour un objet qui a été chiffré à l'aide d'une phrase de passe encodée en ISO-8859-1, cet objet doit être déchiffré à l'aide d'une phrase de passe encodée en ISO-8859-1. L'utilisation du mauvais encodage devrait entraîner un échec de déchiffrement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='PKCS#12'><a class='permalink' href='#PKCS#12'>PKCS#12</a></h2>
+<p class="Pp">PKCS#12 est un peu différent en ce qui concerne l'encodage des phrases de passe. La norme stipule que la phrase de passe doit être encodée en tant que BMPString ASN.1, qui se compose des points de code du plan multilingue de base, encodés en big endian (UCS-2 BE).</p>
+<p class="Pp">OpenSSL tente de s'adapter à ces exigences de l'une des manières suivantes :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Traite la phrase de passe reçue comme encodée en UTF-8 et tente de la réencoder en UTF-16 (qui est identique à UCS-2 pour les caractères U+0000 à U+D7FF et U+E000 à U+FFFF, mais devient une expansion pour tout autre caractère), ou à défaut, procède à l'étape 2.</dd>
+  <dt>2.</dt>
+  <dd>Suppose que la phrase de passe est encodée en ASCII ou ISO-8859-1 et préfixe opportunément chaque octet avec un octet zéro pour obtenir l'encodage UCS-2 des caractères, qu'il stocke en tant que BMPString.
+    <p class="Pp">Notez que comme il n'y a pas de vérification de votre locale, cela peut produire des caractères UCS-2 / UTF-16 qui ne correspondent pas aux caractères originaux de la phrase de passe pour d'autres jeux de caractères, tels que tout encodage ISO-8859-X autre que ISO-8859-1 (ou pour Windows, CP 1252 à l'exception des caractères « graphiques » supplémentaires dans la plage 0x80-0x9F).</p>
+  </dd>
+</dl>
+<p class="Pp">Les versions d'OpenSSL antérieures à 1.1.0 ne font que la variante 2, et c'est pourquoi OpenSSL le fait toujours, afin de pouvoir lire les fichiers produits avec des versions plus anciennes.</p>
+<p class="Pp">Il convient de noter que cette approche n'est pas entièrement sans défaut.</p>
+<p class="Pp">Une phrase de passe encodée en ISO-8859-2 pourrait très bien avoir une séquence telle que 0xC3 0xAF (qui sont les deux caractères « LETTRE CAPITALE LATINE A AVEC BREVE » et « LETTRE CAPITALE LATINE Z AVEC POINT AU-DESSUS » en encodage ISO-8859-2), mais serait mal interprétée comme le point de code U+00EF (LETRE MINUSCULE LATINE I AVEC TREMA) encodé en UTF-8, *si la phrase de passe ne contient rien qui serait du UTF-8 invalide*. Une phrase de passe contenant ce type de séquence d'octets donnera un résultat différent dans OpenSSL 1.1.0 et plus récent que dans OpenSSL avant 1.1.0.</p>
+<pre>0x00 0xC3 0x00 0xAF                    # OpenSSL antérieur à 1.1.0
+0x00 0xEF                              # OpenSSL 1.1.0 et plus récent</pre>
+<p class="Pp">De même, tout ce qui était encodé en UTF-8 et donné à OpenSSL avant 1.1.0 a été mal interprété comme des séquences ISO-8859-1.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OSSL_STORE'><a class='permalink' href='#OSSL_STORE'>OSSL_STORE</a></h2>
+<p class="Pp"><a href='/man/ossl_store.7.en'>ossl_store(7)</a> agit comme une interface générale pour accéder à tous les types d'objets, potentiellement protégés par une phrase de passe, un code PIN ou autre chose. Cette API stipule que les phrases de passe doivent être encodées en UTF-8, et que tout autre encodage de phrase de passe peut donner des résultats indéfinis. Cette API repose sur l'application pour garantir l'encodage UTF-8, et ne vérifie pas que c'est le cas, donc ce qu'elle reçoit, elle le transmettra également au chargeur sous-jacent.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RECOMMANDATIONS'><a class='permalink' href='#RECOMMANDATIONS'>RECOMMANDATIONS</a></h1>
+<p class="Pp">Cette section suppose que vous savez quelle phrase de passe a été utilisée pour le chiffrement, mais qu'elle peut avoir été encodée dans un jeu de caractères différent de celui utilisé par votre méthode de saisie actuelle. Par exemple, la phrase de passe a pu être utilisée à une époque où votre encodage par défaut était ISO-8859-1 (c'est-à-dire « na&#x00EF;ve » résultant en la séquence d'octets 0x6E 0x61 0xEF 0x76 0x65), et vous êtes maintenant dans un environnement où votre encodage par défaut est UTF-8 (c'est-à-dire « na&#x00EF;ve » résultant en la séquence d'octets 0x6E 0x61 0xC3 0xAF 0x76 0x65). Chaque fois qu'il est mentionné que vous devriez utiliser un certain encodage de caractères, il faut comprendre que vous changez soit la méthode de saisie pour utiliser l'encodage mentionné lorsque vous tapez votre phrase de passe, soit vous utilisez un outil approprié pour convertir votre phrase de passe de votre encodage par défaut à l'encodage cible.</p>
+<p class="Pp">Notez également que les sous-sections ci-dessous discutent des phrases de passe lisibles par l'homme. Ceci est particulièrement pertinent pour les objets PKCS#12, où des phrases de passe lisibles par l'homme sont supposées. Pour d'autres objets, il est tout aussi légitime d'utiliser n'importe quelle séquence d'octets (telle qu'une séquence d'octets de <i>/dev/urandom</i> qui a été sauvegardée), ce qui rend toute discussion sur l'encodage des caractères non pertinente ; dans de tels cas, utilisez simplement la même séquence d'octets telle quelle.</p>
+<section class="Ss">
+<h2 class="Ss" id='Création_de_nouveaux_objets'><a class='permalink' href='#Création_de_nouveaux_objets'>Création de nouveaux objets</a></h2>
+<p class="Pp">Pour créer de nouveaux objets protégés par une phrase de passe, assurez-vous que la phrase de passe est encodée en utilisant UTF-8. C'est le défaut sur la plupart des Unix modernes, mais peut demander un effort sur d'autres plateformes. Spécifiquement pour Windows, la définition de la variable d'environnement <b>OPENSSL_WIN32_UTF8</b> fera en sorte que tout ce qui est saisi sur la console [Windows] soit converti en UTF-8 (invite de commande et phrases de passe demandées séparément).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Ouverture_des_objets_existants'><a class='permalink' href='#Ouverture_des_objets_existants'>Ouverture des objets existants</a></h2>
+<p class="Pp">Pour ouvrir des objets protégés par une phrase de passe dont vous connaissez l'encodage de caractères utilisé pour la phrase de passe de chiffrement, assurez-vous de réutiliser le même encodage.</p>
+<p class="Pp">Pour ouvrir des objets protégés par une phrase de passe dont l'encodage de caractères utilisé est inconnu, ou dont l'application de production est inconnue, essayez l'une des méthodes suivantes :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Essayez la phrase de passe telle quelle dans le jeu de caractères de votre environnement. Il est possible que sa séquence d'octets soit exactement la bonne.</dd>
+  <dt>2.</dt>
+  <dd>Convertissez la phrase de passe en UTF-8 et essayez avec le résultat. Spécifiquement avec PKCS#12, cela devrait ouvrir tout objet créé conformément à la spécification.</dd>
+  <dt>3.</dt>
+  <dd>Effectuez une conversion ISO-8859-1 vers UTF-8 naïve (c'est-à-dire purement mathématique) et essayez avec le résultat. Cela diffère de la tentative précédente car ISO-8859-1 correspond directement à U+0000 à U+00FF, ce que d'autres jeux de caractères non-UTF-8 ne font pas.
+    <p class="Pp">Cela prend également en compte le cas où une chaîne encodée en UTF-8 a été utilisée avec OpenSSL avant 1.1.0. (par exemple, <span class="Li">&quot;&#x00EF;&quot;</span>, qui est 0xC3 0xAF lorsqu'il est encodé en UTF-8, deviendrait 0xC3 0x83 0xC2 0xAF lorsqu'il est réencodé de manière naïve. La conversion en BMPString donnerait alors 0x00 0xC3 0x00 0xA4 0x00 0x00, l'encodage erroné/non conforme utilisé par OpenSSL avant 1.1.0)</p>
+  </dd>
+</dl>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/evp.7.en'>evp(7)</a>, <a href='/man/ossl_store.7.en'>ossl_store(7)</a>, <a href='/man/EVP_BytesToKey.3.en'>EVP_BytesToKey(3)</a>,
+    <a href='/man/EVP_DecryptInit.3.en'>EVP_DecryptInit(3)</a>, <a href='/man/PEM_do_header.3.en'>PEM_do_header(3)</a>, <a href='/man/PKCS12_parse.3.en'>PKCS12_parse(3)</a>,
+    <a href='/man/PKCS12_newpass.3.en'>PKCS12_newpass(3)</a>, <a href='/man/d2i_PKCS8PrivateKey_bio.3.en'>d2i_PKCS8PrivateKey_bio(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright 2018-2021 The OpenSSL Project Authors. Tous droits réservés.</p>
+<p class="Pp">Licence sous Apache License 2.0 (la « Licence »). Vous ne pouvez pas utiliser ce fichier sauf en conformité avec la Licence. Vous pouvez obtenir une copie dans le fichier LICENSE de la distribution source ou à l'adresse
+    <a href='https://www.openssl.org/source/license.html'>https://www.openssl.org/source/license.html</a>.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-10-01</td>
+    <td class="foot-os">3.6.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct
+-recherche" role="recherche">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="informations-paquet">
+    <p>Informations sur le paquet:</p>
+    <dl>
+        <dt>Nom du paquet:</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/openssl/">core/openssl</a></dd>
+        <dt>Version:</dt>
+        <dd>3.6.0-1</dd>
+        <dt>Amont:</dt>
+        <dd><a href="https://www.openssl.org">https://www.openssl.org</a></dd>
+        <dt>Licences:</dt>
+        <dd>Apache-2.0</dd>
+        <dt>Manuels:</dt>
+        <dd><a href="/listing/core/openssl/">/listing/core/openssl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#RECOMMENDATIONS">RECOMMANDATIONS</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">DROITS D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="autres-formats">
+    <p>Autres formats:
+        
+            <a href="/man/passphrase-encoding.7ssl.en.txt">txt</a>, 
+        
+            <a href="/man/passphrase-encoding.7ssl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

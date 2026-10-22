@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ndctl-create-namespace(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ndctl-create-namespace(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/ndctl/">ndctl</a></p>
+<p class="lic">Licences: LGPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">NDCTL-CREATE-NAMESPACE(1)</td>
+    <td class="head-vol">Manuel ndctl</td>
+    <td class="head-rtitle">NDCTL-CREATE-NAMESPACE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ndctl-create-namespace - provisionner ou reconfigurer un espace de noms</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><i>ndctl create-namespace</i> [&lt;options&gt;]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THÉORIE_DE_FONCTIONNEMENT'><a class='permalink' href='#THÉORIE_DE_FONCTIONNEMENT'>THÉORIE DE FONCTIONNEMENT</a></h1>
+<p class="Pp">La capacité d'une REGION NVDIMM (une étendue contiguë de mémoire persistante) est accessible via un ou plusieurs périphériques NAMESPACE. REGION est le terme Linux pour ce que ACPI et UEFI appellent un jeu d'entrelacement DIMM, ou une plage d'adresses physiques système entrelacée (par le contrôleur mémoire) sur un ou plusieurs modules mémoire.</p>
+<p class="Pp">La spécification UEFI définit le *Protocole d'Étiquetage NVDIMM* comme la combinaison des méthodes d'accès à la zone d'étiquettes et d'un format de données pour provisionner un ou plusieurs objets NAMESPACE à partir d'une REGION. Notez que la prise en charge des étiquettes est facultative et si Linux ne détecte pas la capacité d'étiquetage, il instanciera automatiquement un espace de noms "sans étiquette" par région. Des exemples d'espaces de noms sans étiquette sont ceux créés par l'option de ligne de commande du noyau <i>memmap=ss!nn</i> (voir le wiki nvdimm sur kernel.org), ou les NVDIMM sans *index d'espace de noms* valide dans leur zone d'étiquettes.</p>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<p class="Pp">Les espaces de noms sans étiquette manquent de nombreuses fonctionnalités de leurs cousins *riches en étiquettes*. Par exemple, leur taille ne peut pas être modifiée, ni être complètement *détruits* (c'est-à-dire récupérer l'espace). Une opération de destruction effacera tous les métadonnées spécifiques au mode. Enfin, pour les opérations de création d'espace de noms sur des espaces de noms sans étiquette, ndctl contourne les vérifications de disponibilité de capacité de région et satisfait toujours la demande en utilisant la capacité totale de la région. La seule opération de reconfiguration prise en charge sur un espace de noms sans étiquette est la modification de son *mode*.</p>
+</div>
+<p class="Pp">Un espace de noms peut être provisionné pour fonctionner dans l'un des 4 modes : <i>fsdax</i>, <i>devdax</i>, <i>sector</i> et <i>raw</i>. Voici les modèles d'utilisation attendus pour ces modes :</p>
+<div class="Bd-indent">&#x2022;fsdax : Le mode Filesystem-DAX est le mode par défaut d'un espace de noms lors de la spécification de <i>ndctl create-namespace</i> sans aucune option. Il crée un périphérique bloc (/dev/pmemX[.Y]) qui prend en charge les capacités DAX des systèmes de fichiers Linux (xfs et ext4 à ce jour). DAX supprime le cache de pages du chemin d'E/S et permet à mmap(2) d'établir des mappages directs vers le support de mémoire persistante. La capacité DAX permet aux charges de travail / ensembles de travail qui dépasseraient la capacité du cache de pages de passer à la capacité de la mémoire persistante. Les charges de travail qui tiennent dans le cache de pages ou effectuent des transferts de données en masse pourraient ne pas bénéficier de DAX. En cas de doute, choisissez ce mode.</div>
+<div class="Bd-indent">&#x2022;devdax : Le mode Device-DAX permet des capacités de mappage mmap(2) DAX similaires au mode Filesystem-DAX. Cependant, au lieu d'un périphérique bloc pouvant prendre en charge un système de fichiers activé pour DAX, ce mode émet un fichier de périphérique caractère unique (/dev/daxX.Y). Utilisez ce mode pour allouer de la mémoire persistante à une machine virtuelle, enregistrer de la mémoire persistante pour RDMA, ou lorsque des mappages gigantesques sont nécessaires.</div>
+<div class="Bd-indent">&#x2022;sector : Utilisez ce mode pour héberger des systèmes de fichiers hérités qui ne vérifient pas les métadonnées, ou des applications qui ne sont pas préparées à des secteurs déchirés après un crash. L'utilisation attendue pour ce mode concerne les petits volumes de démarrage. Ce mode est compatible avec d'autres systèmes d'exploitation.</div>
+<div class="Bd-indent">&#x2022;raw : Le mode brut est essentiellement un disque mémoire qui ne prend pas en charge DAX. Cela indique généralement un espace de noms qui a été créé par des outils ou un autre système d'exploitation qui ne savait pas comment créer un espace de noms Linux <i>fsdax</i> ou <i>devdax</i>. Ce mode est compatible avec d'autres systèmes d'exploitation, mais là encore, il ne prend pas en charge les opérations DAX.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Créer un espace de noms pmem de taille maximale en mode <i>fsdax</i> (le mode par défaut)</p>
+<pre>ndctl create-namespace</pre>
+<p class="Pp">Convertir namespace0.0 en mode <i>sector</i></p>
+<pre>ndctl create-namespace -f -e namespace0.0 --mode=sector</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">-m, --mode=</p>
+<div class="Bd-indent">
+<div class="Bd-indent">&#x2022;&quot;raw&quot; : expose la capacité de l'espace de noms directement avec des limitations. Un espace de noms pmem brut ne prend pas en charge l'atomicité des secteurs (voir le mode &quot;sector&quot; ci-dessous). Un espace de noms pmem brut peut avoir un support dax limité voire inexistant en fonction du noyau. Autrement dit, les opérations telles que les E/S directes ciblant un tampon dax peuvent échouer pour un espace de noms pmem en mode brut ou indirectement via un tampon de cache de pages. Voir les modes &quot;fsdax&quot; et &quot;devdax&quot; pour les opérations dax.</div>
+<div class="Bd-indent">&#x2022;&quot;sector&quot; : la mémoire persistante, étant adressable par octet, ne prend pas en charge l'atomicité des secteurs. L'aspect problématique du déchirement des secteurs est que la plupart des applications ne savent pas qu'elles ont une dépendance à la mise à jour atomique des secteurs. Au moins un disque déchire rarement les secteurs et s'il le fait, il renvoie presque certainement une erreur de somme de contrôle lors de l'accès. Les périphériques de mémoire persistante déchirent toujours et en silence. Jusqu'à ce qu'une application soit auditée pour être robuste en présence de déchirement de secteur, le mode &quot;safe&quot; est recommandé. Cela impose une certaine surcharge de performance et désactive la capacité dax. (également connu sous le nom de mode &quot;safe&quot; ou &quot;btt&quot;)</div>
+<div class="Bd-indent">&#x2022;&quot;fsdax&quot; : Un espace de noms pmem dans ce mode prend en charge les opérations dax avec un système de fichiers basé sur des périphériques bloc (dans les versions précédentes de ndctl, ce mode était nommé &quot;memory&quot;). Ce mode coûte l'allocation de métadonnées par page. La capacité peut être allouée depuis la &quot;RAM Système&quot;, ou à partir d'une partie réservée de la &quot;Mémoire Persistante&quot; (voir l'option --map=). NOTE : Un système de fichiers qui prend en charge DAX est requis pour les opérations dax. Si le périphérique bloc brut (/dev/pmemX) est utilisé directement sans système de fichiers, il utilisera le cache de pages. Voir le mode &quot;devdax&quot; pour un accès périphérique brut qui prend en charge dax.</div>
+<div class="Bd-indent">&#x2022;&quot;devdax&quot; : L'interface caractère périphérique dev-dax est un analogue d'accès brut / statiquement alloué à fsdax (dans les versions précédentes de ndctl, ce mode était nommé &quot;dax&quot;). Elle permet de mapper des plages mémoire sans nécessiter de système de fichiers intermédiaire. L'interface dev-dax est stricte, précise et prévisible. Spécifiquement l'interface :
+<div class="Bd-indent">&#x2022;Garantit la granularité des défauts par rapport à une taille de page donnée (4K, 2M, ou 1G sur x86) définie au moment de la configuration.</div>
+<div class="Bd-indent">&#x2022;Impole un comportement déterministe en étant stricte sur les scénarios de défaut pris en charge. C'est-à-dire que si un périphérique est configuré avec un alignement de 2M, une tentative de défaut sur un décalage aligné sur 4K entraînera SIGBUS. :: Notez que les modes <i>fsdax</i> et <i>devdax</i> nécessitent un alignement physique de 16MiB pour être compatibles entre architectures. Par défaut, ndctl bloquera les tentatives de création d'espaces de noms dans ces modes lorsque l'adresse de départ physique de l'espace de noms n'est pas alignée sur 16MiB. L'option --force tente de contourner cette contrainte si la plateforme prend en charge un alignement plus petit, mais ce n'est pas recommandé.</div>
+</div>
+</div>
+<p class="Pp">-s, --size=</p>
+<div class="Bd-indent">Pour les périphériques NVDIMM qui prennent en charge les étiquettes d'espace de noms, définit la taille de l'espace de noms en octets. Sinon, la valeur par défaut est la taille maximale spécifiée par le firmware de la plateforme. Cette option prend en charge les suffixes "k" ou "K" pour KiB, "m" ou "M" pour MiB, "g" ou "G" pour GiB et "t" ou "T" pour TiB.
+<div class="Bd-indent">
+<pre>Pour les espaces de noms pmem, la taille doit être un multiple de
+la largeur d'entrelacement et de l'alignement de l'espace de noms (voir
+ci-dessous).</pre>
+</div>
+</div>
+<p class="Pp">-a, --align</p>
+<div class="Bd-indent">Les applications qui souhaitent établir des mappages mémoire dax avec des entrées de table de pages supérieures à la taille de page de base du système (4K sur x86) nécessitent un espace de noms de mémoire persistante suffisamment aligné. Pour les modes &quot;fsdax&quot; et &quot;devdax&quot;, la valeur par défaut est 2M. Notez que le mode &quot;devdax&quot; impose que tous les mappages soient alignés sur cette valeur, c'est-à-dire qu'il échoue aux tentatives de mappage non aligné. Le paramètre d'alignement &quot;fsdax&quot; détermine l'alignement de départ des étendues du système de fichiers et peut limiter les granularités possibles ; si un grand mappage n'est pas possible, il se rabattra silencieusement sur une taille de page plus petite.</div>
+<p class="Pp">-e, --reconfig=</p>
+<div class="Bd-indent">Reconfigurer un espace de noms existant. Cette option est un raccourci pour la séquence suivante :
+<div class="Bd-indent">&#x2022;Lire tous les paramètres de @victim_namespace</div>
+<div class="Bd-indent">&#x2022;Détruire @victim_namespace</div>
+<div class="Bd-indent">&#x2022;Créer @new_namespace en fusionnant les anciens paramètres avec les nouveaux :: Notez que l'implication majeure d'un cycle détruire-créer est que les données de @victim_namespace ne sont pas préservées dans @new_namespace. Les attributs transférés de @victim_namespace sont la géométrie, le mode et le nom (pas l'uuid sans --uuid=). Aucune tentative n'est faite pour préserver les données et toute ancienne donnée visible dans @new_namespace l'est par coïncidence et non par convention. &quot;Sauvegarder et restaurer&quot; est le seul moyen fiable</div>
+</div>
+</div>
+</section>
+
+                
+            </article>
+            
+        </main>
+        
+    </body>
+</html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+        <title>ndctl-create-namespace.1.fr.html</title>
+        <meta name="generator" content="mandoc 1.30.0"/>
+        <link rel="stylesheet" href="/mandoc.css" type="text/css"/>
+        <link rel="stylesheet" href="/extra/ndctl.css" type="text/css"/>
+        <link rel="stylesheet" href="/extra/logo.css" type="text/css"/>
+        <link rel="stylesheet" href="/extra/search.css" type="text/css"/>
+        <link rel="stylesheet" href="/extra/sidebar.css" type="text/css"/>
+    </head>
+    <body>
+        <article>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Nm">ndctl-create-namespace 1</p>
+<p class="Nd">create a new Persistent Memory (PMem) namespace</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Nd"><b>ndctl create-namespace</b> [<i>OPTIONS</i>]...</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THEORY_OF_OPERATION'><a class='permalink' href='#THEORY_OF_OPERATION'>THEORY OF OPERATION</a></h1>
+<p class="Nd">Persistent Memory (PMem) namespaces are virtual devices carved out of
+    PMem regions. A namespace can be mapped into the Linux kernel in various ways.
+    The supported namespace types are:</p>
+<dl class="Nd">
+    <dt><b>fsdax</b></dt>
+    <dd>filesystem direct access mode. Namespaces mapped in this mode can be
+        formatted with a filesystem like ext4, xfs, etc. and mounted with the
+        dax mount option. This provides filesystem access to PMem with the
+        performance benefits of DAX.</dd>
+    <dt><b>devdax</b></dt>
+    <dd>device direct access mode. Namespaces mapped in this mode are exposed as
+        a character device. Applications can use this device directly via the
+        memory mapping interface, effectively getting raw access to the
+        namespace. This is useful for applications that want to manage their own
+        memory layout, such as databases or in-memory data stores.</dd>
+    <dt><b>sector</b></dt>
+    <dd>block device emulation. Namespaces mapped in this mode are exposed as a
+        regular block device. This mode allows existing block-based applications
+        to work with PMem without modification. However, it does not offer the
+        full performance potential of DAX.</dd>
+</dl>
+<p class="Nd">The creation of a namespace involves several steps:</p>
+<ol class="Nd">
+    <li><b>Discovering PMem regions:</b> The tool first identifies available PMem
+        regions on the system.</li>
+    <li><b>Selecting a region:</b> Based on the provided options (e.g., bus,
+        region filters), a target PMem region is selected.</li>
+    <li><b>Namespace creation:</b> A new namespace is created within the selected
+        region. The size, sector size, and access mode (fsdax, devdax, sector)
+        of the namespace are determined by the command-line options.</li>
+    <li><b>Labeling (if applicable):</b> For NVDIMMs that support namespace labels,
+        the tool may create and manage labels to identify the namespace.</li>
+    <li><b>Enabling the namespace:</b> The newly created namespace is made
+        available to the operating system.</li>
+</ol>
+<p class="Nd">The <b>ndctl create-namespace</b> command provides granular control
+    over this process, allowing users to specify various parameters to tailor the
+    namespace to their specific needs.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLES'><a class='permalink' href='#EXAMPLES'>EXAMPLES</a></h1>
+<p class="Pp"><b>Create a namespace of size 1 GiB in fsdax mode</b>:</p>
+<div class="Bd-indent">
+<pre>ndctl create-namespace -n 1GiB -m fsdax</pre>
+</div>
+<p class="Pp"><b>Create a namespace using a specific region (region0) and bus</b>:</p>
+<div class="Bd-indent">
+<pre>ndctl create-namespace -r region0 -b 0 -m devdax</pre>
+</div>
+<p class="Pp"><b>Create as many namespaces as possible in all regions</b>:</p>
+<div class="Bd-indent">
+<pre>ndctl create-namespace --continue</pre>
+</div>
+<p class="Pp"><b>Recreate a namespace, forcing it to be disabled first</b>:</p>
+<div class="Bd-indent">
+<pre>ndctl create-namespace --reconfig --force</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">-f, --force</p>
+<div class="Bd-indent">Force the operation. If a namespace is active, it will be disabled
+    before the operation. If the namespace is mounted, the operation will fail.
+    The namespace must be unmounted before reconfiguration.</div>
+<p class="Pp">-p, --reconfig</p>
+<div class="Bd-indent">Reconfigure an existing namespace. This is useful for changing
+    the mode or size of an existing namespace. Note that reconfiguring a
+    namespace may result in data loss.</div>
+<p class="Pp">-e, --erase</p>
+<div class="Bd-indent">Erase the namespace before creating it. This is useful for
+    ensuring that no residual data from a previous namespace exists.</div>
+<p class="Pp">-s, --size=</div>
+<div class="Bd-indent">Specify the size of the namespace. This can be a number
+    followed by a unit (e.g., 1G, 2T, 512M).</div>
+<p class="Pp">-m, --mode=</div>
+<div class="Bd-indent">Specify the mode of the namespace. Supported modes are
+    <code>fsdax</code>, <code>devdax</code>, and <code>sector</code>.</div>
+<p class="Pp">-x, --pmem-name=</div>
+<div class="Bd-indent">Specify the pmem device name from which to populate
+    @new_namespace with data from @victim_namespace. This is an advanced
+    feature intended to facilitate a specific type of namespace replication or
+    migration.</div>
+<p class="Pp">-u, --uuid=</p>
+<div class="Bd-indent">This option is not recommended as a new uuid should be
+    generated every time a namespace is (re-)created. For recovery scenarios
+    however the uuid may be specified.</div>
+<p class="Pp">-n, --name=</p>
+<div class="Bd-indent">For NVDIMM devices that support namespace labels, specify
+    a human friendly name for a namespace. This name is available as a device
+    attribute for use in udev rules.</div>
+<p class="Pp">-l, --sector-size</p>
+<div class="Bd-indent">Specify the logical sector size (LBA size) of the Linux
+    block device associated with an namespace.</div>
+<p class="Pp">-M, --map=</p>
+<div class="Bd-indent">A pmem namespace in "fsdax" or "devdax" mode requires
+    allocation of per-page metadata. The allocation can be drawn from either:
+<div class="Bd-indent">&#x2022;"mem": typical system memory</div>
+<div class="Bd-indent">&#x2022;"dev": persistent memory reserved from
+    the namespace :: Given relative capacities of "Persistent Memory" to
+    "System RAM" the allocation defaults to reserving space out of the
+    namespace directly ("--map=dev"). The overhead is 64-bytes per 4K
+    (16GB per 1TB) on x86.</div>
+</div>
+<p class="Pp">-c, --continue</p>
+<div class="Bd-indent">Do not stop after creating one namespace. Instead,
+    greedily create as many namespaces as possible within the given --bus and
+    --region filter restrictions. This will abort if any creation attempt results
+    in an error unless --force is also supplied.</div>
+<p class="Pp">-f, --force</p>
+<div class="Bd-indent">Unless this option is specified the <i>reconfigure
+    namespace</i> operation will fail if the namespace is presently active.
+    Specifying --force causes the namespace to be disabled before the operation is
+    attempted. However, if the namespace is mounted then the <i>disable
+    namespace</i> and <i>reconfigure</i> <i>namespace</i> operations will be
+    aborted. The namespace must be unmounted before being reconfigured. When used
+    in conjunction with --continue, continue the namespace creation loop even if
+    an error is encountered for intermediate namespaces.</div>
+<p class="Pp">-L, --autolabel, --no-autolabel</p>
+<div class="Bd-indent">Legacy NVDIMM devices do not support namespace labels. In
+    that case the kernel creates region-sized namespaces that can not be deleted.
+    Their mode can be changed, but they can not be resized smaller than their
+    parent region. This is termed a "label-less namespace". In contrast,
+    NVDIMMs and hypervisors that support the ACPI 6.2 label area definition (ACPI
+    6.2 Section 6.5.10 NVDIMM Label Methods) support "labelled
+    namespace" operation.
+<div class="Bd-indent">&#x2022;There are two cases where the kernel will default
+    to label-less operation:
+<div class="Bd-indent">&#x2022;NVDIMM does not support labels</div>
+<div class="Bd-indent">&#x2022;The NVDIMM supports labels, but the Label Index
+    Block (see UEFI 2.7) is not present.</div>
+</div>
+<div class="Bd-indent">&#x2022;In the latter case the configuration can be
+    upgraded to labelled operation by writing an index block on all DIMMs in a
+    region and re-enabling that region. The <i>autolabel</i> capability of
+    <i>ndctl create-namespace --reconfig</i> tries to do this by default if it can
+    determine that all DIMM capacity is referenced by the namespace being
+    reconfigured. It will otherwise fail to autolabel and remain in label-less
+    mode if it finds a DIMM contributes capacity to more than one region. This
+    check prevents inadvertent data loss of that other region is in active use.
+    The --autolabel option is implied by default, the --no-autolabel option can be
+    used to disable this behavior. When automatic labeling fails and labelled
+    operation is still desired the safety policy can be bypassed by the following
+    commands, note that all data on all regions is forfeited by running these
+    commands:
+<div class="Bd-indent">
+<pre>ndctl disable-region all
+ndctl init-labels all
+ndctl enable-region all</pre>
+</div>
+</div>
+</div>
+<p class="Pp">-R, --autorecover, --no-autorecover</p>
+<div class="Bd-indent">By default, if a namespace creation attempt fails, ndctl
+    will cleanup the partially initialized namespace. Use --no-autorecover to
+    disable this behavior for debug and development scenarios where it useful to
+    have the label and info-block state preserved after a failure.</div>
+<p class="Pp">-v, --verbose</p>
+<div class="Bd-indent">Emit debug messages for the namespace creation
+    process</div>
+<p class="Pp">-r, --region=</p>
+<div class="Bd-indent">A <i>regionX</i> device name, or a region id number.
+    Restrict the operation to the specified region(s). The keyword <i>all</i> can
+    be specified to indicate the lack of any restriction, however this is the same
+    as not supplying a --region option at all.</div>
+<p class="Pp">-b, --bus=</p>
+<div class="Bd-indent">A bus id number, or a provider string (e.g.
+    "ACPI.NFIT"). Restrict the operation to the specified bus(es). The
+    keyword <i>all</i> can be specified to indicate the lack of any restriction,
+    however this is the same as not supplying a --bus option at all.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright &#x00A9; 2016 - 2022, Intel Corporation. License GPLv2:
+    GNU GPL version 2 <i></i> <a href='http://gnu.org/licenses/gpl.html'>http://gnu.org/licenses/gpl.html</a>. This is
+    free software: you are free to change and redistribute it. There is NO
+    WARRANTY, to the extent permitted by law.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE   ALSO</a></h1>
+<p class="Pp">ndctl-zero-labels(1), ndctl-init-labels(1),
+    ndctl-disable-namespace(1), ndctl-enable-namespace(1), <i>UEFI NVDIMM Label
+    Protocol</i>
+    <a href='http://www.uefi.org/sites/default/files/resources/UEFI_Spec_2_7.pdf'>http://www.uefi.org/sites/default/files/resources/UEFI_Spec_2_7.pdf</a>
+    <i>Linux Persistent Memory Wiki</i>
+  <a href='https://nvdimm.wiki.kernel.org'>https://nvdimm.wiki.kernel.org</a></p>
+</section>
+        </article>
+        <aside id="sidebar">
+            
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/ndctl/">extra/ndctl</a></dd>
+        <dt>Version:</dt>
+        <dd>79-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://github.com/pmem/ndctl">https://github.com/pmem/ndctl</a></dd>
+        <dt>Licenses:</dt>
+        <dd>LGPL</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/ndctl/">/listing/extra/ndctl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#THEORY_OF_OPERATION">THEORY OF OPERATION</a></li>
+        
+            <li><a href="#EXAMPLES">EXAMPLES</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#COPYRIGHT">COPYRIGHT</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/ndctl-create-namespace.1.en.html">en</a>, 
+        
+            <a href="/man/ndctl-create-namespace.1.txt">txt</a>, 
+        
+            <a href="/man/ndctl-create-namespace.1.raw">raw</a>
+        
+    </p>
+</nav>
+
+        </aside>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

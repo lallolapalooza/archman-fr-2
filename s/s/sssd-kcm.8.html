@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>sssd-kcm(8) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+        <link rel="alternate" href="/man/sssd-kcm.8.en" hreflang="en">
+    
+        <link rel="alternate" href="/man/sssd-kcm.8.sv" hreflang="sv">
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">sssd-kcm(8)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/sssd/">sssd</a></p>
+<p class="lic">Licences: GPL-3.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SSSD-KCM(8)</td>
+    <td class="head-vol">Formats et Conventions de Fichier</td>
+    <td class="head-rtitle">SSSD-KCM(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">sssd-kcm - Gestionnaire de Cache Kerberos SSSD</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cette page de manuel décrit la configuration du Gestionnaire de Cache Kerberos SSSD (KCM). KCM est un processus qui stocke, suit et gère les caches d'identifiants Kerberos. Il provient du projet Heimdal Kerberos, bien que la bibliothèque Kerberos MIT fournisse également un support côté client (plus de détails ci-dessous) pour le cache d'identifiants KCM.</p>
+<p class="Pp">Dans une configuration où les caches Kerberos sont gérés par KCM, la bibliothèque Kerberos (généralement utilisée via une application, comme par exemple, <a href='/man/kinit.1.en'>kinit(1)</a>, est un « client KCM » et le démon KCM est désigné comme un « serveur KCM ». Le client et le serveur communiquent via un socket UNIX.</p>
+<p class="Pp">Le serveur KCM garde une trace du propriétaire de chaque cache d'identifiants et effectue des contrôles d'accès basés sur l'UID et le GID du client KCM. L'utilisateur root a accès à tous les caches d'identifiants.</p>
+<p class="Pp">Le cache d'identifiants KCM présente plusieurs propriétés intéressantes :</p>
+<div class="Bd-indent">&#x2022; Comme le processus s'exécute en espace utilisateur, il est sujet à l'espacement des noms d'UID, contrairement au keyring du noyau.</div>
+<div class="Bd-indent">&#x2022; Contrairement au cache basé sur le keyring du noyau, qui est partagé entre tous les conteneurs, le serveur KCM est un processus distinct dont le point d'entrée est un socket UNIX.</div>
+<div class="Bd-indent">&#x2022; L'implémentation SSSD stocke les caches (ccaches) dans une base de données, généralement située dans <i>/var/lib/sss/secrets</i>, permettant aux caches de survivre aux redémarrages du serveur KCM ou aux redémarrages de la machine.</div>
+<p class="Pp">Cela permet au système d'utiliser un cache d'identifiants conscient des collections, tout en partageant le cache d'identifiants entre certains ou aucun conteneur en montant le socket en bind-mount.</p>
+<p class="Pp">Le délai d'inactivité par défaut du client KCM est de 5 minutes, ce qui laisse plus de temps pour l'interaction de l'utilisateur avec des outils en ligne de commande tels que kinit.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION_DU_CACHE_DIDENTIFIANTS_KCM'><a class='permalink' href='#UTILISATION_DU_CACHE_DIDENTIFIANTS_KCM'>UTILISATION DU CACHE D'IDENTIFIANTS KCM</a></h1>
+<p class="Pp">Pour utiliser le cache d'identifiants KCM, il doit être sélectionné comme type de cache d'identifiants par défaut dans <a href='/man/krb5.conf.5.en'>krb5.conf(5)</a>. Le nom du cache d'identifiants doit être uniquement « KCM: » sans aucune expansion de modèle. Par exemple :</p>
+<div class="Bd-indent">
+<pre>[libdefaults]
+    default_ccache_name = KCM:
+</pre>
+</div>
+<p class="Pp">Ensuite, assurez-vous que les bibliothèques clientes Kerberos et le serveur KCM s'accordent sur le chemin du socket UNIX. Par défaut, les deux utilisent le même chemin <i>/var/run/.heim_org.h5l.kcm-socket</i>. Pour configurer la bibliothèque Kerberos, modifiez son option « kcm_socket », qui est décrite dans la page de manuel <a href='/man/krb5.conf.5.en'>krb5.conf(5)</a>.</p>
+<p class="Pp">Enfin, assurez-vous que le serveur KCM SSSD est joignable. Le service KCM est généralement activé par socket par <a href='/man/systemd.1.en'>systemd(1)</a>. Contrairement aux autres services SSSD, il ne peut pas être démarré en ajoutant la chaîne « kcm » à la directive « service ».</p>
+<div class="Bd-indent">
+<pre>systemctl start sssd-kcm.socket
+systemctl enable sssd-kcm.socket
+</pre>
+</div>
+<p class="Pp">Notez que votre distribution peut déjà configurer les unités pour vous.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LE_STOCKAGE_DU_CACHE_DIDENTIFIANTS'><a class='permalink' href='#LE_STOCKAGE_DU_CACHE_DIDENTIFIANTS'>LE STOCKAGE DU CACHE D'IDENTIFIANTS</a></h1>
+<p class="Pp">Les caches d'identifiants sont stockés dans une base de données, tout comme SSSD met en cache les entrées utilisateur ou groupe. La base de données est généralement située dans « /var/lib/sss/secrets ».</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OBTENIR_DES_LOGS_DE_BOGAGE'><a class='permalink' href='#OBTENIR_DES_LOGS_DE_BOGAGE'>OBTENIR DES LOGS DE BOGAGE</a></h1>
+<p class="Pp">Le service sssd-kcm est généralement activé par socket par <a href='/man/systemd.1.en'>systemd(1)</a>. Pour générer des logs de bogage, ajoutez l'élément suivant soit directement dans le fichier /etc/sssd/sssd.conf, soit sous forme d'extrait de configuration dans le répertoire /etc/sssd/conf.d/ :</p>
+<div class="Bd-indent">
+<pre>[kcm]
+debug_level = 10
+</pre>
+</div>
+<p class="Pp">Redémarrez ensuite le service sssd-kcm :</p>
+<div class="Bd-indent">
+<pre>systemctl restart sssd-kcm.service
+</pre>
+</div>
+<p class="Pp">Enfin, exécutez le cas d'utilisation qui ne fonctionne pas pour vous. Les logs KCM seront générés dans /var/log/sssd/sssd_kcm.log. Il est recommandé de désactiver les logs de bogage lorsque vous n'avez plus besoin du bogage activé, car le service sssd-kcm peut générer une quantité assez importante d'informations de bogage.</p>
+<p class="Pp">Veuillez noter que les extraits de configuration ne sont actuellement traités que si le fichier de configuration principal à /etc/sssd/sssd.conf existe.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RENOUVELLEMENTS'><a class='permalink' href='#RENOUVELLEMENTS'>RENOUVELLEMENTS</a></h1>
+<p class="Pp">Le service sssd-kcm peut être configuré pour tenter le renouvellement des TGT renouvelables stockés dans le cache KCM. Les renouvellements ne sont tentés que lorsque la moitié de la durée de vie du ticket est atteinte. Les renouvellements KCM sont configurés lorsque les options suivantes sont définies dans la section [kcm] :</p>
+<div class="Bd-indent">
+<pre>tgt_renewal = true
+krb5_renew_interval = 60m
+</pre>
+</div>
+<p class="Pp">SSSD peut également hériter des options krb5 pour les renouvellements d'un domaine existant.</p>
+<div class="Bd-indent">
+<pre>tgt_renewal = true
+tgt_renewal_inherit = nom-domaine
+</pre>
+</div>
+<p class="Pp">Les options krb5 suivantes peuvent être configurées dans la section [kcm] pour contrôler le comportement de renouvellement ; ces options sont décrites en détail ci-dessous :</p>
+<div class="Bd-indent">
+<pre>krb5_renew_interval
+krb5_renewable_lifetime
+krb5_lifetime
+krb5_validate
+krb5_canonicalize
+krb5_auth_timeout
+</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS_DE_CONFIGURATION'><a class='permalink' href='#OPTIONS_DE_CONFIGURATION'>OPTIONS DE CONFIGURATION</a></h1>
+<p class="Pp">Le service KCM est configuré dans la section « kcm » du fichier sssd.conf. Veuillez noter que, comme le service KCM est généralement activé par socket, il suffit de redémarrer le service « sssd-kcm » après avoir modifié les options dans la section « kcm » de sssd.conf :</p>
+<div class="Bd-indent">
+<pre>systemctl restart sssd-kcm.service
+</pre>
+</div>
+<p class="Pp">Le service KCM est configuré dans la section « kcm ». Pour une référence syntaxique détaillée, consultez la section « FORMAT DU FICHIER » de la page de manuel <a href='/man/sssd.conf.5.en'>sssd.conf(5)</a>.</p>
+<p class="Pp">Les options génériques du service SSSD telles que « debug_level » ou « fd_limit » sont acceptées par le service kcm. Veuillez consulter la page de manuel <a href='/man/sssd.conf.5.en'>sssd.conf(5)</a> pour une liste complète. De plus, il existe également des options spécifiques à KCM.</p>
+<p class="Pp">socket_path (chaîne)</p>
+<div class="Bd-indent">Le socket sur lequel le service KCM écoutera.
+<p class="Pp">Par défaut : <i>/var/run/.heim_org.h5l.kcm-socket</i></p>
+<p class="Pp">Note : sur les plateformes où systemd est pris en charge, le chemin du socket est remplacé par celui défini dans le fichier d'unité sssd-kcm.socket.</p>
+</div>
+<p class="Pp">max_ccaches (entier)</p>
+<div class="Bd-indent">Combien de caches d'identifiants la base de données KCM autorise pour tous les utilisateurs.
+<p class="Pp">Par défaut : 0 (illimité, seule la quotité par UID est appliquée)</p>
+</div>
+<p class="Pp">max_uid_ccaches (entier)</p>
+<div class="Bd-indent">Combien de caches d'identifiants la base de données KCM autorise par UID. Ceci est équivalent à « avec combien de principaux vous pouvez kinit ».
+<p class="Pp">Par défaut : 64</p>
+</div>
+<p class="Pp">max_ccache_size (entier)</p>
+<div class="Bd-indent">Quelle taille peut avoir un cache d'identifiants par cache. Chaque ticket de service compte dans cette quotité.
+<p class="Pp">Par défaut : 65536</p>
+</div>
+<p class="Pp">tgt_renewal (booléen)</p>
+<div class="Bd-indent">Active la fonctionnalité de renouvellement des TGT.
+<p class="Pp">Par défaut : False (Renouvellements automatiques désactivés)</p>
+</div>
+<p class="Pp">tgt_renewal_inherit (chaîne)</p>
+<div class="Bd-indent">Domaine à partir duquel hériter des options krb5_* pour le renouvellement des TGT.
+<p class="Pp">Par défaut : NULL</p>
+</div>
+<p class="Pp">krb5_auth_timeout (entier)</p>
+<div class="Bd-indent">Délai en secondes après lequel une requête d'authentification en ligne ou une requête de changement de mot de passe est abandonnée. Si possible, la requête d'authentification est poursuivie hors ligne.
+<p class="Pp">Par défaut : 6</p>
+</div>
+<p class="Pp">krb5_validate (booléen)</p>
+<div class="Bd-indent">Vérifie à l'aide de krb5_keytab que le TGT obtenu n'a pas été usurpé. La keytab est vérifiée séquentiellement pour les entrées, et la première entrée avec un royaume correspondant est utilisée pour la validation. Si aucune entrée ne correspond au royaume, la dernière entrée de la keytab est utilisée. Ce processus peut être utilisé pour valider les environnements utilisant une confiance inter-royaumes en plaçant l'entrée keytab appropriée comme dernière entrée ou seule entrée dans le fichier keytab.
+<p class="Pp">Par défaut : false (Fournisseur IPA et AD : true)</p>
+<p class="Pp">Veuillez noter que la validation du ticket est la première étape lors de la vérification du PAC (voir 'pac_check' dans la page de manuel <a href='/man/sssd.conf.5.en'>sssd.conf(5)</a> pour plus de détails). Si la validation du ticket est désactivée, les vérifications PAC seront</p>
+</div>
+</section>
+</div>
+</section>
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+ skipped as
+    well.</p>
+</div>
+<p class="Pp">krb5_renewable_lifetime (string)</p>
+<div class="Bd-indent">Demande un ticket renouvelable avec une durée de vie totale, donnée sous forme d'un entier immédiatement suivi d'une unité de temps :
+<p class="Pp"><i>s</i> pour secondes</p>
+<p class="Pp"><i>m</i> pour minutes</p>
+<p class="Pp"><i>h</i> pour heures</p>
+<p class="Pp"><i>d</i> pour jours.</p>
+<p class="Pp">Si aucune unité n'est donnée, <i>s</i> est supposé.</p>
+<p class="Pp">NOTE : Il n'est pas possible de mélanger les unités. Pour définir la durée de vie renouvelable à une heure et demie, utilisez '90m' au lieu de '1h30m'.</p>
+<p class="Pp">Par défaut : non défini, c'est-à-dire que le TGT n'est pas renouvelable</p>
+</div>
+<p class="Pp">krb5_lifetime (string)</p>
+<div class="Bd-indent">Demande un ticket avec une durée de vie, donnée sous forme d'un entier immédiatement suivi d'une unité de temps :
+<p class="Pp"><i>s</i> pour secondes</p>
+<p class="Pp"><i>m</i> pour minutes</p>
+<p class="Pp"><i>h</i> pour heures</p>
+<p class="Pp"><i>d</i> pour jours.</p>
+<p class="Pp">Si aucune unité n'est donnée, <i>s</i> est supposé.</p>
+<p class="Pp">NOTE : Il n'est pas possible de mélanger les unités. Pour définir la durée de vie à une heure et demie, veuillez utiliser '90m' au lieu de '1h30m'.</p>
+<p class="Pp">Par défaut : non défini, c'est-à-dire la durée de vie par défaut du ticket configurée sur le KDC.</p>
+</div>
+<p class="Pp">krb5_renew_interval (string)</p>
+<div class="Bd-indent">Le temps en secondes entre deux vérifications si le TGT doit être renouvelé. Les TGT sont renouvelés si environ la moitié de leur durée de vie est dépassée, donnée sous forme d'un entier immédiatement suivi d'une unité de temps :
+<p class="Pp"><i>s</i> pour secondes</p>
+<p class="Pp"><i>m</i> pour minutes</p>
+<p class="Pp"><i>h</i> pour heures</p>
+<p class="Pp"><i>d</i> pour jours.</p>
+<p class="Pp">Si aucune unité n'est donnée, <i>s</i> est supposé.</p>
+<p class="Pp">NOTE : Il n'est pas possible de mélanger les unités. Pour définir la durée de vie renouvelable à une heure et demie, utilisez '90m' au lieu de '1h30m'.</p>
+<p class="Pp">Si cette option n'est pas définie ou est égale à 0, le renouvellement automatique est désactivé.</p>
+<p class="Pp">Par défaut : non défini</p>
+</div>
+<p class="Pp">krb5_canonicalize (boolean)</p>
+<div class="Bd-indent">Spécifie si le principal de l'hôte et de l'utilisateur doit être canonisé. Cette fonctionnalité est disponible avec MIT Kerberos 1.7 et versions ultérieures.
+<p class="Pp">Par défaut : false</p>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/sssd.8.en'>sssd(8)</a>, <a href='/man/sssd.conf.5.en'>sssd.conf(5)</a>,</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEURS'><a class='permalink' href='#AUTEURS'>AUTEURS</a></h1>
+<p class="Pp"><b>Le projet en amont SSSD - <a href='https://github.com/SSSD/sssd/'>https://github.com/SSSD/sssd/</a></b></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">26/08/2025</td>
+    <td class="foot-os">SSSD</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/sssd/">extra/sssd</a></dd>
+        <dt>Version :</dt>
+        <dd>2.11.1-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/SSSD/sssd">https://github.com/SSSD/sssd</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-3.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/sssd/">/listing/extra/sssd/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#UTILISATION_DU_CACHE_DES_IDENTIFIANTS_KCM">UTILISATION DU CACHE DES IDENTIFIANTS KCM</a></li>
+        
+            <li><a href="#STOCKAGE_DU_CACHE_DES_IDENTIFIANTS">STOCKAGE DU CACHE DES IDENTIFIANTS</a></li>
+        
+            <li><a href="#OBTENTION_DES_JOURNAUX_DE_DEBOGAGE">OBTENTION DES JOURNAUX DE DEBOGAGE</a></li>
+        
+            <li><a href="#RENOUVELLEMENTS">RENOUVELLEMENTS</a></li>
+        
+            <li><a href="#OPTIONS_DE_CONFIGURATION">OPTIONS DE CONFIGURATION</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+            <li><a href="#AUTEURS">AUTEURS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+<nav class="other-languages">
+    <p>Dans d'autres langues :</p>
+    <ul>
+    
+        <li><a href="/man/sssd-kcm.8.ru">ru</a></li>
+    
+        <li><a href="/man/sssd-kcm.8.sv">sv</a></li>
+    
+    </ul>
+</nav>
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/sssd-kcm.8.en.txt">txt</a>, 
+        
+            <a href="/man/sssd-kcm.8.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

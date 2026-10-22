@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pt-index-usage(1p) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pt-index-usage(1p)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/percona-toolkit/">percona-toolkit</a></p>
+<p class="lic">Licences: GPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PT-INDEX-USAGE(1)</td>
+    <td class="head-vol">Documentation Perl fournie par l'utilisateur</td>
+    <td class="head-rtitle">PT-INDEX-USAGE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pt-index-usage - Lit les requêtes à partir d'un journal et analyse comment elles utilisent les index.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp">Utilisation : pt-index-usage [OPTIONS] [FICHIERS]</p>
+<p class="Pp">pt-index-usage lit les requêtes à partir de journaux et analyse comment elles utilisent les index.</p>
+<p class="Pp">Analyser les requêtes dans slow.log et afficher les rapports :</p>
+<pre>pt-index-usage /chemin/vers/slow.log --host localhost</pre>
+<p class="Pp">Désactiver les rapports et enregistrer les résultats dans la base de données percona pour une analyse ultérieure :</p>
+<pre>pt-index-usage slow.log --no-report --save-results-database percona</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RISQUES'><a class='permalink' href='#RISQUES'>RISQUES</a></h1>
+<p class="Pp">Percona Toolkit est mature, éprouvé sur le terrain et bien testé, mais tous les outils de base de données peuvent présenter un risque pour le système et le serveur de base de données. Avant d'utiliser cet outil, veuillez :</p>
+<ul class="Bl-bullet">
+  <li>Lire la documentation de l'outil</li>
+  <li>Examiner les &quot;BUGS&quot; connus de l'outil</li>
+  <li>Tester l'outil sur un serveur non opérationnel</li>
+  <li>Sauvegarder votre serveur opérationnel et vérifier les sauvegardes</li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cet outil se connecte à un serveur de base de données MySQL, parcourt un journal de requêtes et utilise EXPLAIN pour demander à MySQL comment il utilisera chaque requête. Une fois terminé, il imprime un rapport sur les index que les requêtes n'ont pas utilisés.</p>
+<p class="Pp">Le journal de requêtes doit être au format du journal de requêtes lentes de MySQL. Si vous avez besoin d'entrer un format différent, vous pouvez utiliser pt-query-digest pour traduire les formats. Si vous ne spécifiez pas de nom de fichier, l'outil lit depuis STDIN.</p>
+<p class="Pp">L'outil exécute deux étapes. Dans la première étape, l'outil fait l'inventaire de toutes les tables et index de votre base de données, afin de pouvoir comparer les index existants à ceux qui ont été réellement utilisés par les requêtes du journal. Dans la deuxième étape, il exécute EXPLAIN sur chaque requête du journal de requêtes. Il utilise des connexions de base de données séparées pour inventorier les tables et exécuter EXPLAIN, il ouvre donc deux connexions à la base de données.</p>
+<p class="Pp">Si une requête n'est pas un SELECT, il essaie de la transformer en une requête SELECT approximativement équivalente afin de pouvoir être expliquée (EXPLAINed). Ce n'est pas un processus parfait, mais il est suffisamment bon pour être utile.</p>
+<p class="Pp">L'outil saute l'étape EXPLAIN pour les requêtes qui sont des doublons exacts de celles vues précédemment. Il suppose que la même requête générera le même plan EXPLAIN qu'auparavant (ce qui est généralement une hypothèse sûre et généralement bon pour les performances), et incrémente simplement le nombre de fois où les index ont été utilisés. Cependant, les requêtes qui ont la même empreinte mais des sommes de contrôle différentes seront ré-expliquées. Les requêtes qui ont des constantes littérales différentes peuvent avoir des plans d'exécution différents, et il est important de le mesurer.</p>
+<p class="Pp">Après avoir expliqué la requête, il est nécessaire d'essayer de mapper les alias de la requête aux noms de table d'origine. Par exemple, considérez le plan EXPLAIN pour la requête suivante :</p>
+<pre>SELECT * FROM tbl1 AS foo;</pre>
+<p class="Pp">La sortie EXPLAIN montrera l'accès à la table <span class="Li">&quot;foo&quot;</span>, et cela doit être traduit en <span class="Li">&quot;tbl1&quot;</span>. Ce processus implique une analyse complexe. Il est généralement très précis, mais il y a une certaine chance qu'il ne fonctionne pas correctement. Si vous trouvez des cas où il échoue, soumettez un rapport de bug et un cas de test reproductible.</p>
+<p class="Pp">Les requêtes qui ne peuvent pas être expliquées entraîneront le blacklistage de toutes les requêtes ultérieures ayant la même empreinte. Ceci afin de réduire le travail qu'elles causent et de les empêcher de continuer à afficher des messages d'erreur.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SORTIE'><a class='permalink' href='#SORTIE'>SORTIE</a></h1>
+<p class="Pp">Après avoir lu tous les événements du journal, l'outil imprime des instructions DROP pour chaque index qui n'a pas été utilisé. Il saute les index pour les tables qui n'ont jamais été consultées par aucune requête du journal, afin d'éviter les faux positifs.</p>
+<p class="Pp">Si vous ne spécifiez pas &quot;--quiet&quot;, l'outil affiche également des avertissements concernant les instructions qui ne peuvent pas être expliquées et similaires. Ceux-ci vont vers la sortie d'erreur standard.</p>
+<p class="Pp">Les rapports de progression sont activés par défaut (voir &quot;--progress&quot;). Ceux-ci vont également vers la sortie d'erreur standard.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">Cet outil accepte des arguments de ligne de commande supplémentaires. Reportez-vous à la &quot;SYNTAXE&quot; et aux informations d'utilisation pour plus de détails.</p>
+<dl class="Bl-tag">
+  <dt id="demander"><a class="permalink" href="#demander">--ask-pass</a></dt>
+  <dd>Demande un mot de passe lors de la connexion à MySQL.</dd>
+  <dt id="charset"><a class="permalink" href="#charset">--charset</a></dt>
+  <dd>forme courte : -A ; type : chaîne
+    <p class="Pp">Jeu de caractères par défaut. Si la valeur est utf8, définit le mode binaire de Perl sur STDOUT en utf8, passe l'option mysql_enable_utf8 à DBD::mysql et exécute SET NAMES UTF8 après la connexion à MySQL. Toute autre valeur définit le mode binaire sur STDOUT sans la couche utf8 et exécute SET NAMES après la connexion à MySQL.</p>
+  </dd>
+  <dt id="config"><a class="permalink" href="#config">--config</a></dt>
+  <dd>type : Tableau
+    <p class="Pp">Lit cette liste de fichiers de configuration séparés par des virgules ; si spécifié, cela doit être la première option sur la ligne de commande.</p>
+  </dd>
+  <dt id="creer"><a class="permalink" href="#creer">--create-save-results-database</a></dt>
+  <dd>Crée la base de données &quot;--save-results-database&quot; si elle n'existe pas.
+    <p class="Pp">Si la base de données &quot;--save-results-database&quot; existe déjà et que cette option est spécifiée, la base de données est utilisée et les tables nécessaires sont créées si elles n'existent pas déjà.</p>
+  </dd>
+  <dt>--[no]create-views</dt>
+  <dd>Crée des vues pour les requêtes d'exemple &quot;--save-results-database&quot;.
+    <p class="Pp">Plusieurs requêtes d'exemple sont fournies pour interroger les tables de &quot;--save-results-database&quot;. Ces requêtes d'exemple sont, par défaut, créées sous forme de vues. Spécifier <span class="Li">&quot;--no-create-views&quot;</span> empêche la création de ces vues.</p>
+  </dd>
+  <dt id="database"><a class="permalink" href="#database">--database</a></dt>
+  <dd>forme courte : -D ; type : chaîne
+    <p class="Pp">La base de données à utiliser pour la connexion.</p>
+  </dd>
+  <dt id="databases"><a class="permalink" href="#databases">--databases</a></dt>
+  <dd>forme courte : -d ; type : hachage
+    <p class="Pp">N'obtient les tables et les index que de cette liste de bases de données séparées par des virgules.</p>
+  </dd>
+  <dt>--databases-regex</dt>
+  <dd>type : chaîne
+    <p class="Pp">N'obtient les tables et les index que des bases de données dont les noms correspondent à cette expression régulière Perl.</p>
+  </dd>
+  <dt id="defaults"><a class="permalink" href="#defaults">--defaults-file</a></dt>
+  <dd>forme courte : -F ; type : chaîne
+    <p class="Pp">Ne lit les options mysql que dans le fichier donné. Vous devez donner un chemin absolu.</p>
+  </dd>
+  <dt id="drop"><a class="permalink" href="#drop">--drop</a></dt>
+  <dd>type : Hachage ; par défaut : non-unique
+    <p class="Pp">Suggère de supprimer uniquement ces types d'index inutilisés.</p>
+    <p class="Pp">Par défaut, pt-index-usage ne suggère de supprimer que les index secondaires inutilisés, pas les index primaires ou uniques. Vous pouvez spécifier les types d'index inutilisés que l'outil suggère de supprimer : primary, unique, non-unique, all.</p>
+    <p class="Pp">Une instruction <span class="Li">&quot;ALTER TABLE&quot;</span> distincte pour chaque type est imprimée. Ainsi, si vous spécifiez <span class="Li">&quot;--drop all&quot;</span> et qu'il y a une clé primaire et un index non unique, l'<span class="Li">&quot;ALTER TABLE ... DROP&quot;</span> pour chacun sera imprimé sur des lignes séparées.</p>
+  </dd>
+  <dt id="empty"><a class="permalink" href="#empty">--empty-save-results-tables</a></dt>
+  <dd>Supprime et recrée toutes les tables préexistantes dans la base de données &quot;--save-results-database&quot;. Cela permet de supprimer les informations des exécutions précédentes avant l'exécution actuelle.</dd>
+  <dt id="help"><a class="permalink" href="#help">--help</a></dt>
+  <dd>Affiche l'aide et quitte.</dd>
+  <dt id="host"><a class="permalink" href="#host">--host</a></dt>
+  <dd>forme courte : -h ; type : chaîne
+    <p class="Pp">Se connecter à l'hôte.</p>
+  </dd>
+  <dt id="ignore"><a class="permalink" href="#ignore">--ignore-databases</a></dt>
+  <dd>type : Hachage
+    <p class="Pp">Ignore cette liste de bases de données séparées par des virgules.</p>
+  </dd>
+  <dt id="ignore~2"><a class="permalink" href="#ignore~2">--ignore-databases-regex</a></dt>
+  <dd>type : chaîne
+    <p class="Pp">Ignore les bases de données dont les noms correspondent à cette expression régulière Perl.</p>
+  </dd>
+  <dt id="ignore~3"><a class="permalink" href="#ignore~3">--ignore-tables</a></dt>
+  <dd>type : Hachage
+    <p class="Pp">Ignore cette liste de noms de tables séparés par des virgules.</p>
+    <p class="Pp">Les noms de tables peuvent être qualifiés avec le nom de la base de données.</p>
+  </dd>
+  <dt id="ignore~4"><a class="permalink" href="#ignore~4">--ignore-tables-regex</a></dt>
+  <dd>type : chaîne
+    <p class="Pp">Ignore les tables dont les noms correspondent à l'expression régulière Perl.</p>
+  </dd>
+  <dt id="mysql_ssl"><a class="permalink" href="#mysql_ssl">--mysql_ssl</a></dt>
+  <dd>forme courte : -s ; type : entier
+    <p class="Pp">Crée une connexion MySQL SSL.</p>
+  </dd>
+  <dt id="password"><a class="permalink" href="#password">--password</a></dt>
+</dl>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+</a></dt>
+  <dd>forme courte : -p ; type : chaîne de caractères
+    <p class="Pp">Mot de passe à utiliser lors de la connexion. Si le mot de passe contient des virgules, elles doivent être échappées avec une barre oblique inverse : « exam\,ple »</p>
+  </dd>
+  <dt id="port"><a class="permalink" href="#port">--port</a></dt>
+  <dd>forme courte : -P ; type : entier
+    <p class="Pp">Numéro de port à utiliser pour la connexion.</p>
+  </dd>
+  <dt id="progress"><a class="permalink" href="#progress">--progress</a></dt>
+  <dd>type : tableau ; par défaut : time,30
+    <p class="Pp">Afficher les rapports de progression sur STDERR. La valeur est une liste séparée par des virgules avec deux parties. La première partie peut être un pourcentage, un temps ou des itérations ; la seconde partie spécifie la fréquence de mise à jour, en pourcentage, secondes ou nombre d'itérations.</p>
+  </dd>
+  <dt id="quiet"><a class="permalink" href="#quiet">--quiet</a></dt>
+  <dd>forme courte : -q
+    <p class="Pp">Ne pas afficher d'avertissements. Désactive également « --progress ».</p>
+  </dd>
+  <dt>--[no]report</dt>
+  <dd>par défaut : oui
+    <p class="Pp">Afficher les rapports pour « --report-format ».</p>
+    <p class="Pp">Vous pourriez vouloir désactiver les rapports en spécifiant <span class="Li">« --no-report »</span> si, par exemple, vous spécifiez également « --save-results-database » et que vous ne souhaitez interroger les tables de résultats que plus tard.</p>
+  </dd>
+  <dt id="report"><a class="permalink" href="#report">--report-format</a></dt>
+  <dd>type : Tableau ; par défaut : drop_unused_indexes
+    <p class="Pp">Actuellement, il n'y a qu'un seul rapport : drop_unused_indexes. Ce rapport affiche les instructions SQL pour supprimer les index inutilisés. Voir également « --drop ».</p>
+    <p class="Pp">Voir également « --[no]report ».</p>
+  </dd>
+  <dt id="save"><a class="permalink" href="#save">--save-results-database</a></dt>
+  <dd>type : DSN
+    <p class="Pp">Enregistrer les résultats dans des tables de cette base de données. Les informations sur les index, les requêtes, les tables et leur utilisation sont stockées dans plusieurs tables de la base de données spécifiée. Les tables sont automatiquement créées si elles n'existent pas. Si la base de données n'existe pas, elle peut être créée automatiquement avec « --create-save-results-database ». Dans ce cas, la connexion est initialement créée sans base de données par défaut, puis après la création de la base de données, elle est utilisée.</p>
+    <p class="Pp">pt-index-usage exécute des instructions INSERT pour enregistrer les résultats. Par conséquent, vous devez être prudent si vous utilisez cette fonctionnalité sur un serveur de production. Cela pourrait augmenter la charge, causer des problèmes si vous ne souhaitez pas que le serveur soit écrit, ou ainsi de suite.</p>
+    <p class="Pp">Après une exécution, vous pouvez interroger les tables d'utilisation pour répondre à diverses questions sur l'utilisation des index. Les tables ont les définitions CREATE TABLE suivantes :</p>
+    <p class="Pp">MAGIC_create_indexes :</p>
+        <pre>CREATE TABLE IF NOT EXISTS indexes (
+  db           VARCHAR(64) NOT NULL,
+  tbl          VARCHAR(64) NOT NULL,
+  idx          VARCHAR(64) NOT NULL,
+  cnt          BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY  (db, tbl, idx)
+)
+</pre>
+    <p class="Pp">MAGIC_create_queries :</p>
+        <pre>CREATE TABLE IF NOT EXISTS queries (
+  query_id     CHAR(32) NOT NULL,
+  fingerprint  TEXT NOT NULL,
+  sample       TEXT NOT NULL,
+  PRIMARY KEY  (query_id)
+)
+</pre>
+    <p class="Pp">MAGIC_create_tables :</p>
+        <pre>CREATE TABLE IF NOT EXISTS tables (
+  db           VARCHAR(64) NOT NULL,
+  tbl          VARCHAR(64) NOT NULL,
+  cnt          BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY  (db, tbl)
+)
+</pre>
+    <p class="Pp">MAGIC_create_index_usage :</p>
+        <pre>CREATE TABLE IF NOT EXISTS index_usage (
+  query_id      CHAR(32) NOT NULL,
+  db            VARCHAR(64) NOT NULL,
+  tbl           VARCHAR(64) NOT NULL,
+  idx           VARCHAR(64) NOT NULL,
+  cnt           BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  UNIQUE INDEX  (query_id, db, tbl, idx)
+)
+</pre>
+    <p class="Pp">MAGIC_create_index_alternatives :</p>
+        <pre>CREATE TABLE IF NOT EXISTS index_alternatives (
+  query_id      CHAR(32) NOT NULL,        -- Cette requête a utilisé
+  db            VARCHAR(64) NOT NULL,     -- cet index, mais...
+  tbl           VARCHAR(64) NOT NULL,     --
+  idx           VARCHAR(64) NOT NULL,     --
+  alt_idx       VARCHAR(64) NOT NULL,     -- était une alternative
+  cnt           BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  UNIQUE INDEX  (query_id, db, tbl, idx, alt_idx),
+  INDEX         (db, tbl, idx),
+  INDEX         (db, tbl, alt_idx)
+)
+</pre>
+    <p class="Pp">Les éléments suivants sont des requêtes que vous pouvez exécuter sur ces tables pour répondre à des questions courantes que vous pourriez avoir. Chaque requête est également créée en tant que vue (avec MySQL v5.0 et plus récent) si <span class="Li">« --[no]create-views »</span> est vrai (ce qui est le cas par défaut). Les noms des vues sont les chaînes après le préfixe <span class="Li">« MAGIC_view_ »</span>.</p>
+    <p class="Pp">Question : quelles requêtes utilisent parfois des index différents et quelle est la fraction du temps où chaque index est choisi ?
+        MAGIC_view_query_uses_several_indexes :</p>
+        <pre>SELECT iu.query_id, CONCAT_WS('.', iu.db, iu.tbl, iu.idx) AS idx,
+   variations, iu.cnt, iu.cnt / total_cnt * 100 AS pct
+FROM index_usage AS iu
+   INNER JOIN (
+      SELECT query_id, db, tbl, SUM(cnt) AS total_cnt,
+        COUNT(*) AS variations
+      FROM index_usage
+      GROUP BY query_id, db, tbl
+      HAVING COUNT(*) &gt; 1
+   ) AS qv USING(query_id, db, tbl);
+</pre>
+    <p class="Pp">Question : quels index ont beaucoup d'alternatives, c'est-à-dire sont choisis à la place d'autres index, et pour quelles requêtes ?
+        MAGIC_view_index_has_alternates :</p>
+        <pre>SELECT CONCAT_WS('.', db, tbl, idx) AS idx_chosen,
+   GROUP_CONCAT(DISTINCT alt_idx) AS alternatives,
+   GROUP_CONCAT(DISTINCT query_id) AS queries, SUM(cnt) AS cnt
+FROM index_alternatives
+GROUP BY db, tbl, idx
+HAVING COUNT(*) &gt; 1;
+</pre>
+    <p class="Pp">Question : quels index sont considérés comme des alternatives pour d'autres index, et pour quelles requêtes ? MAGIC_view_index_alternates :</p>
+        <pre>SELECT CONCAT_WS('.', db, tbl, alt_idx) AS idx_considered,
+   GROUP_CONCAT(DISTINCT idx) AS alternative_to,
+   GROUP_CONCAT(DISTINCT query_id) AS queries, SUM(cnt) AS cnt
+FROM index_alternatives
+GROUP BY db, tbl, alt_idx
+HAVING COUNT(*) &gt; 1;
+</pre>
+    <p class="Pp">Question : lesquels parmi ceux-ci ne sont jamais choisis par aucune requête, et sont donc superflus ? MAGIC_view_unused_index_alternates :</p>
+        <pre>SELECT CONCAT_WS('.', i.db, i.tbl, i.idx) AS idx,
+   alt.alternative_to, alt.queries, alt.cnt
+FROM indexes AS i
+   INNER JOIN (
+      SELECT db, tbl, alt_idx, GROUP_CONCAT(DISTINCT idx) AS alternative_to,
+         GROUP_CONCAT(DISTINCT query_id) AS queries, SUM(cnt) AS cnt
+      FROM index_alternatives
+      GROUP BY db, tbl, alt_idx
+      HAVING COUNT(*) &gt; 1
+   ) AS alt ON i.db = alt.db AND i.tbl = alt.tbl
+     AND i.idx = alt.alt_idx
+WHERE i.cnt = 0;
+</pre>
+    <p class="Pp">Question : étant donné une table, quels index ont été utilisés, par combien de requêtes, avec combien d'empreintes digitales distinctes ? Y avait-il des alternatives ? Quels index n'ont pas été utilisés ? Vous pouvez modifier la liste SELECT de la requête suivante pour également voir les identifiants de requête concernés. MAGIC_view_index_usage :</p>
+        <pre>SELECT i.idx, iu.usage_cnt, iu.usage_total,
+   ia.alt_cnt, ia.alt_total
+FROM indexes AS i
+   LEFT OUTER JOIN (
+      SELECT db, tbl, idx, COUNT(*) AS usage_cnt,
+         SUM(cnt) AS usage_total, GROUP_CONCAT(query_id) AS used_by
+      FROM index_usage
+      GROUP BY db, tbl, idx
+   ) AS iu ON i.db=iu.db AND i.tbl=iu.tbl AND i.idx = iu.idx
+   LEFT OUTER JOIN (
+      SELECT db, tbl, idx, COUNT(*) AS alt_cnt,
+         SUM(cnt) AS alt_total,
+         GROUP_CONCAT(query_id) AS alt_queries
+      FROM index_alternatives
+      GROUP BY db, tbl, idx
+   ) AS ia ON i.db=ia.db AND i.tbl=ia.tbl AND i.idx = ia.idx;
+</pre>
+    <p class="Pp">Question : quels index sur une table donnée sont vitaux pour au moins une requête (il n'y a pas d'alternative) ?
+      MAGIC_view_required_indexes :</p>
+        <pre>SELECT i.db, i.tbl, i.idx, no_alt.queries
+FROM indexes AS i
+   INNER JOIN (
+      SELECT iu.db, iu.tbl, iu.idx,
+         GROUP_CONCAT(iu.query_id) AS queries
+      FROM index_usage AS iu
+         LEFT OUTER JOIN index_alternatives AS ia
+            USING(db, tbl, idx)
+      WHERE ia.db IS NULL
+      GROUP BY iu.db, iu.tbl, iu.idx
+   ) AS no_alt ON no_alt.db = i.db AND no_alt.tbl = i.tbl
+      AND no_alt.idx = i.idx
+ORDER BY i.db, i.tbl, i.idx, no_alt.queries;
+</pre>
+  </dd>
+  <dt id="set"><a class="permalink" href="#set">--set-vars</a></dt>
+  <dd>type : Tableau
+    <p class="Pp">Définir les variables MySQL dans cette liste séparée par des virgules de paires <span class="Li">« variable=valeur »</span>.</p>
+    <p class="Pp">Par défaut, l'outil définit :</p>
+        <pre>wait_timeout=10000
+</pre>
+    <p class="Pp">Les variables spécifiées sur la ligne de commande remplacent ces valeurs par défaut. Par exemple, spécifier <span class="Li">« --set-vars wait_timeout=500 »</span> remplace la valeur par défaut de <span class="Li">10000</span>.</p>
+    <p class="Pp">L'outil affiche un avertissement et continue si une variable ne peut pas être définie.</p>
+  </dd>
+  <dt id="socket"><a class="permalink" href="#socket">--socket</a></dt>
+  <dd>forme courte : -S ; type : chaîne de caractères
+    <p class="Pp">Fichier de socket à utiliser pour la connexion.</p>
+  </dd>
+  <dt id="tables"><a class="permalink" href="#tables">--tables</a></dt>
+  <dd>forme courte : -t ; type : hachage
+    <p class="Pp">Obtenir les index uniquement de cette liste de tables séparées par des virgules.</p>
+  </dd>
+  <dt>--tables-regex</dt>
+  <dd>type : chaîne de caractères
+    <p class="Pp">Obtenir les index uniquement des tables dont les noms correspondent à cette expression régulière Perl.</p>
+  </dd>
+  <dt id="user"><a class="permalink" href="#user">--user</a></dt>
+  <dd>forme courte : -u ; type : chaîne de caractères
+    <p class="Pp">Utilisateur pour la connexion si ce n'est pas l'utilisateur actuel.</p>
+  </dd>
+  <dt id="version"><a class="permalink" href="#version">--version</a></dt>
+  <dd>Afficher la version et quitter.</dd>
+  <dt>--[no]version-check</dt>
+  <dd>par défaut : oui
+    <p class="Pp">Vérifier la dernière version de Percona Toolkit, MySQL et d'autres programmes.</p>
+    <p class="Pp">Il s'agit d'une fonctionnalité standard de « vérifier automatiquement les mises à jour », avec deux fonctionnalités supplémentaires. Premièrement, l'outil vérifie sa propre version ainsi que les versions des logiciels suivants : système d'exploitation, Percona Monitoring and Management (PMM), MySQL, pilote MySQL pour Perl (DBD::mysql) et Percona Toolkit. Deuxièmement, il vérifie et avertit des versions présentant des problèmes connus. Par exemple, MySQL 5.5.25 avait un bug critique et a été réédité sous la version 5.5.25a.</p>
+    <p class="Pp">Une connexion sécurisée au serveur de base de données Version Check de Percona est établie pour effectuer ces vérifications. Chaque requête est enregistrée par le serveur, y compris les numéros de version des logiciels et l'identifiant unique du système vérifié. L'identifiant est généré par le script d'installation de Percona Toolkit ou lors du premier appel à la base de données Version Check.</p>
+    <p class="Pp">Toutes les mises à jour ou problèmes connus sont affichés sur STDOUT avant la sortie normale de l'outil. Cette fonctionnalité ne devrait jamais interférer avec le fonctionnement normal de l'outil.</p>
+    <p class="Pp">Pour plus d'informations, visitez <a href='https://www.percona.com/doc/percona-toolkit/LATEST/version-check.html'>https://www.percona.com/doc/percona-toolkit/LATEST/version-check.html</a>.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DSN_OPTIONS'><a class='permalink' href='#DSN_OPTIONS'>OPTIONS DSN</a></h1>
+<p class="Pp">Ces options DSN sont utilisées pour créer un DSN. Chaque option est donnée sous la forme <span class="Li">« option=valeur »</span>. Les options sont sensibles à la casse, donc P et p ne sont pas la même option. Il ne peut y avoir d'espace avant ou après le signe <span class="Li">« =&nbsp;»</span>.</p>
+et si la valeur contient des espaces, elle doit être mise entre guillemets. Les options DSN sont séparées par des virgules. Voir la page de manuel de percona-toolkit pour plus de détails.</p>
+<ul class="Bl-bullet">
+  <li>A
+    <p class="Pp">dsn : charset ; copy : yes</p>
+    <p class="Pp">Jeu de caractères par défaut.</p>
+  </li>
+  <li>D
+    <p class="Pp">dsn : database ; copy : yes</p>
+    <p class="Pp">Base de données à laquelle se connecter.</p>
+  </li>
+  <li>F
+    <p class="Pp">dsn : mysql_read_default_file ; copy : yes</p>
+    <p class="Pp">Lire uniquement les options par défaut du fichier donné</p>
+  </li>
+  <li>h
+    <p class="Pp">dsn : host ; copy : yes</p>
+    <p class="Pp">Se connecter à l'hôte.</p>
+  </li>
+  <li>p
+    <p class="Pp">dsn : password ; copy : yes</p>
+    <p class="Pp">Mot de passe à utiliser lors de la connexion. Si le mot de passe contient des virgules, elles doivent être échappées avec une barre oblique inverse : &quot;exam\,ple&quot;</p>
+  </li>
+  <li>P
+    <p class="Pp">dsn : port ; copy : yes</p>
+    <p class="Pp">Numéro de port à utiliser pour la connexion.</p>
+  </li>
+  <li>S
+    <p class="Pp">dsn : mysql_socket ; copy : yes</p>
+    <p class="Pp">Fichier socket à utiliser pour la connexion.</p>
+  </li>
+  <li>u
+    <p class="Pp">dsn : user ; copy : yes</p>
+    <p class="Pp">Utilisateur pour la connexion si ce n'est pas l'utilisateur actuel.</p>
+  </li>
+  <li>s
+    <p class="Pp">dsn : mysql_ssl ; copy : yes</p>
+    <p class="Pp">Créer une connexion SSL</p>
+  </li>
+</ul>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONMENT'><a class='permalink' href='#ENVIRONMENT'>ENVIRONNEMENT</a></h1>
+<p class="Pp">La variable d'environnement <span class="Li">&quot;PTDEBUG&quot;</span> active la sortie de débogage détaillée sur STDERR. Pour activer le débogage et capturer toute la sortie dans un fichier, exécutez l'outil comme ceci :</p>
+<pre>PTDEBUG=1 pt-index-usage ... &gt; FICHIER 2&gt;&amp;1</pre>
+<p class="Pp">Attention : la sortie de débogage est volumineuse et peut générer plusieurs mégaoctets de sortie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ATTENTION'><a class='permalink' href='#ATTENTION'>ATTENTION</a></h1>
+<p class="Pp">L'utilisation de &lt;PTDEBUG&gt; peut exposer des mots de passe. Lorsque le débogage est activé, tous les paramètres de la ligne de commande sont affichés dans la sortie.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYSTEM_REQUIREMENTS'><a class='permalink' href='#SYSTEM_REQUIREMENTS'>CONFIGURATION REQUISE</a></h1>
+<p class="Pp">Vous avez besoin de Perl, DBI, DBD::mysql et de certains packages de base qui devraient être installés dans toute version raisonnablement récente de Perl.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BUGS'><a class='permalink' href='#BUGS'>BOGUES</a></h1>
+<p class="Pp">Pour une liste des bogues connus, voir <a href='https://jira.percona.com/projects/PT/issues'>https://jira.percona.com/projects/PT/issues</a>.</p>
+<p class="Pp">Veuillez signaler les bogues à <a href='https://jira.percona.com/projects/PT'>https://jira.percona.com/projects/PT</a>. Incluez les informations suivantes dans votre rapport de bogue :</p>
+<ul class="Bl-bullet">
+  <li>Ligne de commande complète utilisée pour exécuter l'outil</li>
+  <li>Outil &quot;--version&quot;</li>
+  <li>Version MySQL de tous les serveurs concernés</li>
+  <li>Sortie de l'outil, y compris STDERR</li>
+  <li>Fichiers d'entrée (journaux/dumps/fichiers de configuration, etc.)</li>
+</ul>
+<p class="Pp">Si possible, incluez la sortie de débogage en exécutant l'outil avec <span class="Li">&quot;PTDEBUG&quot;</span> ; voir &quot;ENVIRONNEMENT&quot;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DOWNLOADING'><a class='permalink' href='#DOWNLOADING'>TÉLÉCHARGEMENT</a></h1>
+<p class="Pp">Visitez <a href='http://www.percona.com/software/percona-toolkit/'>http://www.percona.com/software/percona-toolkit/</a> pour télécharger la dernière version de Percona Toolkit. Ou, obtenez la dernière version depuis la ligne de commande :</p>
+<pre>wget percona.com/get/percona-toolkit.tar.gz
+wget percona.com/get/percona-toolkit.rpm
+wget percona.com/get/percona-toolkit.deb</pre>
+<p class="Pp">Vous pouvez également obtenir des outils individuels à partir de la dernière version :</p>
+<pre>wget percona.com/get/TOOL</pre>
+<p class="Pp">Remplacez <span class="Li">&quot;TOOL&quot;</span> par le nom de n'importe quel outil.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTEURS</a></h1>
+<p class="Pp">Baron Schwartz et Daniel Nichter</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ABOUT_PERCONA_TOOLKIT'><a class='permalink' href='#ABOUT_PERCONA_TOOLKIT'>À PROPOS DE PERCONA TOOLKIT</a></h1>
+<p class="Pp">Cet outil fait partie de Percona Toolkit, une collection d'outils avancés en ligne de commande pour MySQL développés par Percona. Percona Toolkit a été bifurqué de deux projets en juin 2011 : Maatkit et Aspersa. Ces projets ont été créés par Baron Schwartz et développés principalement par lui et Daniel Nichter. Visitez <a href='http://www.percona.com/software/'>http://www.percona.com/software/</a> pour en savoir plus sur les autres logiciels gratuits et open-source de Percona.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT,_LICENSE,_AND_WARRANTY'><a class='permalink' href='#COPYRIGHT,_LICENSE,_AND_WARRANTY'>DROITS D'AUTEUR, LICENCE ET GARANTIE</a></h1>
+<p class="Pp">Ce programme est copyright 2011-2024 Percona LLC et/ou ses affiliés, 2010-2011 Baron Schwartz.</p>
+<p class="Pp">CE PROGRAMME EST FOURNI &quot;TEL QUEL&quot; ET SANS AUCUNE GARANTIE EXPRESSE OU IMPLICITE, Y COMPRIS, SANS S'Y LIMITER, LES GARANTIES IMPLICITES DE QUALITÉ MARCHANDE ET D'ADÉQUATION À UN USAGE PARTICULIER.</p>
+<p class="Pp">Ce programme est un logiciel libre ; vous pouvez le redistribuer et/ou le modifier selon les termes de la Licence Publique Générale GNU telle que publiée par la Free Software Foundation, version 2 ; OU la Licence Artistique de Perl. Sur les systèmes UNIX et similaires, vous pouvez exécuter `man perlgpl` ou `man perlartistic` pour lire ces licences.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale GNU avec ce programme ; sinon, écrivez à la Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VERSION'><a class='permalink' href='#VERSION'>VERSION</a></h1>
+<p class="Pp">pt-index-usage 3.7.0</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='POD_ERRORS'><a class='permalink' href='#POD_ERRORS'>ERREURS POD</a></h1>
+<p class="Pp">Hé ! <b>Le document ci-dessus contenait des erreurs de codage, qui sont expliquées ci-dessous :</b></p>
+<dl class="Bl-tag">
+  <dt id="Around"><a class="permalink" href="#Around">Autour de la ligne 7590 :</a></dt>
+  <dd>Caractère non-ASCII rencontré avant =encoding dans 'Percona&#x2019;s'. Assumant UTF-8</dd>
+</dl>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-01-01</td>
+    <td class="foot-os">perl v5.40.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/percona-toolkit/">extra/percona-toolkit</a></dd>
+        <dt>Version :</dt>
+        <dd>3.7.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.percona.com/software/database-tools/percona-toolkit">https://www.percona.com/software/database-tools/percona-toolkit</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/percona-toolkit/">/listing/extra/percona-toolkit/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#RISKS">RISQUES</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OUTPUT">SORTIE</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#DSN_OPTIONS">OPTIONS DSN</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONNEMENT</a></li>
+        
+            <li><a href="#ATTENTION">ATTENTION</a></li>
+        
+            <li><a href="#SYSTEM_REQUIREMENTS">CONFIGURATION REQUISE</a></li>
+        
+            <li><a href="#BUGS">BOGUES</a></li>
+        
+            <li><a href="#DOWNLOADING">TÉLÉCHARGEMENT</a></li>
+        
+            <li><a href="#AUTHORS">AUTEURS</a></li>
+        
+            <li><a href="#ABOUT_PERCONA_TOOLKIT">À PROPOS DE PERCONA TOOLKIT</a></li>
+        
+            <li><a href="#COPYRIGHT,_LICENSE,_AND_WARRANTY">DROITS D'AUTEUR, LICENCE ET GARANTIE</a></li>
+        
+            <li><a href="#VERSION">VERSION</a></li>
+        
+            <li><a href="#POD_ERRORS">ERREURS POD</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pt-index-usage.1p.en.txt">txt</a>, 
+        
+            <a href="/man/pt-index-usage.1p.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

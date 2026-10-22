@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>qblog.h(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">qblog.h(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libqb/">libqb</a></p>
+<p class="lic">Licences: LGPL-2.1-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">QBLOG.H(3)</td>
+    <td class="head-vol">Manuel du programmeur libqb</td>
+    <td class="head-rtitle">QBLOG.H(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">qblog.h - L'API de journalisation fournit quatre parties principales (bases, filtrage, threading &amp; blackbox).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPIS'><a class='permalink' href='#SYNOPIS'>SYNOPIS</a></h1>
+<pre><b>#include &lt;qb/qblog.h&gt;</b></pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">L'idée derrière ce système de journalisation n'est pas d'être prescriptif, mais de fournir un ensemble d'outils pour aider le développeur à accomplir ce qu'il souhaite rapidement et facilement.</p>
+<p class="Pp">API de journalisation de base.</p>
+<p class="Pp">Appelez <i>qb_log()</i> pour générer un message de journalisation. Ensuite, pour écrire le message quelque part de significatif, appelez <i>qb_log_ctl()</i> pour configurer les cibles.</p>
+<p class="Pp">Utilisation la plus simple possible :</p>
+<pre>main() {
+     qb_log_init(&quot;simple-log&quot;, LOG_DAEMON, LOG_INFO);
+        // ...
+     qb_log(LOG_WARNING, &quot;attention&quot;);
+        // ...
+     qb_log_fini();
+}</pre>
+<p class="Pp">Configuration des cibles de journalisation.</p>
+<p class="Pp">Une cible de journalisation peut être syslog, stderr, la blackbox, stdout ou un fichier texte. Par défaut, seul syslog est activé. Bien que cela soit habituel pour les démons, c'est rarement approprié pour les programmes ordinaires, qui devraient le désactiver lorsque d'autres cibles (voir ci-dessous) sont utilisées :</p>
+<pre>qb_log_ctl(B_LOG_SYSLOG, QB_LOG_CONF_ENABLED, QB_FALSE);</pre>
+<p class="Pp">Pour activer une cible, faites ceci :</p>
+<pre>qb_log_ctl(QB_LOG_BLACKBOX, QB_LOG_CONF_ENABLED, QB_TRUE);</pre>
+<p class="Pp">syslog, stderr, la blackbox et stdout sont statiques (ils n'ont pas besoin d'être créés, juste activés ou désactivés). Cependant, vous pouvez ouvrir plusieurs fichiers journaux (dans la plage inclusive
+    <b>QB_LOG_TARGET_DYNAMIC_START</b> jusqu'à <b>QB_LOG_TARGET_DYNAMIC_END</b>).
+    Pour ce faire, utilisez le code suivant :</p>
+<pre>mytarget = qb_log_file_open(&quot;/var/log/mylogfile&quot;);
+qb_log_ctl(mytarget, QB_LOG_CONF_ENABLED, QB_TRUE);</pre>
+<p class="Pp">Une fois vos cibles activées/ouvertes, vous pouvez les configurer comme suit : Configuration de la taille de la blackbox :</p>
+<pre>qb_log_ctl(QB_LOG_BLACKBOX, QB_LOG_CONF_SIZE, 1024*10);</pre>
+<p class="Pp">Rendre la journalisation dans un fichier multi-threadée :</p>
+<pre>qb_log_ctl(mytarget, QB_LOG_CONF_THREADED, QB_TRUE);</pre>
+<p class="Pp">Parfois, les démons syslog sont préconfigurés pour filtrer les messages n'excédant pas une priorité particulière. Lorsque cela se produit pour la cible de journalisation, la priorité désignée du message est transmise inchangée, entraînant potentiellement une perte de message. Pour les messages d'importance allant jusqu'à <b>LOG_DEBUG</b>, cela peut être contourné en augmentant proportionnellement les priorités à passer à syslog (ici, l'étape est telle que <b>LOG_DEBUG</b> est promu à <b>LOG_INFO</b>) :</p>
+<pre>qb_log_ctl(QB_LOG_SYSLOG, QB_LOG_CONF_PRIORITY_BUMP,
+           LOG_INFO - LOG_DEBUG);</pre>
+<p class="Pp">Pour s'assurer que tous les journaux des cibles de fichiers sont synchronisés sur disque (les nouveaux messages sont expressément transférés sur le périphérique de stockage au fur et à mesure qu'ils arrivent, sinon par défaut à <b>QB_FALSE</b>) :</p>
+<pre>qb_log_ctl(mytarget, QB_LOG_CONF_FILE_SYNC, QB_TRUE);</pre>
+<p class="Pp">Filtrage des messages.</p>
+<p class="Pp">Pour avoir plus de contrôle sur les messages de journalisation qui vont vers quelle cible, vous pouvez appliquer des filtres aux cibles. Ce qui se passe, c'est que les sites d'appel souhaités ont le bit correct défini. Ensuite, lorsque le message de journalisation est généré, il est envoyé aux cibles en fonction du bit qui est défini dans le bitmap "cible" du site d'appel. Les messages peuvent être filtrés en fonction de :</p>
+<p class="Pp">Donc, pour que tous les journaux de evil_function() soient envoyés à stderr, faites ceci :</p>
+<pre>qb_log_filter_ctl(QB_LOG_STDERR, QB_LOG_FILTER_ADD,
+             QB_LOG_FILTER_FUNCTION, &quot;evil_function&quot;, LOG_TRACE);</pre>
+<p class="Pp">Donc, pour que tous les journaux de totem* (avec une priorité &lt;= LOG_INFO) soient envoyés à stderr, faites ceci :</p>
+<pre>qb_log_filter_ctl(QB_LOG_STDERR, QB_LOG_FILTER_ADD,
+             QB_LOG_FILTER_FILE, &quot;totem&quot;, LOG_INFO);</pre>
+<p class="Pp">Donc, pour que tous les journaux contenant la sous-chaîne "ringbuffer" soient envoyés à stderr, faites ceci :</p>
+<pre>qb_log_filter_ctl(QB_LOG_STDERR, QB_LOG_FILTER_ADD,
+             QB_LOG_FILTER_FORMAT, &quot;ringbuffer&quot;, LOG_TRACE);</pre>
+<p class="Pp">Journalisation multi-threadée non bloquante.</p>
+<p class="Pp">La journalisation n'est multi-threadée que lorsqu'elle est activée. Si vous prévoyez de journaliser à partir de plusieurs threads, vous devez initialiser le thread de journalisation de libqb et utiliser qb_log_filter_ctl pour définir le drapeau QB_LOG_CONF_THREADED sur toutes les cibles de journalisation utilisées.</p>
+<p class="Pp">Pour obtenir une journalisation non bloquante, de sorte que tout appel à write() ou syslog() ne retarde pas votre programme, vous pouvez également utiliser la journalisation multi-threadée.</p>
+<p class="Pp">Utilisation de la journalisation multi-threadée :</p>
+<pre>main() {
+     qb_log_init(&quot;simple-log&quot;, LOG_DAEMON, LOG_INFO);
+     qb_log_ctl(QB_LOG_SYSLOG, QB_LOG_CONF_THREADED, QB_TRUE);
+        // ...
+        daemonize();
+        // appelez ceci après avoir fait fork()
+        qb_log_thread_start();
+        // ...
+     qb_log(LOG_WARNING, &quot;attention&quot;);
+        // ...
+     qb_log_fini();
+}</pre>
+<p class="Pp">Une blackbox pour le diagnostic sur le terrain.</p>
+<p class="Pp">Ceci stocke les messages de journalisation dans un tampon circulaire afin qu'ils puissent être écrits dans un fichier si le programme plante (vous devrez intercepter SIGSEGV). Ceux-ci peuvent ensuite être facilement imprimés plus tard.</p>
+<p class="Pp">Utilisation de la blackbox :</p>
+<pre>static void sigsegv_handler(int sig)
+{
+        (void)signal (SIGSEGV, SIG_DFL);
+        qb_log_blackbox_write_to_file(&quot;simple-log.fdata&quot;);
+        qb_log_fini();
+        raise(SIGSEGV);
+}
+main() {
+     signal(SIGSEGV, sigsegv_handler);
+     qb_log_init(&quot;simple-log&quot;, LOG_DAEMON, LOG_INFO);
+     qb_log_filter_ctl(QB_LOG_BLACKBOX, QB_LOG_FILTER_ADD,
+                  QB_LOG_FILTER_FILE, &quot;*&quot;, LOG_DEBUG);
+     qb_log_ctl(QB_LOG_BLACKBOX, QB_LOG_CONF_SIZE, 1024*10);
+     qb_log_ctl(QB_LOG_BLACKBOX, QB_LOG_CONF_ENABLED, QB_TRUE);
+        // ...
+     qb_log(LOG_WARNING, &quot;attention&quot;);
+        // ...
+     qb_log_fini();
+}</pre>
+<p class="Pp">Marquage des messages.</p>
+<p class="Pp">Vous pouvez marquer les messages en utilisant le deuxième argument de <i>qb_logt()</i> ou en utilisant <i>qb_log_filter_ctl()</i>. Ceci peut être utilisé pour ajouter des informations de fonctionnalité ou de sous-système aux journaux.</p>
+<pre>const char* my_tags_stringify(uint32_t tags) {
+        if (qb_bit_is_set(tags, QB_LOG_TAG_LIBQB_MSG_BIT) {
+                return &quot;libqb&quot;;
+        } else if (tags == 3) {
+                return &quot;trois&quot;;
+        } else {
+                return &quot;MAIN&quot;;
+        }
+}
+main() {
+        // ...
+        qb_log_tags_stringify_fn_set(my_tags_stringify);
+        qb_log_format_set(QB_LOG_STDERR, &quot;[%5g] %p %b&quot;);
+        // ...
+        qb_logt(LOG_INFO, 3, &quot;bonjour&quot;);
+        qb_logt(LOG_INFO, 0, &quot;bonjour&quot;);
+}</pre>
+<p class="Pp">Le code ci-dessus produira :</p>
+<pre>[libqb] un message
+[trois] info bonjour
+[MAIN ] info bonjour</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTE'><a class='permalink' href='#NOTE'>NOTE</a></h1>
+<p class="Pp">la blackbox n'est pas activée par défaut.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp"><a href='/man/qb_log_filter_fn_set.3.en'>qb_log_filter_fn_set(3)</a>,
+    <a href='/man/qb_log_from_external_source_va2.3.en'>qb_log_from_external_source_va2(3)</a>, <a href='/man/qb_log_thread_start.3.en'>qb_log_thread_start(3)</a>,
+    <a href='/man/qb_log_target_user_data_get.3.en'>qb_log_target_user_data_get(3)</a>,
+    <a href='/man/qb_log_tags_stringify_fn_set.3.en'>qb_log_tags_stringify_fn_set(3)</a>, <a href='/man/qb_log_file_reopen.3.en'>qb_log_file_reopen(3)</a>,
+    <a href='/man/qb_log_fini.3.en'>qb_log_fini(3)</a>, <a href='/man/qb_log_callsites_dump.3.en'>qb_log_callsites_dump(3)</a>,
+    <a href='/man/qb_log_ctl2.3.en'>qb_log_ctl2(3)</a>, <a href='/man/qb_log_target_user_data_set.3.en'>qb_log_target_user_data_set(3)</a>,
+    <a href='/man/qb_log_target_format.3.en'>qb_log_target_format(3)</a>, <a href='/man/qb_log_thread_priority_set.3.en'>qb_log_thread_priority_set(3)</a>,
+    <a href='/man/qb_log_facility2int.3.en'>qb_log_facility2int(3)</a>, <a href='/man/qb_log_callsites_register.3.en'>qb_log_callsites_register(3)</a>,
+    <a href='/man/qb_log_filter_ctl2.3.en'>qb_log_filter_ctl2(3)</a>, <a href='/man/qb_log_file_close.3.en'>qb_log_file_close(3)</a>,
+    <a href='/man/qb_log_format_set.3.en'>qb_log_format_set(3)</a>, <a href='/man/qb_log_real_.3.en'>qb_log_real_(3)</a>,
+    <a href='/man/qb_log_from_external_source_va.3.en'>qb_log_from_external_source_va(3)</a>, <a href='/man/qb_log_callsite_get.3.en'>qb_log_callsite_get(3)</a>,
+    <a href='/man/qb_log_blackbox_write_to_file.3.en'>qb_log_blackbox_write_to_file(3)</a>, <a href='/man/qb_log_real_va_.3.en'>qb_log_real_va_(3)</a>,
+    <a href='/man/qb_log_from_external_source.3.en'>qb_log_from_external_source(3)</a>,
+    <a href='/man/qb_log_blackbox_print_from_file.3.en'>qb_log_blackbox_print_from_file(3)</a>, <a href='/man/qb_log_facility2str.3.en'>qb_log_facility2str(3)</a>,
+    <a href='/man/qb_log_callsite_get2.3.en'>qb_log_callsite_get2(3)</a>, <a href='/man/qb_log_ctl.3.en'>qb_log_ctl(3)</a>,
+    <a href='/man/qb_log_filter_ctl.3.en'>qb_log_filter_ctl(3)</a>, <a href='/man/qb_log_custom_close.3.en'>qb_log_custom_close(3)</a>,
+    <a href='/man/qb_log_init.3.en'>qb_log_init(3)</a>, <a href='/man/qb_log_file_open.3.en'>qb_log_file_open(3)</a>,
+    <a href='/man/qb_log_custom_open.3.en'>qb_log_custom_open(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a clas</h1>
+</section>
+</div>
+</section>
+            </article>
+            
+        </main>
+        <footer>
+        </footer>
+    </body>
+</html>
+s='permalink' href='#COPYRIGHT'>DROITS D'AUTEUR</a></h1>
+<p class="Pp">Copyright (c) 2017 Red Hat, Inc.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-09-16</td>
+    <td class="foot-os">LIBQB</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libqb/">extra/libqb</a></dd>
+        <dt>Version :</dt>
+        <dd>2.0.9-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/ClusterLabs/libqb">https://github.com/ClusterLabs/libqb</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.1-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libqb/">/listing/extra/libqb/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#NOTE">NOTE</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#COPYRIGHT">DROITS D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/qblog.h.3.en.txt">txt</a>, 
+        
+            <a href="/man/qblog.h.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlmroapi(1perl) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlmroapi.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLMROAPI(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLMROAPI(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">perlmroapi - Interface de plugin pour l'ordre de résolution des méthodes Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Depuis Perl 5.10.1, il existe une nouvelle interface pour greffer et utiliser des ordres de résolution de méthodes autres que celui par défaut (recherche en profondeur linéaire). L'ordre de résolution de méthodes C3 ajouté en 5.10.0 a été réimplémenté en tant que plugin, sans modifier son interface en espace Perl.</p>
+<p class="Pp">Chaque plugin doit s'enregistrer en fournissant la structure suivante</p>
+<pre>struct mro_alg {
+    AV *(*resolve)(pTHX_ HV *stash, U32 level);
+    const char *name;
+    U16 length;
+    U16 kflags;
+    U32 hash;
+};</pre>
+<p class="Pp">et en appelant
+  <span class="Li">&quot;Perl_mro_register&quot;</span>:</p>
+<pre>Perl_mro_register(aTHX_ &amp;my_mro_alg);</pre>
+<dl class="Bl-tag">
+  <dt id="resolve-cb"><a class="permalink" href="#resolve-cb">resolve</a></dt>
+  <dd>Pointeur vers la fonction de linéarisation, décrite ci-dessous.</dd>
+  <dt id="name-cb"><a class="permalink" href="#name-cb">name</a></dt>
+  <dd>Nom du MRO, soit en ISO-8859-1 soit en UTF-8.</dd>
+  <dt id="length-cb"><a class="permalink" href="#length-cb">length</a></dt>
+  <dd>Longueur du nom.</dd>
+  <dt id="kflags-cb"><a class="permalink" href="#kflags-cb">kflags</a></dt>
+  <dd>Si le nom est fourni en UTF-8, définissez ceci à
+      <span class="Li">&quot;HVhek_UTF8&quot;</span>. La valeur est passée directement
+      comme paramètre <i>kflags</i> à
+    <span class="Li">hv_common()</span>.</dd>
+  <dt id="hash-cb"><a class="permalink" href="#hash-cb">hash</a></dt>
+  <dd>Une valeur de hachage précalculée pour le nom du MRO, ou 0.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Callbacks'><a class='permalink' href='#Callbacks'>Callbacks</a></h1>
+<p class="Pp">La fonction <span class="Li">&quot;resolve&quot;</span> est appelée pour générer une ISA linéarisée pour le stash donné, en utilisant ce MRO. Elle est appelée avec un pointeur vers le stash et un niveau <i>level</i> de 0. Le cœur du système passe toujours <i>level</i> à 0 lorsqu'il appelle votre fonction - le paramètre est fourni pour permettre à votre implémentation de suivre la profondeur si elle doit récursivement.</p>
+<p class="Pp">La fonction doit retourner une référence à un tableau contenant des SV de type chaîne de caractères donnant les noms des classes parentes dans l'ordre. Les noms des classes doivent être le résultat de l'appel à <span class="Li">HvENAME()</span> sur le stash. Dans les cas où <span class="Li">HvENAME()</span> retourne null, <span class="Li">HvNAME()</span> doit être utilisé à la place.</p>
+<p class="Pp">L'appelant est responsable d'incrémenter le compteur de références du tableau retourné s'il souhaite conserver la structure. Par conséquent, si vous avez créé une valeur temporaire pour laquelle vous ne conservez aucun pointeur, utilisez
+    <span class="Li">sv_2mortal()</span> pour vous assurer qu'elle est correctement libérée. Si vous avez mis en cache votre valeur de retour, retournez un pointeur vers celle-ci sans modifier le compteur de références.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Mise_en_cache'><a class='permalink' href='#Mise_en_cache'>Mise en cache</a></h1>
+<p class="Pp">Le calcul des MRO peut être coûteux. L'implémentation fournit un cache, dans lequel vous pouvez stocker un unique <span class="Li">&quot;SV *&quot;</span>, ou tout ce qui peut être casté en <span class="Li">&quot;SV *&quot;</span>, tel que <span class="Li">&quot;AV *&quot;</span>. Pour lire votre valeur privée, utilisez la macro
+    <span class="Li">MRO_GET_PRIVATE_DATA()</span>, en lui passant la structure
+    <span class="Li">&quot;mro_meta&quot;</span> du stash, et un pointeur vers votre structure
+    <span class="Li">&quot;mro_alg&quot;</span>:</p>
+<pre>meta = HvMROMETA(stash);
+private_sv = MRO_GET_PRIVATE_DATA(meta, &amp;my_mro_alg);</pre>
+<p class="Pp">Pour définir votre valeur privée, appelez
+    <span class="Li">Perl_mro_set_private_data()</span>:</p>
+<pre>Perl_mro_set_private_data(aTHX_ meta, &amp;c3_alg, private_sv);</pre>
+<p class="Pp">Le cache de données privées prendra possession d'une référence vers private_sv, de la même manière que <span class="Li">hv_store()</span> prend possession d'une référence vers la valeur que vous lui passez.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='Exemples'><a class='permalink' href='#Exemples'>Exemples</a></h1>
+<p class="Pp">Pour des exemples d'implémentations de MRO, voir
+    <span class="Li">S_mro_get_linear_isa_c3()</span> et la section
+    <span class="Li">&quot;BOOT:&quot;</span> de <i>ext/mro/mro.xs</i>, et
+    <span class="Li">S_mro_get_linear_isa_dfs()</span> dans
+  <i>mro_core.c</i></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEURS'><a class='permalink' href='#AUTEURS'>AUTEURS</a></h1>
+<p class="Pp">L'implémentation du MRO C3 et des MRO commutables au sein du noyau Perl a été écrite par Brandon L Black. Nicholas Clark a créé l'interface enfichable, a refactorisé l'implémentation de Brandon pour qu'elle fonctionne avec, et a écrit ce document.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans les pages de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#Callbacks">Callbacks</a></li>
+        
+            <li><a href="#Mise_en_cache">Mise en cache</a></li>
+        
+            <li><a href="#Exemples">Exemples</a></li>
+        
+            <li><a href="#AUTEURS">AUTEURS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlmroapi.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlmroapi.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

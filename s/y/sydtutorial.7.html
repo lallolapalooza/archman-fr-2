@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>sydtutorial(7) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">sydtutorial(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/syd/">syd</a></p>
+<p class="lic">Licences: GPL-3.0-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SYDTUTORIAL(7)</td>
+    <td class="head-vol">Manuel d'informations diverses</td>
+    <td class="head-rtitle">SYDTUTORIAL(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><b>sydtutorial</b> - Introduction au tutoriel Syd</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><b>syd</b> *</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce tutoriel explique comment sandboxer des applications avec Syd,
+    écrire des profils de sandbox, et configurer Syd à l'exécution depuis
+    l'intérieur du sandbox. Si vous êtes principalement intéressé par l'utilisation
+    de Syd comme sandbox de compilation de paquets, comme nous le faisons chez Exherbo
+    Linux, vous préférerez peut-être commencer par <a href='/man/syd.2.en'>syd(2)</a> et le
+    profil &quot;paludis&quot; dont les règles peuvent être listées en utilisant
+    &quot;syd-cat -p paludis&quot;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INTRODUCTION'><a class='permalink' href='#INTRODUCTION'>INTRODUCTION</a></h1>
+<p class="Pp">Syd est sécurisé par défaut et hautement configurable pour l'usage
+    de votre application. Au fur et à mesure, vous apprendrez comment restreindre
+    une application de diverses manières tout en gardant le sandbox flexible pour les
+    cas où une restriction n'est pas possible et/ou nécessaire. Pour tirer le
+    meilleur parti de ce tutoriel, il est recommandé de choisir une application dont
+    la fonctionnalité système vous est connue et d'essayer de sandboxer cette
+    application de manière similaire aux instructions du chapitre
+    correspondant. Cette fonctionnalité inclut, avant tout, les appels système
+    que le processus appelle pour interagir avec le noyau Linux et quelles parties
+    du système de fichiers/réseau l'application doit accéder pour remplir sa
+    fonctionnalité correctement.
+    <a href='/man/bpftrace.1.en'>bpftrace(1)</a> et <a href='/man/strace.1.en'>strace(1)</a> sont vos amis. Dans un autre chapitre, nous découvrirons également
+    <a href='/man/pandora.1.en'>pandora(1)</a> qui est un outil pour générer automatiquement des profils Syd
+    pour une application donnée, restez à l'écoute !</p>
+<p class="Pp">Dans son sens le plus simple, vous pouvez considérer Syd comme un
+    proxy entre le noyau Linux et le processus sandboxé : Syd vérifie les arguments
+    des appels système pour l'accès et si l'accès est accordé, Syd exécutera
+    l'appel système <i>au nom du processus sandboxé</i> et retournera le résultat
+    au processus sandboxé. Dorénavant, il est important de garder cela à
+    l'esprit : du point de vue du noyau Linux, c'est l'un des threads de gestionnaire
+    d'appels système de Syd qui exécute l'appel système, <i>pas</i> le processus
+    sandboxé. Ceci est nécessaire pour obtenir un sandbox exempt de Time-of-check
+    to Time-of-use. Syd fait de son mieux pour réduire les effets secondaires, par
+    exemple avec ls /proc/self, le processus sandboxé verra toujours son propre
+    identifiant de processus, pas celui de Syd.</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd><b>Apprendre en faisant</b> : Tracez vos applications, apprenez les
+      détails !</dd>
+  <dt>2.</dt>
+  <dd><b>Expérimenter</b> : Modifiez Syd de diverses manières et observez les
+      effets !</dd>
+  <dt>3.</dt>
+  <dd><b>Faites-en un jeu</b> : Essayez de casser votre propre profil de sandbox
+      que vous avez configuré, puis rendez-le plus strict et réessayez !</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='INSTALLATION_RAPIDE_SYD'><a class='permalink' href='#INSTALLATION_RAPIDE_SYD'>INSTALLATION RAPIDE SYD</a></h1>
+<p class="Pp">Vous avez les alternatives suivantes :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Utilisez le binaire de la dernière version situé @
+      <a href='https://distfiles.exherbo.org/#sydbox/'>https://distfiles.exherbo.org/#sydbox/</a></dd>
+  <dt>2.</dt>
+  <dd>cave resolve sys-apps/sydbox:3 # si Exherbo (démasquer avec le mot-clé
+    testing)</dd>
+  <dt>3.</dt>
+  <dd>emerge sys-apps/syd # si Gentoo</dd>
+  <dt>4.</dt>
+  <dd>cargo install syd # Vous n'obtiendrez pas les pages de manuel, vérifiez:
+      <a href='https://man.exherbo.org'>https://man.exherbo.org</a></dd>
+  <dt>5.</dt>
+  <dd><b>Prenez le temps de packager Syd pour votre distribution Linux et
+      partagez l'amour !</b></dd>
+</dl>
+<p class="Pp">Notez que les versions sont signées avec cette clé PGP
+    <a href='https://keybase.io/alip/pgp_keys.asc'>https://keybase.io/alip/pgp_keys.asc</a>, alors prenez le temps de vérifier l'archive tar
+    que vous avez téléchargée. Si vous utilisez cargo pour installer, vous devez installer
+    manuellement la bibliothèque &quot;libseccomp&quot;. C'est une bibliothèque
+    relativement courante et elle est packagée par presque toutes les distributions
+    Linux de nos jours. Deux choses à garder à l'esprit :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Installez les en-têtes de développement de libseccomp (généralement inclus
+      ou livrés avec, par exemple, le paquet libseccomp-devel).</dd>
+  <dt>2.</dt>
+  <dd>Installez les bibliothèques statiques de libseccomp si vous souhaitez lier
+      Syd statiquement (généralement inclus ou livrés avec, par exemple, le paquet
+      libseccomp-static).</dd>
+</dl>
+<p class="Pp">Une dernière note, au moment de la rédaction avec la version
+    2.5.5 de libseccomp, une libseccomp patchée est requise pour que les interruptions
+    fonctionnent correctement sous Syd (libseccomp.git prend déjà en charge le nouveau
+    flag du noyau Linux, nous ajoutons également un patch pour le définir par défaut).
+    La version binaire est compilée avec une libseccomp patchée et le build source
+    d'Exherbo patch le paquet libseccomp pendant la phase de préparation. Notez que, selon
+    notre expérience, ce bug est principalement perceptible lorsque vous sandboxez des
+    applications écrites en langage Go. Sinon, vous le remarquerez rarement avec la
+    dernière version de libseccomp. À titre de référence, le patchset se trouve ici :
+    <a href='https://gitlab.exherbo.org/exherbo/arbor/-/tree/master/packages/sys-libs/libseccomp/files'>https://gitlab.exherbo.org/exherbo/arbor/-/tree/master/packages/sys-libs/libseccomp/files</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYD_101'><a class='permalink' href='#SYD_101'>SYD 101</a></h1>
+<p class="Pp">Premièrement, si vous exécutez Syd sans arguments, vous entrerez
+    silencieusement dans un nouveau shell. C'est parce que Syd est conçu pour agir
+    comme un shell de connexion et dans ce cas, il utilise le profil de sandbox
+    &quot;user&quot;. Nous aborderons les profils plus tard, mais si vous êtes
+    curieux, tapez &quot;syd-cat -p user | less&quot; et lisez les règles.</p>
+<p class="Pp">Deuxièmement, Syd est sécurisé par défaut et vous permet de
+    construire un sandbox adapté aux besoins de vos applications. Voici à quoi
+    ressemble l'état du sandbox avant que nous passions des options à Syd :</p>
+<div class="Bd-indent">
+<pre>$ syd -mstat
+syd:
+Process ID: 0
+Lock: None
+Capabilities: Read, Stat, Write, Execute, Connect, Bind
+Options:
+Memory Max: 134217728
+Virtual Memory Max: 4294967296
+Pid Max: 128
+SegvGuard Max Crashes: 5
+SegvGuard Expiry: 120 seconds
+SegvGuard Suspension: 600 seconds
+Allowed UID Transitions: (total: 0, source -&gt; target)
+Allowed GID Transitions: (total: 0, source -&gt; target)
+Cidr Rules: (total 0, highest precedence first)
+Glob Rules: (total 0, highest precedence first)
+Mask Rules: (total 1)
+1. Pattern: /proc/cmdline
+Force Rules: (total 0, default action: Kill)
+$</pre>
+</div>
+<p class="Pp">Pour l'instant, concentrons-nous uniquement sur la ligne
+    &quot;Capabilities&quot;. Ce sont les types de sandboxing qui sont activés
+    par défaut au démarrage.</p>
+<p class="Pp">Initialement, nous allons faire le minimum et essayer d'exécuter
+    un binaire lié statiquement sous Syd. <a href='/man/busybox.1.en'>busybox(1)</a> est un outil pratique pour notre
+    expérience :</p>
+<div class="Bd-indent">
+<pre>$ file $(which busybox)
+/usr/host/bin/busybox: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, stripped
+$ syd busybox true
+syd: exec error: No such file or directory
+$ echo $?
+2
+$ syd-sys -e 2
+2       ENOENT  No such file or directory
+$</pre>
+</div>
+<p class="Pp">Nous obtenons une erreur indiquant que le chemin n'existe pas.
+    Ceci est dû au fait que le &quot;Stat Sandboxing&quot; est activé par défaut
+    et que le chemin vers le binaire <a href='/man/busybox.1.en'>busybox(1)</a> est caché. Nous voyons que Syd clarifie
+    l'erreur qui a provoqué l'échec de l'exécution grâce à sa valeur de sortie. Nous utilisons
+    l'utilitaire <a href='/man/syd-sys.1.en'>syd-sys(1)</a>, l'un des nombreux utilitaires livrés avec
+    <a href='/man/syd.1.en'>syd(1)</a>, pour rechercher la définition de l'erreur par le code de sortie.</p>
+<p class="Pp">Essayons d'autoriser et de réessayer :</p>
+<div class="Bd-indent">
+<pre>$ syd -m'allow/stat+/usr/host/bin/busybox' busybox true
+syd: exec error: No such file or directory
+$</pre>
+</div>
+<p class="Pp">Pas de succès, nous obtenons la même erreur. C'est parce que le
+    chemin que nous avons spécifié pour &quot;allow/stat&quot; n'est pas un chemin
+    canonisé. Un chemin canisé est un chemin qui commence par &quot;/&quot; et ne
+    contient ni &quot;.&quot; ni &quot;..&quot; ni de barres obliques répétées
+    ni de liens symboliques dans aucun de ses composants de chemin. Trouvons le chemin
+    canisé de notre binaire <a href='/man/busybox.1.en'>busybox(1)</a> et réessayons avec.</p>
+<div class="Bd-indent">
+<pre>$ readlink -f /usr/host/bin/busybox
+/usr/x86_64-pc-linux-musl/bin/busybox
+$ syd -m'allow/stat+/usr/x86_64-pc-linux-musl/bin/busybox' busybox true
+{&quot;act&quot;:&quot;Deny&quot;,&quot;cap&quot;:&quot;x&quot;,&quot;ctx&quot;:&quot;access&quot;,&quot;id&quot;:&quot;nostalgic_black&quot;,&quot;l&quot;:2,&quot;path&quot;:&quot;/usr/x86_64-pc-linux-musl/bin/busybox&quot;,&quot;pid&quot;:2602591,&quot;sys&quot;:&quot;execve&quot;,&quot;uid&quot;:1000,...}
+syd: exec error: Permission denied
+$ echo $?
+13
+$ syd-sys -e 13
+13      EACCES  Permission denied
+$</pre>
+</div>
+<p class="Pp">Nous obtenons à nouveau une erreur, mais cette fois nous avons du
+    contexte. Comme le Stat Sandboxing consiste à cacher les chemins, signaler les violations
+    d'accès à ce sujet sur la sortie d'erreur standard irait à l'encontre de son
+    objectif, Syd était donc silencieux. Cependant, cette fois, nous voyons
+    &quot;Exec Sandboxing&quot; à l'œuvre et Syd nous donne des détails sur la
+    violation d'accès. Le format est des lignes JSON. Il peut être difficile à lire au
+    début, mais le fait qu'il soit facilement analysable</p>
+</div>
+</section>
+
+</section>
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+seable vous permet de rechercher facilement
+    des journaux de violation d'accès Syd dans le journal de votre système et de les filtrer à l'aide d'outils tels que
+    <a href='/man/jq.1.en'>jq(1)</a>.</p>
+<p class="Pp">Pour en revenir à la tâche, observons brièvement que il s'agit d'une
+    violation d'accès ("ctx":"access") concernant l'appel système
+    <a href='/man/execve.2.en'>execve(2)</a> ("sys":"execve"). La
+    violation d'accès est de catégorie Exec ("cap":"x") et le
+    chemin cible est "/usr/x86_64-pc-linux-musl/bin/busybox". La
+    décision a été de refuser l'appel système ("act":"Deny"). Nous
+    avons également des métadonnées utiles telles que l'identifiant du processus ("pid") et l'identifiant de l'utilisateur ("uid") exécutant l'appel système fautif. Le
+    champ "id" est un nom lisible par l'homme généré à partir du
+    champ "pid" pour faciliter le suivi des journaux. Il y a plus
+    d'informations dans les champs omis, il est recommandé de jeter un coup d'œil à
+    une entrée de journal de violation d'accès complète par vous-même et de noter
+    les champs qui vous sont utiles. Permettons cette fois notre binaire
+    <a href='/man/busybox.1.en'>busybox(1)</a> pour l'exécution et retentons :</p>
+<div class="Bd-indent">
+<pre>$ syd -m'allow/exec,stat+/usr/x86_64-pc-linux-musl/bin/busybox' busybox true
+$ echo $?
+$ 0</pre>
+</div>
+<p class="Pp">Tâche accomplie ! Notez comment nous avons utilisé la notation courte
+    "allow/exec,stat+/chemin" qui est un moyen pratique de passer -m
+    "allow/exec+/chemin" -m "allow/stat+/chemin" en tant que règle unique.</p>
+<p class="Pp">Essayons maintenant à nouveau avec un exécutable lié dynamiquement et
+    découvrons ce que nous devons ajouter pour que cela fonctionne. Cette fois, nous utiliserons l'utilitaire
+    <a href='/man/gtrue.1.en'>gtrue(1)</a> du projet GNU coreutils, qui est lié dynamiquement sur ce système :</p>
+<div class="Bd-indent">
+<pre>$ file $(which gtrue)
+/usr/host/bin/gtrue: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /usr/x86_64-pc-linux-musl/lib/ld-musl-x86_64.so.1, stripped
+$ lddtree $(which gtrue)
+/usr/x86_64-pc-linux-musl/lib/ld-musl-x86_64.so.1 =&gt; /usr/x86_64-pc-linux-musl/lib/libc.so
+libc.so =&gt; /usr/x86_64-pc-linux-musl/lib/libc.so
+$ readlink -f $(which gtrue)
+/usr/x86_64-pc-linux-musl/bin/gtrue
+$ syd -m'allow/exec,stat+/usr/x86_64-pc-linux-musl/bin/gtrue' gtrue
+{&quot;act&quot;:&quot;Kill&quot;,&quot;cap&quot;:&quot;x&quot;,&quot;ctx&quot;:&quot;access&quot;,&quot;id&quot;:&quot;compassionate_spence&quot;,&quot;l&quot;:2,&quot;path&quot;:&quot;/usr/x86_64-pc-linux-musl/lib/libc.so&quot;,&quot;pid&quot;:2601331,&quot;sys&quot;:&quot;exec&quot;,&quot;uid&quot;:1000,...}
+$ echo $?
+137
+$</pre>
+</div>
+<p class="Pp">En observant le chemin fautif de la nouvelle violation d'accès, nous
+    comprenons que libc.so s'est vu refuser l'accès en exécution. Nous pouvons également observer que cette fois, Syd a terminé le processus ("act":"Kill")
+    plutôt que de refuser l'accès à l'appel système
+    ("act":"Deny"). Ceci est également évident d'après le code de sortie qui est 137 = 128 + 9, où 9 est la valeur du signal
+    "SIGKILL". La distinction deny/kill provient des internes de Syd et n'est pas significative pour nous à ce stade. Il suffit de dire que dans les deux cas, l'exécution a été arrêtée avant que tout code du binaire cible ait eu une chance de s'exécuter.</p>
+<p class="Pp">Lors de la vérification d'accès pour le Sandboxing d'exécution, Syd traite les exécutables liés dynamiquement et leur arborescence de dépendances de bibliothèques dynamiques comme une seule unité. En ce sens, "allow/read+/chemin/vers/libc.so" et
+    "allow/exec+/chemin/vers/libc.so" servent deux objectifs différents : le
+    premier vous permet de lire littéralement le contenu du fichier tandis que le
+    dernier vous permet de charger le fichier en mémoire dans le cadre d'un exécutable.</p>
+<p class="Pp">Ayant clarifié cela, permettons à libc.so et retentons :</p>
+<div class="Bd-indent">
+<pre>$ syd -m'allow/exec,stat+/usr/x86_64-pc-linux-musl/bin/gtrue' -m 'allow/exec+/usr/x86_64-pc-linux-musl/lib/libc.so' gtrue
+$ echo $?
+0
+$</pre>
+</div>
+<p class="Pp">Tâche accomplie ! Le lecteur curieux reconnaîtra que nous n'avons pas eu à ajouter une clause "allow/stat" pour "libc.so". C'est
+    parce que les concepts de Sandboxing de Stat et de Masquage de Chemin concernent spécifiquement l'accès direct aux chemins de fichiers. Le chargement de bibliothèques en mémoire fait partie du processus d'exécution et est donc soumis uniquement au Sandboxing d'exécution (et
+    au Sandboxing Forcé, alias Vérification de Binaire, dont nous parlerons plus en détail
+    plus tard).</p>
+<p class="Pp">Maintenant, à la troisième étape, généralisons notre petit sandbox
+    de sorte qu'il autorise quelle que soit la version du binaire
+    <a href='/man/true.1.en'>true(1)</a> que nous exécutons, de plus il autorisera également l'exécution de tout autre utilitaire coreutils préfixé par "g*". Nous ne voulons pas non plus nous soucier si
+    "libc.so" a un suffixe de version et voulons autoriser toutes les bibliothèques
+    sous les chemins de bibliothèques communs sans avoir à les lister une par une. Pour y parvenir, nous allons utiliser des motifs
+    <a href='/man/glob.3.en'>glob(3)</a> :</p>
+<div class="Bd-indent">
+<pre>$ eclectic coreutils list
+Available providers for coreutils:
+[1]   gnu
+[2]   busybox *
+$ readlink -f /bin/true
+/usr/x86_64-pc-linux-musl/bin/busybox
+$ syd -m'allow/stat,exec+/usr/**/bin/{busybox,g*}' -m 'allow/exec+/usr/**/lib*/*.so*' true
+$ echo $?
+0
+$ doas eclectic coreutils set -1
+$ readlink -f /bin/true
+/usr/x86_64-pc-linux-musl/bin/gtrue
+$ syd -m'allow/stat,exec+/usr/**/bin/{busybox,g*}' -m 'allow/exec+/usr/**/lib*/*.so*' true
+$ echo $?
+0
+$</pre>
+</div>
+<p class="Pp">Nous avons vu comment les motifs
+    <a href='/man/glob.3.en'>glob(3)</a> nous facilitent la vie dans la configuration de notre sandbox. Nous avons vu qu'il est possible d'utiliser "**" pour faire une correspondance récursive et que les alternances de la forme "{foo,bar}" sont prises en charge. Syd prend également en charge les **alternances vides** de la forme "foo/{bar/,}baz" et l'**extension triple étoile**, c'est-à-dire que "foo/*** "est équivalent à la combinaison des deux motifs
+    "foo" et "foo/**". Enfin, nous pouvons voir que nous avons réussi à autoriser beaucoup plus en utilisant le même nombre de règles. Syd dispose de nombreuses autres fonctionnalités puissantes qui rendent l'édition de règles simple et efficace, telles que :</p>
+<ul class="Bl-bullet">
+  <li>Vous pouvez spécifier des chemins interdits avec "deny/" en plus de
+      "allow/".</li>
+  <li>Vous pouvez spécifier des chemins filtrés avec "filter/", similaire à
+      "deny/" et "allow/" pour silencier les violations d'accès tout en refusant l'accès.</li>
+  <li>Si plus d'une règle correspond au chemin cible, <b>la dernière règle correspondante l'emporte.</b></li>
+  <li>Plusieurs règles peuvent être assemblées dans un fichier de configuration et passées à Syd avec <i>-P&lt;path&gt;</i>.</li>
+  <li>Les fichiers ayant des ensembles de règles communs peuvent être inclus à partir d'autres fichiers de configuration en utilisant la clause "include &lt;path&gt;".</li>
+  <li>Les chemins relatifs dans les clauses "include" sont canonisés en fonction du répertoire parent du fichier de configuration actuel (et non du répertoire de travail actuel !).</li>
+  <li>Les variables d'environnement sont développées dans les fichiers de configuration. Les variables d'environnement non définies provoqueront une erreur.</li>
+  <li>La configuration peut être verrouillée à tout moment avec la clause "lock:on" empêchant toute modification ultérieure du sandbox.</li>
+</ul>
+<p class="Pp">À ce stade, il est fortement recommandé d'expérimenter avec la configuration de Syd. N'ayez pas peur d'ajouter autant de règles que vous le souhaitez.
+    En interne, Syd conserve les motifs
+    <a href='/man/glob.3.en'>glob(3)</a> sous forme de <b>globsets</b> et les compile en une seule <b>expression régulière</b> pour une correspondance efficace. Cela offre des performances acceptables jusqu'à environ 10 000 règles sur mon système, votre expérience peut varier.</p>
+<p class="Pp">Nous avons eu un aperçu de la manière de configurer les listes blanches de chemins Syd. Cela est similaire pour les autres types de sandboxing. Laissons cela pour plus tard et explorons une autre façon de configurer Syd. Cette fois, nous le ferons à l'exécution, depuis l'intérieur du sandbox. Il peut être choquant d'un point de vue sécuritaire d'autoriser l'accès à la politique du sandbox depuis l'intérieur du sandbox, mais Syd dispose d'un bon ensemble de restrictions pour fournir ce cas d'utilisation en toute sécurité et comme nous le verrons plus tard, cela donne la possibilité de restreindre davantage le processus du sandbox. Une autre alternative consiste à faire charger par Syd une bibliothèque dynamique au démarrage plutôt que d'exécuter une commande, ce qui est un autre sujet avancé pour plus tard. L'idée de configuration à l'exécution dépend du <b>Verrouillage du Sandbox</b>
+    et le verrou peut avoir trois états : "on", "off" et
+    "exec". Les deux premiers s'expliquent d'eux-mêmes tandis que "exec"
+    permet l'accès à la politique du sandbox uniquement pour le processus initial du sandbox.
+    Une fois le verrou du sandbox défini sur "on", il n'y a pas de retour en arrière, donc les modifications ultérieures du sandbox ne seront plus possibles. Exécutons maintenant un shell sous Syd. Cette fois, nous ne soumettrons aucune configuration au démarrage et exécuterons Syd sans arguments. Cela placera Syd en mode de connexion, où Syd utilisera le profil "user" intégré et dynamique et lancera un shell. Nous n'approfondirons pas les détails du profil utilisateur pour le moment, consultez "syd-cat -p user" si vous êtes curieux. Il suffit de dire qu'il fournit un ensemble relativement sûr de règles d'accès aux chemins système et un accès en lecture+écriture à votre répertoire HOME et aux chemins "/run" d'exécution de l'utilisateur. De plus, Syd est livré avec une bibliothèque de shell, appelée "esyd",
+    qui facilite l'interaction avec Syd :</p>
+<div class="Bd-indent">
+<pre>TODO</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTEURS</a></h1>
+<p class="Pp">Maintenu par Ali Polatel. Les sources à jour peuvent être trouvées sur
+    <a href='https://gitlab.exherbo.org/sydbox/sydbox.git'>https://gitlab.exherbo.org/sydbox/sydbox.git</a> et les bugs/correctifs peuvent être
+    soumis à <a href='https://gitlab.exherbo.org/groups/sydbox/-/issues'>https://gitlab.exherbo.org/groups/sydbox/-/issues</a>. Discutez sur
+    #sydbox sur Libera Chat ou sur #sydbox:mailstation.de sur Matrix.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-12-02</td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/syd/">extra/syd</a></dd>
+        <dt>Version :</dt>
+        <dd>3.45.2-3</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://gitlab.exherbo.org/sydbox/sydbox">https://gitlab.exherbo.org/sydbox/sydbox</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-3.0-only</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/syd/">/listing/extra/syd/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#INTRODUCTION">INTRODUCTION</a></li>
+        
+            <li><a href="#SYD_QUICK_INSTALL">INSTALLATION RAPIDE DE SYD</a></li>
+        
+            <li><a href="#SYD_101">SYD 101</a></li>
+        
+            <li><a href="#AUTHORS">AUTEURS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>sydtutorial(7)</title>
+        <link rel="stylesheet" href="/style.css">
+    </head>
+    <body>
+        
+        <main>
+            <article>
+                <p><strong>NAME</strong><br>sydtutorial - Un tutoriel pour sydutils</p>
+                <p><strong>DESCRIPTION</strong><br>Ce document est un tutoriel pour les utilisateurs de sydutils.</p>
+                <p><strong>SYNTAXE</strong><br>La syntaxe de base pour utiliser sydutils est la suivante :</p>
+                <pre><code>sydcmd [options] argument</code></pre>
+                <p><strong>EXEMPLES</strong><br>Voici quelques exemples d'utilisation courante :</p>
+                <dl>
+                    <dt><code>sydlist --all</code></dt>
+                    <dd>Liste tous les paquets disponibles.</dd>
+                    <dt><code>sydinstall package_name</code></dt>
+                    <dd>Installe un paquet spécifique.</dd>
+                    <dt><code>sydremove package_name</code></dt>
+                    <dd>Supprime un paquet spécifique.</dd>
+                </dl>
+                <p><strong>OPTIONS</strong><br>Les options courantes incluent :</p>
+                <ul>
+                    <li><code>--help</code>: Affiche l'aide.</li>
+                    <li><code>--version</code>: Affiche la version.</li>
+                </ul>
+                <p><strong>VOIR AUSSI</strong><br><code>sydutils(1)</code></p>
+            </article>
+            <aside>
+                <nav>
+                    <h2>Sections</h2>
+                    <ul>
+                        <li><a href="#NAME">NAME</a></li>
+                        <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+                        <li><a href="#SYNTAXE">SYNTAXE</a></li>
+                        <li><a href="#EXEMPLES">EXEMPLES</a></li>
+                        <li><a href="#OPTIONS">OPTIONS</a></li>
+                        <li><a href="#VOIR AUSSI">VOIR AUSSI</a></li>
+                    </ul>
+                    <p>Autres formats :
+                        
+                            <a href="/man/sydtutorial.7.en.txt">txt</a>, 
+                        
+                            <a href="/man/sydtutorial.7.en.raw">raw</a>
+                        
+                    </p>
+                </nav>
+            </aside>
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

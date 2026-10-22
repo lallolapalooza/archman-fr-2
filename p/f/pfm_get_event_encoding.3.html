@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pfm_get_event_encoding(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pfm_get_event_encoding(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/libpfm/">libpfm</a></p>
+<p class="lic">Licences: MIT</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBPFM(3)</td>
+    <td class="head-vol">Manuel du programmeur Linux</td>
+    <td class="head-rtitle">LIBPFM(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">pfm_get_event_encoding - obtenir le codage brut d'un événement</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><b>#include &lt;perfmon/pfmlib.h&gt;</b>
+
+<b>int pfm_get_event_encoding(const char *</b><i>str</i><b>,int </b><i>dfl_plm</i><b>, char **</b><i>fstr</i><b>, int *</b><i>idx</i><b>, uint64_t *</b><i>code</i><b>, int *</b><i>count</i><b>);</b></pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Cette fonction est utilisée pour récupérer le codage brut de l'événement
+    correspondant à la chaîne d'événement dans <b>str</b>. Un seul événement par appel
+    peut être codé. Ainsi, <b>str</b> ne peut contenir qu'un seul nom d'événement symbolique.
+    La chaîne peut contenir des masques d'unité et des modificateurs. Le masque de niveau de privilège
+    par défaut est passé dans <b>dfl_plm</b>. Il peut être utilisé en fonction de l'événement.</p>
+<p class="Pp">Cette fonction est <b>dépréciée</b>. Elle est remplacée par
+    <b>pfm_get_os_event_encoding()</b> où l'OS est défini sur
+    <b>PFM_OS_NONE</b>. Le codage est récupéré via la structure
+    <b>pfm_pmu_encode_arg_t</b>.</p>
+<p class="Pp">Les exemples suivants illustrent la transition :</p>
+<pre>   int i, count = 0;
+   uint64_t *codes;
+   ret = pfm_get_event_encoding(&quot;RETIRED_INSTRUCTIONS&quot;, PFM_PLM3, NULL, &amp;codes, &amp;count);
+   if (ret != PFM_SUCCESS)
+      err(1&quot;, cannot get encoding %s&quot;, pfm_strerror(ret));
+   for(i=0; i &lt; count; i++)
+      printf(&quot;count[%d]=0x%&quot;PRIx64&quot;\n&quot;, i, codes[i]);</pre>
+<p class="Pp">est équivalent à :</p>
+<pre>   pfm_pmu_encode_arg_t arg;
+   int i;
+   memset(&amp;arg, 0, sizeof(arg));
+   arg.size = sizeof(arg);
+   ret = pfm_get_os_event_encoding(&quot;RETIRED_INSTRUCTIONS&quot;, PFM_PLM3, PFM_OS_NONE, &amp;arg);
+   if (ret != PFM_SUCCESS)
+      err(1&quot;, cannot get encoding %s&quot;, pfm_strerror(ret));
+   for(i=0; i &lt; arg.count; i++)
+      printf(&quot;count[%d]=0x%&quot;PRIx64&quot;\n&quot;, i, arg.codes[i]);
+   free(arg.codes);
+Le codage peut nécessiter plusieurs entiers de 64 bits. La fonction peut utiliser le tableau passé dans <b>code</b> si le nombre
+d'entrées passées dans <b>count</b> est suffisant. Cependant, si à la fois <b>*codes</b> est <b>NULL</b> et <b>count</b>
+est 0, la fonction alloue la mémoire nécessaire pour stocker le codage. Il incombe à l'appelant de
+libérer la mémoire éventuellement allouée. Le nombre d'entrées de 64 bits dans <b>codes</b> est reflété dans <b>*count</b> au retour,
+que <b>codes</b> ait été alloué ou utilisé tel quel. Si le nombre d'entiers de 64 bits est
+supérieur à un, alors l'ordre dans lequel chaque composant est retourné est spécifique au modèle PMU.
+Référez-vous à la page man spécifique au PMU.
+Le codage brut signifie le codage tel que requis par le modèle PMU sous-jacent. Il peut ne pas être directement utilisable
+pour être passé à une API du noyau. Vous pourriez vouloir utiliser des appels de fonction spécifiques à l'API pour garantir
+que le codage correct est passé.
+Si <b>fstr</b> n'est pas NULL, il pointera vers la chaîne d'événement entièrement qualifiée lors d'un retour réussi. La chaîne
+contient le nom de l'événement, tous les masques d'unité définis et la valeur de tous les modificateurs. Elle reflète ce que le codage mesurera réellement.
+La fonction alloue la mémoire pour stocker la chaîne. L'appelant doit éventuellement libérer la chaîne.
+Voici un exemple de la façon dont cette fonction pourrait être utilisée :
+#include &lt;inttypes.h&gt;
+#include &lt;err.h&gt;
+#include &lt;perfmon/pfmlib.h&gt;
+int main(int argc, char **argv)
+{
+   uint64_t *codes 0;
+   int count = 0;
+   int ret;
+   ret = pfm_initialize();
+   if (ret != PFMLIB_SUCCESS)
+      err(1&quot;, cannot initialize library %s&quot;, pfm_strerror(ret));
+   ret = pfm_get_event_encoding(&quot;RETIRED_INSTRUCTIONS&quot;, PFM_PLM3, NULL, &amp;codes, &amp;count);
+   if (ret != PFM_SUCCESS)
+      err(1&quot;, cannot get encoding %s&quot;, pfm_strerror(ret));
+   for(i=0; i &lt; count; i++)
+      printf(&quot;count[%d]=0x%&quot;PRIx64&quot;\n&quot;, i, codes[i]);
+   free(codes);
+   return 0;
+}</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='RETOUR'><a class='permalink' href='#RETOUR'>RETOUR</a></h1>
+<p class="Pp">La fonction retourne dans <b>*codes</b> le codage de l'événement
+    et dans <b>*count</b> le nombre d'entiers de 64 bits pour supporter ce codage.
+    En cas de succès, <b>PFM_SUCCESS</b> est retourné, sinon un code d'erreur spécifique
+    est retourné.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ERREURS'><a class='permalink' href='#ERREURS'>ERREURS</a></h1>
+<dl class="Bl-tag">
+  <dt id="PFM_ERR_TOOSMALL"><a class="permalink" href="#PFM_ERR_TOOSMALL"><b>PFM_ERR_TOOSMALL</b></a></dt>
+  <dd>L'argument <b>code</b> est trop petit pour le codage.</dd>
+  <dt id="PFM_ERR_INVAL"><a class="permalink" href="#PFM_ERR_INVAL"><b>PFM_ERR_INVAL</b></a></dt>
+  <dd>L'argument <b>code</b> ou <b>count</b> est <b>NULL</b> ou la chaîne <b>str</b>
+      contient plus d'un événement symbolique.</dd>
+  <dt id="PFM_ERR_NOMEM"><a class="permalink" href="#PFM_ERR_NOMEM"><b>PFM_ERR_NOMEM</b></a></dt>
+  <dd>Pas assez de mémoire.</dd>
+  <dt id="PFM_ERR_NOTFOUND"><a class="permalink" href="#PFM_ERR_NOTFOUND"><b>PFM_ERR_NOTFOUND</b></a></dt>
+  <dd>Événement non trouvé.</dd>
+  <dt id="PFM_ERR_ATTR"><a class="permalink" href="#PFM_ERR_ATTR"><b>PFM_ERR_ATTR</b></a></dt>
+  <dd>Attribut d'événement invalide (masque d'unité ou modificateur)</dd>
+  <dt id="PFM_ERR_ATTR_VAL"><a class="permalink" href="#PFM_ERR_ATTR_VAL"><b>PFM_ERR_ATTR_VAL</b></a></dt>
+  <dd>Valeur de modificateur invalide.</dd>
+  <dt id="PFM_ERR_ATTR_SET"><a class="permalink" href="#PFM_ERR_ATTR_SET"><b>PFM_ERR_ATTR_SET</b></a></dt>
+  <dd>Attribut déjà défini, ne peut pas être modifié.</dd>
+  <dt id="PFM_ERR_ATTR_UMASK"><a class="permalink" href="#PFM_ERR_ATTR_UMASK"><b>PFM_ERR_ATTR_UMASK</b></a></dt>
+  <dd>Masque d'unité manquant.</dd>
+  <dt id="PFM_ERR_ATTR_FEATCOMB"><a class="permalink" href="#PFM_ERR_ATTR_FEATCOMB"><b>PFM_ERR_ATTR_FEATCOMB</b></a></dt>
+  <dd>Les masques d'unité ou les fonctionnalités ne peuvent pas être combinés en un seul événement.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Stephane Eranian &lt;eranian@gmail.com&gt;</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp">pfm_get_os_event_encoding(3)</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">Septembre, 2009</td>
+    <td class="foot-os"></td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/libpfm/">extra/libpfm</a></dd>
+        <dt>Version :</dt>
+        <dd>4.13.0+r83+g91970fe-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://perfmon2.sourceforge.net">https://perfmon2.sourceforge.net</a></dd>
+        <dt>Licences :</dt>
+        <dd>MIT</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/libpfm/">/listing/extra/libpfm/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#RETOUR">RETOUR</a></li>
+        
+            <li><a href="#ERREURS">ERREURS</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+            <li><a href="#VOIR_AUSSI">VOIR AUSSI</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pfm_get_event_encoding.3.fr.txt">txt</a>, 
+        
+            <a href="/man/pfm_get_event_encoding.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

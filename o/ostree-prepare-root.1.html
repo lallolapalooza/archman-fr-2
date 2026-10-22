@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ostree-prepare-root(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ostree-prepare-root(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/ostree/">ostree</a></p>
+<p class="lic">Licences: LGPL-2.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">OSTREE PREPARE-ROOT(1)</td>
+    <td class="head-vol">ostree prepare-root</td>
+    <td class="head-rtitle">OSTREE PREPARE-ROOT(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ostree-prepare-root - Change la vue d'un système de fichiers racine monté vers un déploiement ostree</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<p class="Pp HP"><b>ostree prepare-root</b> {CIBLE}</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">À la base, ostree opère sur un système de fichiers monté existant. Des outils tels que ostree admin deploy créeront un nouveau répertoire qui pourra être utilisé comme cible démarrable. Cet outil est conçu pour être exécuté dans un initramfs et mettre en place des montages de &quot;réadressage&quot; comme vue de ce système de fichiers.</p>
+<p class="Pp">Plus récemment, cet outil a également un support optionnel pour composefs, qui crée un point de montage distinct superposé au système de fichiers sous-jacent.</p>
+<p class="Pp">Le schéma le plus courant aujourd'hui est d'utiliser systemd dans un initramfs. L'unité systemd expédiée en amont est ordonnancée de cette manière : After=sysroot.mount et Before=initrd-root-fs.target.</p>
+<p class="Pp">Lorsqu'elle s'exécute, le système de fichiers monté à la CIBLE fournie (généralement /sysroot) sera modifié de telle sorte que ce qui apparaît à /sysroot est en réalité la &quot;racine de déploiement&quot; - c'est-à-dire un sous-répertoire versionné spécifique. Ce qui était auparavant la &quot;racine physique&quot;, c'est-à-dire la vraie racine du système de fichiers, apparaîtra comme /sysroot/sysroot.</p>
+<p class="Pp">Pour /var, un montage par liaison (bind mount) est créé par défaut à partir de la racine de déploiement vers /sysroot/var.</p>
+<p class="Pp">Un montage par liaison en lecture seule est créé sur /sysroot/usr. Le bit immuable (voir chattr(1)) est défini sur la racine de déploiement, cela offre donc une protection de base contre la mutation du système de fichiers. Si l'option sysroot.readonly est activée, alors /sysroot/sysroot est monté en lecture seule pour offrir une protection supplémentaire et un montage par liaison inscriptible pour /sysroot/etc est créé.</p>
+<p class="Pp">Enfin, lorsque des outils de niveau supérieur tels que systemd effectuent une opération switch-root, ce qui était /sysroot devient / et après la transition vers la vraie racine, le système sera démarré dans le &quot;déploiement&quot;, qui est une arborescence de système de fichiers immuable versionnée. Les outils ostree s'exécutant dans la vraie racine effectuent ensuite des changements supplémentaires en opérant sur /sysroot qui est maintenant la &quot;racine physique&quot;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONFIGURATION'><a class='permalink' href='#CONFIGURATION'>CONFIGURATION</a></h1>
+<p class="Pp">Le fichier de configuration /usr/lib/ostree/prepare-root.conf (ou /etc/ostree/prepare-root.conf) est analysé par ostree-prepare-root. Ce fichier doit être présent dans l'initramfs. Le module dracut par défaut le copiera depuis la vraie racine s'il est présent.</p>
+<p class="Pp"><i>sysroot.readonly</i></p>
+<div class="Bd-indent">Une valeur booléenne ; la valeur par défaut est false à moins que composefs ne soit activé. Si cela est défini sur true, alors le point de montage /sysroot est monté en lecture seule.</div>
+<p class="Pp"><i>etc.transient</i></p>
+<div class="Bd-indent">Une valeur booléenne ; la valeur par défaut est false. Si cela est défini sur true, alors le point de montage /etc est monté de manière transitoire, c'est-à-dire un emplacement non persistant.</div>
+<p class="Pp"><i>root.transient</i></p>
+<div class="Bd-indent">Une valeur booléenne ; la valeur par défaut est false. L'activation de ce drapeau nécessite composefs (Voir composefs.enabled). Lorsqu'il est activé, le point de montage racine / sera un overlayfs dont le contenu sera stocké dans un tmpfs, et donc supprimé lors de la mise à niveau du système d'exploitation ou du redémarrage.
+<p class="Pp">Cette option est indépendante de etc.transient et sysroot.readonly ; elle est supportée par exemple pour avoir root.transient=true mais etc.transient=false auquel cas les changements apportés à /etc continuent de persister à travers les mises à jour, avec la fusion ostree à 3 voies par défaut appliquée. Également lié à la persistance, il est important de souligner que /sysroot (le système de fichiers racine physique) est toujours persistant par défaut ; les mises à niveau du système d'exploitation sur place peuvent être appliquées. Cette option n'a aucun effet sur /var.</p>
+<p class="Pp">L'activation de cette option peut rendre beaucoup plus facile l'adoption d'un modèle basé sur des images dans certaines circonstances. Par exemple, si vous avez un système de gestion de configuration qui inspecte l'état spécifique de la machine et installe dynamiquement des paquets ou applique des configurations, il peut être plus facilement adapté pour s'exécuter à chaque démarrage, tout en déplaçant une partie (ou idéalement la majeure partie) de la configuration de l'image vers le temps de construction dans le cadre de l'image/commit de base.</p>
+</div>
+<p class="Pp"><i>root.transient-ro</i></p>
+<div class="Bd-indent">Une valeur booléenne ; la valeur par défaut est false. Ceci est similaire à root.transient, mais le niveau supérieur de l'overlayfs sera monté en lecture seule par défaut. Utilisez ceci lorsque vous souhaitez que des composants privilégiés spécifiques puissent écrire dans le niveau supérieur en le montant temporairement en lecture et écriture dans un nouvel espace de noms de montage.</div>
+<p class="Pp"><i>composefs.enabled</i></p>
+<div class="Bd-indent">Ceci peut être yes, no, maybe, signed, ou verity. La valeur par défaut est no. Si cela est défini sur yes, signed, ou verity, alors composefs est toujours utilisé, et le démarrage échoue s'il n'est pas disponible. Si cela est défini sur signed ou verity, avant que le contenu d'un fichier ne soit lu, l'intégrité de son objet OSTree sous-jacent est validée par le hachage stocké dans l'image. De plus, si cela est défini sur signed, le démarrage échouera si l'image ne peut pas être validée par une clé publique. Définir cela sur maybe fera que composefs sera utilisé à l'exécution uniquement si le déploiement a un composefs généré, ce qui entraîne des sémantiques imprévisibles et confuses et n'est pas recommandé. En pratique avec la version *actuelle* d'ostree, dans le cas où composefs est activé au moment de la construction pour les deux versions qui ont créé le déploiement (souvent une version plus ancienne du système d'exploitation), cela sera équivalent à yes. Mais en général, on veut soit composefs, soit pas, donc choisissez une valeur explicite pour cela.</div>
+<p class="Pp"><i>composefs.keypath</i></p>
+<div class="Bd-indent">Chemin vers un fichier contenant des clés publiques Ed25519 dans l'initramfs, utilisé si composefs.enabled est défini sur signed. La valeur par défaut pour ceci est /etc/ostree/initramfs-root-binding.key. Pour un démarrage signé valide, le commit OSTree cible doit être signé par au moins une clé publique dans ce fichier, et le hachage composefs listé dans le commit doit correspondre à l'image composefs cible.</div>
+<p class="Pp">Les paramètres de ligne de commande du noyau suivants sont également analysés :</p>
+<p class="Pp"><i>ostree.prepare-root.composefs</i></p>
+<div class="Bd-indent">Ceci accepte les mêmes valeurs que composefs.enabled ci-dessus, et remplace le fichier de configuration (s'il est présent). Par exemple, spécifier ostree.prepare-root.composefs=0 désactivera composefs, même s'il est activé par défaut dans la configuration de l'initrd.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYSTEMD'><a class='permalink' href='#SYSTEMD'>SYSTEMD</a></h1>
+<p class="Pp">Comme mentionné ci-dessus, cet outil est livré avec un fichier d'unité systemd ostree-prepare-root.service et il est principalement prévu d'être invoqué de cette manière.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMPOSEFS'><a class='permalink' href='#COMPOSEFS'>COMPOSEFS</a></h1>
+<p class="Pp">La valeur par défaut pour ostree est de créer une arborescence de système de fichiers simplement liée par des liens physiques (hardlinks). Le support de composefs est actuellement expérimental ; voir doc/composefs.md en amont pour plus d'informations sur son utilisation.</p>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date"></td>
+    <td class="foot-os">OSTree</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/ostree/">extra/ostree</a></dd>
+        <dt>Version :</dt>
+        <dd>2025.7-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://ostreedev.github.io/ostree/">https://ostreedev.github.io/ostree/</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL-2.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/ostree/">/listing/extra/ostree/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#SYNTAXE">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#CONFIGURATION">CONFIGURATION</a></li>
+        
+            <li><a href="#SYSTEMD">SYSTEMD</a></li>
+        
+            <li><a href="#COMPOSEFS">COMPOSEFS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ostree-prepare-root.1.fr.txt">txt</a>, 
+        
+            <a href="/man/ostree-prepare-root.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans 
+le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>idmap_script(8) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">idmap_script(8)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/samba/">samba</a></p>
+<p class="lic">Licences: GPL-3.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">IDMAP_SCRIPT(8)</td>
+    <td class="head-vol">Outils d'administration système</td>
+    <td class="head-rtitle">IDMAP_SCRIPT(8)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">idmap_script - Backend idmap_script de Samba pour Winbind</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Le plugin idmap_script est un substitut pour le backend idmap_tdb2 utilisé par winbindd pour stocker les tables de correspondance SID/uid/gid dans des environnements clusterisés avec Samba et CTDB. C'est un backend en lecture seule qui utilise un script pour effectuer la correspondance.</p>
+<p class="Pp">Il a été développé à partir du backend idmap_tdb2 et ne stocke pas les correspondances SID/uid/gid dans un TDB, puisque le TDB de cache de winbind stockera les correspondances une fois qu'elles auront été fournies.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS_IDMAP'><a class='permalink' href='#OPTIONS_IDMAP'>OPTIONS IDMAP</a></h1>
+<p class="Pp">range = low - high</p>
+<div class="Bd-indent">Définit la plage uid et gid correspondante pour laquelle le backend est faisant autorité.</div>
+<p class="Pp">script</p>
+<div class="Bd-indent">Cette option peut être utilisée pour configurer un programme externe pour effectuer les correspondances d'ID.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SCRIPT_IDMAP'><a class='permalink' href='#SCRIPT_IDMAP'>SCRIPT IDMAP</a></h1>
+<p class="Pp">Le backend de script idmap prend en charge un programme externe pour effectuer les correspondances d'ID via l'option de configuration de /etc/samba/smb.conf <i>idmap config * : script</i> ou sa forme héritée dépréciée <i>idmap : script</i>.</p>
+<p class="Pp">Le script doit accepter les options de ligne de commande suivantes.</p>
+<div class="Bd-indent">
+<pre>SIDTOID S-1-xxxx
+IDTOSID UID xxxx
+IDTOSID GID xxxx
+IDTOSID XID xxxx</pre>
+</div>
+<p class="Pp">Et il doit retourner l'une des réponses suivantes sous forme d'une seule ligne de texte.</p>
+<div class="Bd-indent">
+<pre>UID:yyyy
+GID:yyyy
+XID:yyyy
+SID:ssss
+ERR:yyyy</pre>
+</div>
+<p class="Pp">XID indique que l'ID retourné doit être à la fois un UID et un GID. C'est-à-dire qu'il demande un ID_TYPE_BOTH, mais c'est finalement au script de décider s'il peut honorer cette demande. Il peut choisir de ne retourner qu'une correspondance UID ou GID.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Cet exemple montre comment script est utilisé comme backend idmap par défaut en utilisant un programme externe via le paramètre script :</p>
+<div class="Bd-indent">
+<pre>[global]
+idmap config * : backend = script
+idmap config * : range = 1000000-2000000
+idmap config * : script = /usr/local/samba/bin/idmap_script.sh</pre>
+</div>
+<p class="Pp">Ceci montre un script simple pour effectuer partiellement la tâche :</p>
+<div class="Bd-indent">
+<pre>#!/bin/sh
+#
+# Décommentez ceci si vous souhaitez une journalisation
+#echo $@ &gt;&gt; /tmp/idmap.sh.log
+if [ &quot;$1&quot; == &quot;SIDTOID&quot; ]
+then
+	# Remarque. Le nombre retourné doit être dans la plage définie
+	#echo &quot;Sending UID:1000005&quot; &gt;&gt; /tmp/idmap.sh.log
+	echo &quot;UID:1000005&quot;
+	exit 0
+else
+	#echo &quot;Sending ERR: No idea what to do&quot; &gt;&gt; /tmp/idmap.sh.log
+	echo &quot;ERR: No idea what to do&quot;
+	exit 1
+fi</pre>
+</div>
+<p class="Pp">Clairement, ce script n'est pas suffisant, car il devrait probablement utiliser wbinfo pour déterminer si un SID entrant est un SID utilisateur ou groupe, puis rechercher la correspondance dans une table ou utiliser un autre mécanisme pour mapper les SIDs aux UIDs, etc.</p>
+<p class="Pp">Veuillez noter que le script est appelé avec la variable d'environnement _NO_WINBINDD définie sur 1. Cela empêche les appels récursifs vers winbind depuis le script, que ce soit par des appels explicites à wbinfo ou par des appels implicites via nss_winbind. Par exemple, un appel à ls -l pourrait déclencher une telle récursion infinie.</p>
+<p class="Pp">Il est sûr d'appeler wbinfo -n et wbinfo -s depuis un script idmap. Pour ce faire, le script doit désactiver la variable d'environnement _NO_WINBINDD juste avant l'appel à wbinfo et la réactiver à 1 juste après le retour de wbinfo pour se protéger contre la récursion.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Le logiciel Samba original et les utilitaires associés ont été créés par Andrew Tridgell. Samba est maintenant développé par l'équipe Samba en tant que projet Open Source, similaire à la manière dont le noyau Linux est développé.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">11/07/2025</td>
+    <td class="foot-os">Samba 4.23.3</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/samba/">extra/samba</a></dd>
+        <dt>Version :</dt>
+        <dd>2:4.23.3-2</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.samba.org">https://www.samba.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-3.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/samba/">/listing/extra/samba/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NOM">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS_IDMAP">OPTIONS IDMAP</a></li>
+        
+            <li><a href="#SCRIPT_IDMAP">SCRIPT IDMAP</a></li>
+        
+            <li><a href="#EXEMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#AUTEUR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/idmap_script.8.fr.txt">txt</a>, 
+        
+            <a href="/man/idmap_script.8.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

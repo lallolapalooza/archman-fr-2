@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pg_receivewal(1) — Pages man Arch Linux</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pg_receivewal(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/postgresql/">postgresql</a></p>
+<p class="lic">Licences: PostgreSQL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PG_RECEIVEWAL(1)</td>
+    <td class="head-vol">Documentation PostgreSQL 18.1</td>
+    <td class="head-rtitle">PG_RECEIVEWAL(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">pg_receivewal - diffuser les journaux d'écriture anticipée (WAL) depuis un serveur PostgreSQL</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPIS</a></h1>
+<p class="Pp HP"><b>pg_receivewal</b> [<i>option</i>...]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">pg_receivewal est utilisé pour diffuser les journaux d'écriture anticipée (WAL) d'un cluster PostgreSQL en cours d'exécution. Le WAL est diffusé en utilisant le protocole de réplication en flux (streaming replication), et est écrit dans un répertoire local de fichiers. Ce répertoire peut être utilisé comme emplacement d'archivage pour une restauration en utilisant la récupération à un instant T (voir Section 25.3).</p>
+<p class="Pp">pg_receivewal diffuse le WAL en temps réel au fur et à mesure de sa génération sur le serveur, et n'attend pas que les segments soient complétés, contrairement à archive_command et archive_library. Pour cette raison, il n'est pas nécessaire de définir archive_timeout lors de l'utilisation de pg_receivewal.</p>
+<p class="Pp">Contrairement au récepteur WAL d'un serveur standby PostgreSQL, pg_receivewal, par défaut, vide les données WAL uniquement lorsqu'un fichier WAL est fermé. L'option <b>--synchronous</b> doit être spécifiée pour vider les données WAL en temps réel. Comme pg_receivewal n'applique pas le WAL, vous ne devez pas le laisser devenir un standby synchrone lorsque synchronous_commit est défini sur remote_apply. Si c'est le cas, il apparaîtra comme un standby qui ne rattrape jamais son retard, et provoquera le blocage des validations de transaction. Pour éviter cela, vous devriez soit configurer une valeur appropriée pour synchronous_standby_names, soit spécifier <i>application_name</i> pour pg_receivewal qui ne correspond pas, soit modifier la valeur de <i>synchronous_commit</i> pour autre chose que remote_apply.</p>
+<p class="Pp">Le WAL est diffusé via une connexion PostgreSQL normale et utilise le protocole de réplication. La connexion doit être établie avec un utilisateur ayant les permissions REPLICATION (voir Section 21.2) ou un superutilisateur, et pg_hba.conf doit autoriser la connexion de réplication. Le serveur doit également être configuré avec max_wal_senders suffisamment élevé pour laisser au moins une session disponible pour le flux.</p>
+<p class="Pp">Le point de départ de la diffusion du WAL est calculé lorsque pg_receivewal démarre :</p>
+<div class="Bd-indent"> 1.Premièrement, parcourir le répertoire où les fichiers de segment WAL sont écrits et trouver le fichier de segment complété le plus récent, en utilisant comme point de départ le début du fichier de segment WAL suivant.</div>
+<div class="Bd-indent"> 2.Si un point de départ ne peut pas être calculé avec la méthode précédente, et si un slot de réplication est utilisé, une commande supplémentaire <b>READ_REPLICATION_SLOT</b> est émise pour récupérer le restart_lsn du slot à utiliser comme point de départ. Cette option n'est disponible que lors de la diffusion de WAL à partir de PostgreSQL 15 et supérieur.</div>
+<div class="Bd-indent"> 3.Si un point de départ ne peut pas être calculé avec la méthode précédente, la dernière position de vidage WAL est utilisée telle que rapportée par le serveur lors d'une commande IDENTIFY_SYSTEM.</div>
+<p class="Pp">Si la connexion est perdue, ou si elle ne peut pas être établie initialement, avec une erreur non fatale, pg_receivewal tentera de rétablir la connexion indéfiniment, et rétablira la diffusion dès que possible. Pour éviter ce comportement, utilisez le paramètre -n.</p>
+<p class="Pp">En l'absence d'erreurs fatales, pg_receivewal s'exécutera jusqu'à ce qu'il soit terminé par le signal SIGINT (Control+C) ou SIGTERM.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp"><b>-D </b><b></b><i>répertoire</i>
+  <br/>
+  <b>--directory=</b><b></b><i>répertoire</i></p>
+<div class="Bd-indent">Répertoire où écrire la sortie.
+<p class="Pp">Ce paramètre est requis.</p>
+</div>
+<p class="Pp"><b>-E </b><b></b><i>lsn</i>
+  <br/>
+  <b>--endpos=</b><b></b><i>lsn</i></p>
+<div class="Bd-indent">Arrête automatiquement la réplication et quitte avec le statut de sortie normal 0 lorsque la réception atteint le LSN spécifié.
+<p class="Pp">S'il existe un enregistrement avec un LSN exactement égal à <i>lsn</i>, cet enregistrement sera traité.</p>
+</div>
+<p class="Pp"><b>--if-not-exists</b></p>
+<div class="Bd-indent">Ne pas générer d'erreur lorsque <b>--create-slot</b> est spécifié et qu'un slot du nom spécifié existe déjà.</div>
+<p class="Pp"><b>-n</b>
+  <br/>
+  <b>--no-loop</b></p>
+<div class="Bd-indent">Ne pas boucler en cas d'erreurs de connexion. Quitter immédiatement avec une erreur.</div>
+<p class="Pp"><b>--no-sync</b></p>
+<div class="Bd-indent">Cette option fait que <b>pg_receivewal</b> ne force pas le vidage des données WAL sur disque. C'est plus rapide, mais signifie qu'un crash ultérieur du système d'exploitation peut laisser les segments WAL corrompus. Généralement, cette option est utile pour les tests mais ne doit pas être utilisée lors de l'archivage WAL dans un déploiement de production.
+<p class="Pp">Cette option est incompatible avec --synchronous.</p>
+</div>
+<p class="Pp"><b>-s </b><b></b><i>intervalle</i>
+  <br/>
+  <b>--status-interval=</b><b></b><i>intervalle</i></p>
+<div class="Bd-indent">Spécifie le nombre de secondes entre les paquets de statut envoyés au serveur. Cela permet de surveiller plus facilement la progression depuis le serveur. Une valeur de zéro désactive complètement les mises à jour de statut périodiques, bien qu'une mise à jour soit toujours envoyée lorsque demandée par le serveur, pour éviter les déconnexions dues aux délais d'attente. La valeur par défaut est de 10 secondes.</div>
+<p class="Pp"><b>-S </b><b></b><i>nom_slot</i>
+  <br/>
+  <b>--slot=</b><b></b><i>nom_slot</i></p>
+<div class="Bd-indent">Exige que pg_receivewal utilise un slot de réplication existant (voir Section 26.2.6). Lorsque cette option est utilisée, pg_receivewal rapportera une position de vidage au serveur, indiquant quand chaque segment a été synchronisé sur disque afin que le serveur puisse supprimer ce segment s'il n'est pas nécessaire autrement.
+<p class="Pp">Lorsque le client de réplication de pg_receivewal est configuré sur le serveur comme un standby synchrone, l'utilisation d'un slot de réplication rapportera la position de vidage au serveur, mais seulement lorsqu'un fichier WAL est fermé. Par conséquent, cette configuration entraînera l'attente des transactions sur le primaire pendant une longue période et ne fonctionnera pas de manière satisfaisante. L'option --synchronous (voir ci-dessous) doit être spécifiée en plus pour que cela fonctionne correctement.</p>
+</div>
+<p class="Pp"><b>--synchronous</b></p>
+<div class="Bd-indent">Vide les données WAL sur disque immédiatement après leur réception. Envoie également un paquet de statut au serveur immédiatement après le vidage, indépendamment de --status-interval.
+<p class="Pp">Cette option doit être spécifiée si le client de réplication de pg_receivewal est configuré sur le serveur comme un standby synchrone, afin de garantir que des retours d'information rapides soient envoyés au serveur.</p>
+</div>
+<p class="Pp"><b>-v</b>
+  <br/>
+  <b>--verbose</b></p>
+<div class="Bd-indent">Active le mode verbeux.</div>
+<p class="Pp"><b>-Z </b><b></b><i>niveau</i>
+  <br/>
+  <b>-Z </b><b></b><i>methode</i><b>[:</b><b></b><i>detail</i><b>]</b>
+  <br/>
+  <b>--compress=</b><b></b><i>niveau</i>
+  <br/>
+  <b>--compress=</b><b></b><i>methode</i><b>[:</b><b></b><i>detail</i><b>]</b></p>
+<div class="Bd-indent">Active la compression des journaux d'écriture anticipée.
+<p class="Pp">La méthode de compression peut être définie sur gzip, lz4 (si PostgreSQL a été compilé avec <b>--with-lz4</b>) ou none pour aucune compression. Une chaîne de détails de compression peut être spécifiée en option. Si la chaîne de détails est un entier, elle spécifie le niveau de compression. Sinon, elle doit être une liste d'éléments séparés par des virgules, chacun de la forme <i>mot-clé</i> ou <i>mot-clé=valeur</i>. Actuellement, le seul mot-clé pris en charge est level.</p>
+<p class="Pp">Si aucun niveau de compression n'est spécifié, le niveau de compression par défaut sera utilisé. Si seul un niveau est spécifié sans mentionner d'algorithme, la compression gzip sera utilisée si le niveau est supérieur à 0, et aucune compression ne sera utilisée si le niveau est 0.</p>
+<p class="Pp">Le suffixe .gz sera automatiquement ajouté à tous les noms de fichiers lors de l'utilisation de gzip, et le suffixe .lz4 sera ajouté lors de l'utilisation de lz4.</p>
+</div>
+<p class="Pp">Les options de ligne de commande suivantes contrôlent les paramètres de connexion à la base de données.</p>
+<p class="Pp"><b>-d </b><b></b><i>chaine_connexion</i>
+  <br/>
+  <b>--dbname=</b><b></b><i>chaine_connexion</i></p>
+<div class="Bd-indent">Spécifie les paramètres utilisés pour se connecter au serveur, sous forme de chaîne de connexion ; ceux-ci remplaceront toute option de ligne de commande conflictuelle.
+<p class="Pp">Cette option est appelée --dbname par souci de cohérence avec d'autres applications clientes, mais comme pg_receivewal ne se connecte à aucune base de données particulière du cluster, tout nom de base de données inclus dans la chaîne de connexion sera ignoré par le serveur. Cependant, un nom de base de données fourni de cette manière remplace le nom de base de données par défaut (replication) aux fins de recherche du mot de passe de connexion de réplication dans ~/.pgpass. De même, les intergiciels ou les proxys utilisés pour se connecter à PostgreSQL pourraient utiliser le nom à des fins telles que le routage de connexion.</p>
+</div>
+<p class="Pp"><b>-h </b><b></b><i>hote</i>
+  <br/>
+  <b>--host=</b><b></b><i>hote</i></p>
+<div class="Bd-indent">Spécifie le nom d'hôte de la machine sur laquelle le serveur est en cours d'exécution. Si la valeur commence par une barre oblique, elle est utilisée comme répertoire pour le socket de domaine Unix. La valeur par défaut est prise de la variable d'environnement <b>PGHOST</b>, si elle est définie, sinon une connexion par socket de domaine Unix est tentée.</div>
+<p class="Pp"><b>-p </b><b></b><i>port</i>
+  <br/>
+  <b>--port=</b><b></b><i>port</i></p>
+<div class="Bd-indent">Spécifie le port TCP ou l'extension de fichier du socket de domaine Unix local sur lequel le s</div>
+</div>
+</section>
+                
+</section>
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>pg_receivewal(1) — PostgreSQL 18.1</title>
+        <link rel="stylesheet" type="text/css" href="/css/man.css" />
+        <link rel="stylesheet" type="text/css" href="/css/man-extra.css" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+    </head>
+    <body>
+        
+        <main>
+            <article>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Nm">pg_receivewal</p>
+<p class="Nd">stream WAL data from a PostgreSQL server</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<p class="Pp"><code class="Dc">pg_receivewal</code> [<code class="Fl">-D</code> <i class="Em">directory</i>] [<code class="Fl">-f</code> <i class="Em">filename</i>] [<code class="Fl">-X</code> <i class="Em">method</i>] [<code class="Fl">-L</code>] [<code class="Fl">-p</code> <i class="Em">port</i>] [<code class="Fl">-s</code> <i class="Em">seconds</i>] [<code class="Fl">-S</code> <i class="Em">slotname</i>] [<code class="Fl">-U</code> <i class="Em">username</i>] [<code class="Fl">-w</code> | <code class="Fl">-W</code>] [<code class="Fl">--create-slot</code>] [<code class="Fl">--drop-slot</code>] [<code class="Fl">-V</code>] [<code class="Fl">-?</code>]</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp"><code class="Nm">pg_receivewal</code> is a client utility to stream the Write-Ahead Log (WAL) from a PostgreSQL server. It can be used to set up a standby server or for backup purposes. It is designed to be a replacement for a WAL archival program used by the server, or it can be used in conjunction with other backup tools. It connects to the server using the streaming replication protocol and writes the received WAL data into files in a specified directory.</p>
+<p class="Pp">The utility requires a replication connection to the server. This means that the server must be configured with appropriate settings in <code class="Ent">postgresql.conf</code> (like <code class="Ent">wal_level = replica</code> or higher) and in <code class="Ent">pg_hba.conf</code> to allow replication connections from the user running <code class="Nm">pg_receivewal</code>.</p>
+<p class="Pp">When <code class="Nm">pg_receivewal</code> is started, it connects to the server and requests WAL data starting from the current WAL location or a specified position. It writes the received WAL data into files in the specified directory. The files are named according to their WAL location, e.g., <code class="Tr">000000010000000000000001</code>. It continues to run, receiving and writing WAL data until interrupted.</p>
+<p class="Pp">It is strongly recommended to use replication slots (see <code class="Fl">-S</code> option) with <code class="Nm">pg_receivewal</code>. Replication slots ensure that WAL data is not removed by the server before it has been received by <code class="Nm">pg_receivewal</span>. Without a replication slot, if <code class="Nm">pg_receivewal</span> fails or is stopped, the server might recycle WAL files that have not yet been transferred, leading to data loss.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp"><code class="Nm">pg_receivewal</code> accepts the following command-line arguments:</p>
+<p class="Pp"><b>-D</b> <i class="Em">directory</i><br />
+<b>--directory=</b><i class="Em">directory</i></p>
+<div class="Bd-indent">Specifies the directory in which to store the received WAL files and any temporary files. This option is mandatory.</div>
+<p class="Pp"><b>-f</b> <i class="Em">filename</i><br />
+<b>--outfile=</b><i class="Em">filename</i></p>
+<div class="Bd-indent">Stream WAL data into a single file named <i class="Em">filename</i> instead of segment files. This option is only useful for streaming WAL data to standard output. This option is mutually exclusive with <code class="Fl">-D</code>.</div>
+<p class="Pp"><b>-X</b> <i class="Em">method</i><br />
+<b>--wal-method=</b><i class="Em">method</i></p>
+<div class="Bd-indent">Specifies how to receive WAL files. <i class="Em">method</i> can be one of <code class="Ic">stream</code> (default) or <code class="Ic">fetch</code>.</div>
+<p class="Pp"><b>-L</b><br />
+<b>--pull</b></p>
+<div class="Bd-indent">Enable <code class="Ic">fetch</code> mode. This means WAL files are requested by the client. Without this option, WAL files are streamed by the server.</div>
+<p class="Pp"><b>-s</b> <i class="Em">seconds</i><br />
+<b>--status-interval=</b><i class="Em">seconds</i></p>
+<div class="Bd-indent">Specifies the time interval, in seconds, between status messages sent to the server. A value of 0 disables periodic status messages. Defaults to 10 seconds.</div>
+<p class="Pp"><b>-S</b> <i class="Em">slotname</i><br />
+<b>--slot=</b><i class="Em">slotname</i></p>
+<div class="Bd-indent">Specifies the name of the replication slot to use. If this option is given, <code class="Nm">pg_receivewal</span> will create the slot if it doesn't exist and drop it if the <code class="Fl">--drop-slot</code> option is used.</div>
+<p class="Pp"><b>-p</b> <i class="Em">port</i><br />
+<b>--port=</b><i class="Em">port</i></p>
+<div class="Bd-indent">Specifies the TCP port on which the server is listening for connections. Defaults to the
+  <b>PGPORT</b> environment variable, if set, or a compiled-in default.</div>
+<p class="Pp"><b>-U</b> <i class="Em">username</i><br />
+<b>--username=</b><i class="Em">username</i></p>
+<div class="Bd-indent">User name to connect as.</div>
+<p class="Pp"><b>-w</b><br />
+<b>--no-password</b></p>
+<div class="Bd-indent">Never issue a password prompt. If the server requires
+  password authentication and a password is not available by other means such as
+  a .pgpass file, the connection attempt will fail. This option can be useful in
+  batch jobs and scripts where no user is present to enter a password.</div>
+<p class="Pp"><b>-W</b><br />
+<b>--password</b></p>
+<div class="Bd-indent">Force pg_receivewal to prompt for a password before
+  connecting to a database.
+<p class="Pp">This option is never essential, since pg_receivewal will
+    automatically prompt for a password if the server demands password
+    authentication. However, pg_receivewal will waste a connection attempt
+    finding out that the server wants a password. In some cases it is worth
+    typing <b>-W</b> to avoid the extra connection attempt.</p>
+</div>
+<p class="Pp">pg_receivewal can perform one of the two following actions in
+    order to control physical replication slots:</p>
+<p class="Pp"><b>--create-slot</b></p>
+<div class="Bd-indent">Create a new physical replication slot with the name
+  specified in <b>--slot</b>, then exit.</div>
+<p class="Pp"><b>--drop-slot</b></p>
+<div class="Bd-indent">Drop the replication slot with the name specified in
+  <b>--slot</b>, then exit.</div>
+<p class="Pp">Other options are also available:</p>
+<p class="Pp"><b>-V</b><br />
+<b>--version</b></p>
+<div class="Bd-indent">Print the pg_receivewal version and exit.</div>
+<p class="Pp"><b>-?</b><br />
+<b>--help</b></p>
+<div class="Bd-indent">Show help about pg_receivewal command line arguments, and
+  exit.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXIT_STATUS'><a class='permalink' href='#EXIT_STATUS'>EXIT STATUS</a></h1>
+<p class="Pp">pg_receivewal will exit with status 0 when terminated by the
+    SIGINT or SIGTERM signal. (That is the normal way to end it. Hence it is not
+    an error.) For fatal errors or other signals, the exit status will be
+    nonzero.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONMENT'><a class='permalink' href='#ENVIRONMENT'>ENVIRONMENT</a></h1>
+<p class="Pp">This utility, like most other PostgreSQL utilities, uses the
+    environment variables supported by libpq (see Section&#x00A0;32.15).</p>
+<p class="Pp">The environment variable <b>PG_COLOR</b> specifies whether to use
+    color in diagnostic messages. Possible values are always, auto and
+  never.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>NOTES</a></h1>
+<p class="Pp">When using pg_receivewal instead of archive_command or
+    archive_library as the main WAL backup method, it is strongly recommended to
+    use replication slots. Otherwise, the server is free to recycle or remove
+    write-ahead log files before they are backed up, because it does not have
+    any information, either from archive_command or archive_library or the
+    replication slots, about how far the WAL stream has been archived. Note,
+    however, that a replication slot will fill up the server's disk space if the
+    receiver does not keep up with fetching the WAL data.</p>
+<p class="Pp">pg_receivewal will preserve group permissions on the received WAL
+    files if group permissions are enabled on the source cluster.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXAMPLES'><a class='permalink' href='#EXAMPLES'>EXAMPLES</a></h1>
+<p class="Pp">To stream the write-ahead log from the server at mydbserver and
+    store it in the local directory /usr/local/pgsql/archive:</p>
+<div class="Bd-indent">
+<pre>$ <b>pg_receivewal -h mydbserver -D /usr/local/pgsql/archive</b></pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE ALSO</a></h1>
+<p class="Pp"><a href='/man/pg_basebackup.1.en'>pg_basebackup(1)</a></p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025</td>
+    <td class="foot-os">PostgreSQL 18.1</td>
+  </tr>
+</table>
+
+</article>
+<aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Package information:</p>
+    <dl>
+        <dt>Package name:</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/postgresql/">extra/postgresql</a></dd>
+        <dt>Version:</dt>
+        <dd>18.1-1</dd>
+        <dt>Upstream:</dt>
+        <dd><a href="https://www.postgresql.org/">https://www.postgresql.org/</a></dd>
+        <dt>Licenses:</dt>
+        <dd>PostgreSQL</dd>
+        <dt>Manuals:</dt>
+        <dd><a href="/listing/extra/postgresql/">/listing/extra/postgresql/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table of contents</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPSIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#EXIT_STATUS">EXIT STATUS</a></li>
+        
+            <li><a href="#ENVIRONMENT">ENVIRONMENT</a></li>
+        
+            <li><a href="#NOTES">NOTES</a></li>
+        
+            <li><a href="#EXAMPLES">EXAMPLES</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Other formats:
+        
+            <a href="/man/pg_receivewal.1.en.txt">txt</a>, 
+        
+            <a href="/man/pg_receivewal.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

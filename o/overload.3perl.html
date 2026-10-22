@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>overload(3perl) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">overload.3perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">overload(3perl)</td>
+    <td class="head-vol">Guide de référence du programmeur Perl</td>
+    <td class="head-rtitle">overload(3perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">overload - Paquet pour surcharger les opérations Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPIS</a></h1>
+<pre>package SomeThing;
+use overload
+    '+' =&gt; \&amp;myadd,
+    '-' =&gt; \&amp;mysub;
+    # etc
+...
+package main;
+$a = SomeThing-&gt;new( 57 );
+$b = 5 + $a;
+...
+if (overload::Overloaded $b) {...}
+...
+$strval = overload::StrVal $b;</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce pragma permet de surcharger les opérateurs de Perl pour une classe.
+    Pour surcharger les fonctions intégrées, consultez plutôt la section
+    &quot;Redéfinition des fonctions intégrées&quot; dans perlsub.</p>
+<section class="Ss">
+<h2 class="Ss" id='Fundamentals'><a class='permalink' href='#Fundamentals'>Fondamentaux</a></h2>
+<p class="Pp"><i>Déclaration</i></p>
+<p class="Pp">Les arguments de la directive
+    <span class="Li">&quot;use overload&quot;</span> sont des paires (clé, valeur).
+    Pour la liste complète des clés autorisées, consultez la section
+    &quot;Opérations surchargeables&quot; ci-dessous.</p>
+<p class="Pp">Les implémentations d'opérateurs (les valeurs) peuvent être des
+    sous-routines, des références à des sous-routines ou des sous-routines
+    anonymes - en d'autres termes, tout ce qui est légal à l'intérieur d'un appel
+    <span class="Li">&quot;&amp;{ ... }&quot;</span>. Les valeurs spécifiées
+    sous forme de chaînes sont interprétées comme des noms de méthodes. Ainsi</p>
+<pre>package Number;
+use overload
+    &quot;-&quot; =&gt; &quot;minus&quot;,
+    &quot;*=&quot; =&gt; \&amp;muas,
+    '&quot;&quot;' =&gt; sub { ...; };</pre>
+<p class="Pp">déclare que la soustraction doit être implémentée par la méthode
+    <span class="Li">minus()</span> dans la classe
+    <span class="Li">&quot;Number&quot;</span> (ou l'une de ses classes de base),
+    et que la fonction <span class="Li">Number::muas()</span> doit être utilisée
+    pour la forme d'affectation de la multiplication,
+    <span class="Li">&quot;*=&quot;</span>. Elle définit également une sous-routine
+    anonyme pour implémenter la conversion en chaîne : celle-ci est appelée chaque
+    fois qu'un objet béni dans le paquet <span class="Li">&quot;Number&quot;</span>
+    est utilisé dans un contexte de chaîne (cette sous-routine pourrait, par
+    exemple, retourner le nombre sous forme de chiffre romain).</p>
+<p class="Pp"><i>Conventions d'appel et autogénération magique</i></p>
+<p class="Pp">L'exemple d'implémentation suivant de
+    <span class="Li">minus()</span> (qui suppose que les objets
+    <span class="Li">&quot;Number&quot;</span> sont simplement des références à des
+    scalaires bénis) illustre les conventions d'appel :</p>
+<pre>package Number;
+sub minus {
+    my ($self, $other, $swap) = @_;
+    my $result = $$self - $other;         # *
+    $result = -$result if $swap;
+    ref $result ? $result : bless \$result;
+}
+# * peut récurser une fois - voir le tableau ci-dessous</pre>
+<p class="Pp">Trois arguments sont passés à toutes les sous-routines spécifiées
+    dans la directive <span class="Li">&quot;use overload&quot;</span> (avec des
+    exceptions - voir ci-dessous, notamment
+    &quot;nomethod&quot;).</p>
+<p class="Pp">Le premier est l'opérande fournissant l'implémentation de l'opérateur
+    surchargé - dans ce cas, l'objet dont la méthode
+    <span class="Li">minus()</span> est appelée.</p>
+<p class="Pp">Le deuxième argument est l'autre opérande, ou
+    <span class="Li">&quot;undef&quot;</span> dans le cas d'un opérateur unaire.</p>
+<p class="Pp">Le troisième argument est défini à VRAI si (et seulement si) les deux
+    opérandes ont été échangés. Perl peut faire cela pour s'assurer que le
+    premier argument (<span class="Li">$self</span>) est un objet implémentant
+    l'opération surchargée, conformément aux conventions générales d'appel
+    d'objets. Par exemple, si <span class="Li">$x</span> et <span class="Li">$y</span>
+    sont des <span class="Li">&quot;Number&quot;</span>s :</p>
+<pre>operation   |   génère un appel à
+============|======================
+$x - $y     |   minus($x, $y, '')
+$x - 7      |   minus($x, 7, '')
+7 - $x      |   minus($x, 7, 1)</pre>
+<p class="Pp">Perl peut également utiliser <span class="Li">minus()</span> pour
+    implémenter d'autres opérateurs qui n'ont pas été spécifiés dans la directive
+    <span class="Li">&quot;use overload&quot;</span>, selon les règles
+    &quot;d'Autogénération magique&quot; décrites plus tard. Par exemple,
+    <span class="Li">&quot;use overload&quot;</span> ci-dessus n'a déclaré aucune
+    sous-routine pour les opérateurs <span class="Li">&quot;--&quot;</span>,
+    <span class="Li">&quot;neg&quot;</span> (la clé de surcharge pour le moins
+    unaire) ou <span class="Li">&quot;-=&quot;</span>. Donc</p>
+<pre>operation   |   génère un appel à
+============|======================
+-$x         |   minus($x, 0, 1)
+$x--        |   minus($x, 1, undef)
+$x -= 3     |   minus($x, 3, undef)</pre>
+<p class="Pp">Notez les <span class="Li">&quot;undef&quot;</span> : lorsque l'autogénération
+    conduit à l'utilisation de la méthode d'un opérateur standard qui ne modifie
+    aucun de ses opérandes, comme <span class="Li">&quot;-&quot;</span>, pour
+    implémenter un opérateur qui modifie l'opérande (mutateurs : ici,
+    <span class="Li">&quot;--&quot;</span> et <span class="Li">&quot;-=&quot;</span>),
+    Perl passe undef comme troisième argument. Cela est toujours évalué comme FAUX,
+    conformément au fait que les opérandes n'ont pas été échangés, mais donne
+    à la sous-routine une chance de modifier son comportement dans ces cas.</p>
+<p class="Pp">Dans tous les exemples ci-dessus, <span class="Li">minus()</span>
+    est seulement requis pour retourner le résultat de la soustraction : Perl
+    s'occupe de l'affectation à <span class="Li">$x</span>. En fait, de telles
+    méthodes ne devraient *pas* modifier leurs opérandes, même si
+    <span class="Li">&quot;undef&quot;</span> est passé comme troisième argument
+    (voir &quot;Opérations surchargeables&quot;).</p>
+<p class="Pp">Il en va différemment pour les implémentations de
+    <span class="Li">&quot;++&quot;</span> et <span class="Li">&quot;--&quot;</span> :
+    celles-ci sont censées modifier leur opérande. Une implémentation appropriée
+    de <span class="Li">&quot;--&quot;</span> pourrait ressembler à ceci :</p>
+<pre>use overload '--' =&gt; &quot;decr&quot;,
+    # ...
+sub decr { --${$_[0]}; }</pre>
+<p class="Pp">Si la fonctionnalité &quot;bitwise&quot; est activée (voir feature),
+    un cinquième argument VRAI est passé aux sous-routines gérant
+    <span class="Li">&quot;&amp;&quot;</span>, <span class="Li">&quot;|&quot;</span>,
+    <span class="Li">&quot;^&quot;</span> et <span class="Li">&quot;~&quot;</span>.
+    Cela indique que l'appelant attend un comportement numérique. Le quatrième
+    argument sera <span class="Li">&quot;undef&quot;</span>, car cette position
+    (<span class="Li">$_[3]</span>) est réservée à l'usage de
+    &quot;nomethod&quot;.</p>
+<p class="Pp"><i>Mathématiques, Mutateurs et Constructeurs de copie</i></p>
+<p class="Pp">Le terme 'mathématiques' décrit l'implémentation surchargée des
+    opérateurs mathématiques. Les opérations mathématiques soulèvent un problème.
+    Considérez le code :</p>
+<pre>$a = $b;
+--$a;</pre>
+<p class="Pp">Si <span class="Li">$a</span> et <span class="Li">$b</span> sont
+    des scalaires, alors après ces instructions</p>
+<pre>$a == $b - 1</pre>
+<p class="Pp">Un objet, cependant, est une référence à des données bénies, donc si
+    <span class="Li">$a</span> et <span class="Li">$b</span> sont des objets, alors
+    l'affectation <span class="Li">&quot;$a = $b&quot;</span> ne copie que la
+    référence, laissant <span class="Li">$a</span> et <span class="Li">$b</span>
+    pointer vers les mêmes données d'objet. On pourrait donc s'attendre à ce que
+    l'opération <span class="Li">&quot;--$a&quot;</span> décrémente
+    <span class="Li">$b</span> ainsi que <span class="Li">$a</span>. Cependant,
+    cela ne serait pas cohérent avec la manière dont nous attendons le
+    fonctionnement des opérateurs mathématiques.</p>
+<p class="Pp">Perl résout ce dilemme en appelant de manière transparente un
+    constructeur de copie avant d'appeler une méthode définie pour implémenter
+    un mutateur (<span class="Li">&quot;--&quot;</span>, <span class="Li">&quot;+=&quot;</span>,
+    etc.). Dans l'exemple ci-dessus, lorsque Perl atteint l'instruction de
+    décrémentation, il crée une copie des données de l'objet dans
+    <span class="Li">$a</span> et affecte à <span class="Li">$a</span> une référence
+    aux données copiées. Ce n'est qu'ensuite qu'il appelle
+    <span class="Li">decr()</span>, qui modifie les données copiées, laissant
+    <span class="Li">$b</span> inchangé. Ainsi, la métaphore de l'objet est
+    préservée autant que possible, tandis que les opérations mathématiques
+    fonctionnent toujours selon la métaphore arithmétique.</p>
+<p class="Pp">Note : le paragraphe précédent décrit ce qui se passe lorsque Perl
+    autogénère le constructeur de copie pour un objet basé sur un scalaire. Pour
+    d'autres cas, voir &quot;Constructeur de copie&quot;.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Overloadable_Operations'><a class='permalink' href='#Overloadable_Operations'>Opérations surchargeables</a></h2>
+<p class="Pp">La liste complète des clés qui peuvent être spécifiées dans la
+    directive <span class="Li">&quot;use overload&quot;</span> est donnée, séparée
+    par des espaces, dans les valeurs du hachage
+    <span class="Li">%overload::ops</span> :</p>
+<pre>with_assign         =&gt; '+ - * / % ** &lt;&lt; &gt;&gt; x .',
+assign              =&gt; '+= -= *= /= %= **= &lt;&lt;= &gt;&gt;= x= .=',
+num_comparison      =&gt; '&lt; &lt;= &gt; &gt;= == !=',
+'3way_comparison'   =&gt; '&lt;=&gt; cmp',
+str_comparison      =&gt; 'lt le gt ge eq ne',
+binary              =&gt; '&amp; &amp;= | |= ^ ^= &amp;. &amp;.= |. |.= ^. ^.=',
+unary               =&gt; 'neg ! ~ ~.',
+mutators            =&gt; '++ --',
+func                =&gt; 'atan2 cos sin exp abs log sqrt int',
+conversion          =&gt; 'bool &quot;&quot; 0+ qr',
+iterators           =&gt; '&lt;&gt;',
+filetest            =&gt; '-X',
+der</pre>
+</section>
+</div>
+</section>
+
+            </article>
+        </main>
+    </body>
+</html>
+eferencing       =&gt; '${} @{} %{} &amp;{} *{}',
+matching            =&gt; '~~',
+special             =&gt; 'nomethod fallback =',</pre>
+<p class="Pp">La plupart des opérateurs surchargeables correspondent un à un à ces clés.
+    Les exceptions, y compris les opérations surchargeables supplémentaires non apparentes dans
+    cette table de hachage, sont incluses dans les notes qui suivent. Cette liste est susceptible de croître avec le temps.</p>
+<p class="Pp">Un avertissement est émis si une tentative est faite pour enregistrer un opérateur
+    introuvable ci-dessus.</p>
+<ul class="Bl-bullet">
+  <li><span class="Li">&quot;not&quot;</span>
+    <p class="Pp">L'opérateur <span class="Li">&quot;not&quot;</span> n'est pas une
+        clé valide pour <span class="Li">&quot;use overload&quot;</span>. Cependant,
+        si l'opérateur <span class="Li">&quot;!&quot;</span> est surchargé, alors
+        la même implémentation sera utilisée pour
+        <span class="Li">&quot;not&quot;</span> (puisque les deux opérateurs diffèrent
+        uniquement par leur précédence).</p>
+  </li>
+  <li><span class="Li">&quot;neg&quot;</span>
+    <p class="Pp">La clé <span class="Li">&quot;neg&quot;</span> est utilisée pour
+        le moins unaire afin de le distinguer du
+        <span class="Li">&quot;-&quot;</span> binaire.</p>
+  </li>
+  <li><span class="Li">&quot;++&quot;</span>,
+      <span class="Li">&quot;--&quot;</span>
+    <p class="Pp">En supposant qu'ils se comportent de manière analogue aux
+        <span class="Li">&quot;++&quot;</span> et
+        <span class="Li">&quot;--&quot;</span> de Perl, les implémentations surchargées
+        de ces opérateurs doivent muter leurs opérandes.</p>
+    <p class="Pp">Aucune distinction n'est faite entre les formes préfixes et postfixes des
+        opérateurs d'incrémentation et de décrémentation : ceux-ci ne diffèrent que par le point
+        auquel Perl appelle la sous-routine associée lors de l'évaluation d'une
+        expression.</p>
+  </li>
+  <li><i>Affectations</i>
+        <pre>+=  -=  *=  /=  %=  **=  &lt;&lt;=  &gt;&gt;=  x=  .=
+&amp;=  |=  ^=  &amp;.=  |.=  ^.=
+</pre>
+    <p class="Pp">L'affectation simple n'est pas surchargeable (la clé
+        <span class="Li">'='</span> est utilisée pour le &quot;Constructeur par copie&quot;). Perl
+        a un moyen de faire en sorte que les affectations à un objet fassent ce que vous voulez,
+        mais cela implique l'utilisation de <b>tie()</b>, et non d'overload - voir
+        &quot;tie&quot; in perlfunc et les exemples &quot;COOKBOOK&quot; ci-dessous.</p>
+    <p class="Pp">La sous-routine pour la variante d'affectation d'un opérateur doit
+        uniquement retourner le résultat de l'opération. Il est permis de modifier la valeur de
+        son opérande (ceci est sûr car Perl appelle d'abord le constructeur par copie), mais ceci
+        est facultatif car Perl assigne de toute façon la valeur retournée à l'opérande de gauche.</p>
+    <p class="Pp">Un objet qui surcharge un opérateur d'affectation le fait uniquement pour les
+        affectations à cet objet. En d'autres termes, Perl n'appelle jamais les méthodes correspondantes
+        avec le troisième argument (l'argument &quot;swap&quot;) réglé sur TRUE. Par exemple, l'opération</p>
+        <pre>$a *= $b
+</pre>
+    <p class="Pp">ne peut pas entraîner l'appel de l'implémentation de
+        <span class="Li">$b</span> pour
+        <span class="Li">&quot;*=&quot;</span>, même si
+        <span class="Li">$a</span> est un scalaire. (Cela peut cependant générer un appel
+        à la méthode de <span class="Li">$b</span> pour
+        <span class="Li">&quot;*&quot;</span>).</p>
+  </li>
+  <li><i>Non-mutateurs avec une variante mutatrice</i>
+        <pre>+  -  *  /  %  **  &lt;&lt;  &gt;&gt;  x  .
+&amp;  |  ^  &amp;.  |.  ^.
+</pre>
+    <p class="Pp">Comme décrit ci-dessus, Perl peut appeler des méthodes pour des opérateurs comme
+        <span class="Li">&quot;+&quot;</span> et
+        <span class="Li">&quot;&amp;&quot;</span> lors de l'implémentation d'opérations
+        manquantes comme
+        <span class="Li">&quot;++&quot;</span>,
+        <span class="Li">&quot;+=&quot;</span>, et
+        <span class="Li">&quot;&amp;=&quot;</span>. Bien que ces méthodes puissent
+        détecter cette utilisation en testant la définition du troisième argument, elles doivent
+        dans tous les cas éviter de modifier leurs opérandes. Ceci parce que Perl n'appelle pas le constructeur par copie avant d'invoquer ces méthodes.</p>
+  </li>
+  <li><span class="Li">&quot;int&quot;</span>
+    <p class="Pp">Traditionnellement, la fonction Perl
+        <span class="Li">&quot;int&quot;</span> arrondit à 0 (voir &quot;int&quot;
+        in perlfunc), et donc pour les types de type virgule flottante, il faut suivre le
+        même sémantique.</p>
+  </li>
+  <li><i>Conversions de chaîne, numérique, booléenne et regexp</i>
+        <pre>&quot;&quot;  0+  bool
+</pre>
+    <p class="Pp">Ces conversions sont invoquées selon le contexte, si nécessaire. Par exemple, la sous-routine pour
+        <span class="Li">'&quot;&quot;'</span> (stringify) peut être utilisée là où l'objet surchargé est passé comme argument à
+        <span class="Li">&quot;print&quot;</span>, et celle pour
+        <span class="Li">'bool'</span> là où il est testé dans la condition d'une instruction de contrôle de flux (comme
+        <span class="Li">&quot;while&quot;</span>) ou l'opération ternaire
+        <span class="Li">&quot;?:&quot;</span>.</p>
+    <p class="Pp">Bien sûr, dans des contextes comme, par exemple,
+        <span class="Li">&quot;$obj + 1&quot;</span>, Perl invoquera
+        l'implémentation de <span class="Li">$obj</span> pour
+        <span class="Li">&quot;+&quot;</span> plutôt que (dans cet exemple) de
+        convertir <span class="Li">$obj</span> en nombre en utilisant la méthode de numérisation
+        <span class="Li">'0+'</span> (une exception à cela est lorsqu'aucune méthode n'a été fournie pour
+        <span class="Li">'+'</span> et que &quot;fallback&quot; est réglé sur TRUE).</p>
+    <p class="Pp">Les sous-routines pour <span class="Li">'&quot;&quot;'</span>,
+        <span class="Li">'0+'</span>, et <span class="Li">'bool'</span> peuvent
+        retourner n'importe quelle valeur Perl arbitraire. Si l'opération correspondante pour cette
+        valeur est également surchargée, l'opération sera appelée à nouveau avec cette
+        valeur.</p>
+    <p class="Pp">Comme cas spécial, si l'overload retourne l'objet lui-même, il sera utilisé directement. Une conversion surchargée retournant l'objet est probablement un bug, car vous obtiendrez probablement quelque chose qui ressemble à
+        <span class="Li">&quot;YourPackage=HASH(0x8172b34)&quot;</span>.</p>
+        <pre>qr
+</pre>
+    <p class="Pp">La sous-routine pour <span class="Li">'qr'</span> est utilisée partout où l'objet est interpolé ou utilisé comme regexp, y compris lorsqu'il apparaît du côté droit d'un opérateur
+        <span class="Li">&quot;=~&quot;</span> ou
+        <span class="Li">&quot;!~&quot;</span>.</p>
+    <p class="Pp"><span class="Li">&quot;qr&quot;</span> doit retourner une regexp compilée, ou une référence à une regexp compilée (comme ce que retourne
+        <span class="Li">&quot;qr//&quot;</span>), et toute surcharge supplémentaire sur la valeur de retour sera ignorée.</p>
+  </li>
+  <li><i>Itération</i>
+    <p class="Pp">Si <span class="Li">&quot;&lt;&gt;&quot;</span> est surchargé, alors la même implémentation est utilisée pour la syntaxe de *lecture de fichier*
+        <span class="Li">&quot;&lt;$var&gt;&quot;</span> et la syntaxe de *globbing*
+        <span class="Li">&quot;&lt;${var}&gt;&quot;</span>.</p>
+  </li>
+  <li><i>Tests de fichiers</i>
+    <p class="Pp">La clé <span class="Li">'-X'</span> est utilisée pour spécifier une sous-routine pour gérer tous les opérateurs de test de fichier
+        (<span class="Li">&quot;-f&quot;</span>,
+        <span class="Li">&quot;-x&quot;</span>, et ainsi de suite : voir &quot;-X&quot; in
+        perlfunc pour la liste complète) ; il n'est pas possible de surcharger un opérateur de test de fichier individuellement. Pour les distinguer, la lettre suivant le '-'
+        est passée comme deuxième argument (c'est-à-dire dans la position qui, pour les opérateurs binaires, est utilisée pour passer le deuxième opérande).</p>
+    <p class="Pp">L'appel d'un opérateur de test de fichier surchargé n'affecte pas la valeur stat associée au descripteur de fichier spécial
+        <span class="Li">&quot;_&quot;</span>. Il fait toujours référence au résultat du dernier
+        <span class="Li">&quot;stat&quot;</span>,
+        <span class="Li">&quot;lstat&quot;</span> ou test de fichier non surchargé.</p>
+    <p class="Pp">Cet overload a été introduit dans Perl 5.12.</p>
+  </li>
+  <li><i>Correspondance</i>
+    <p class="Pp">La clé <span class="Li">&quot;~~&quot;</span> vous permet de remplacer la logique de correspondance intelligente utilisée par l'opérateur
+        <span class="Li">&quot;~~&quot;</span> et la construction de switch
+        (<span class="Li">&quot;given&quot;</span>/<span class="Li">&quot;when&quot;</span>).
+        Voir &quot;Switch Statements&quot; in perlsyn et feature.</p>
+    <p class="Pp">De manière inhabituelle, l'implémentation surchargée de l'opérateur de correspondance intelligente n'a pas le contrôle total du comportement de la correspondance intelligente. En particulier, dans le code suivant :</p>
+        <pre>package Foo;
+use overload '~~' =&gt; 'match';
+my $obj =  Foo-&gt;new();
+$obj ~~ [ 1,2,3 ];
+</pre>
+    <p class="Pp">la correspondance intelligente n'invoque *pas* l'appel de méthode comme ceci :</p>
+        <pre>$obj-&gt;match([1,2,3],0);
+</pre>
+    <p class="Pp">plutôt, la règle distributive de correspondance intelligente a la priorité, donc
+        <span class="Li">$obj</span> est comparé intelligemment à chaque élément du tableau tour à tour jusqu'à ce qu'une correspondance soit trouvée, vous pourriez donc voir entre un et trois de ces appels à la place :</p>
+        <pre>$obj-&gt;match(1,0);
+$obj-&gt;match(2,0);
+$obj-&gt;match(3,0);
+</pre>
+    <p class="Pp">Consultez le tableau de correspondance dans &quot;Smartmatch Operator&quot; in perlop pour connaître les détails sur quand le surcharge est invoqué.</p>
+  </li>
+  <li><i>Déréférencement</i>
+        <pre>${}  @{}  %{}  &amp;{}  *{}
+</pre>
+    <p class="Pp">Si ces opérateurs ne sont pas explicitement surchargés, ils fonctionnent normalement, produisant le scalaire, le tableau, ou ce qui stocke les données de l'objet sous-jacent (ou le message d'erreur approprié si l'opérateur de déréférencement ne le correspond pas). La définition d'un <span class="Li">'nomethod'</span> général (voir ci-dessous) n'a aucune incidence sur cela, car la fonction générale ne sera pas appelée pour implémenter un opérateur de déréférencement manquant.</p>
+    <p class="Pp">Si un opérateur de déréférencement est surchargé, il doit retourner une *référence* du type approprié (par exemple, la sous-routine pour la clé
+        <span class="Li">'${}'</span> doit retourner une référence à un scalaire, pas un scalaire), ou un autre objet qui surcharge l'opérateur : c'est-à-dire que la sous-routine détermine uniquement ce qui est déréférencé et le déréférencement réel est laissé à Perl. Comme cas spécial, si la sous-routine retourne l'objet lui-même, il ne sera pas appelé à nouveau - évitant ainsi une récursion infinie.</p>
+  </li>
+  <li><i>Spécial</i>
+        <pre>nomethod  fallback  =
+</pre>
+    <p class="Pp">Voir &quot;Special Keys for <span class="Li">&quot;use
+        overload&quot;</span>&quot;.</p>
+  </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Magic_Autogeneration'><a class='permalink' href='#Magic_Autogeneration'>Génération   automatique magique</a></h2>
+<p class="Pp">Si une méthode pour une opération n'est pas trouvée, Perl essaie de générer automatiquement une implémentation de substitution à partir des opérations qui ont été définies.</p>
+<p class="Pp">Remarque : le comportement décrit dans cette section peut être désactivé en réglant
+    <span class="Li">&quot;fallback&quot;</span> sur FALSE (voir
+    &quot;fallback&quot;).</p>
+<p class="Pp">Dans les tableaux suivants, les nombres indiquent la priorité. Par exemple, le tableau ci-dessous indique que, si aucune implémentation pour
+    <span class="Li">'!'</span> n'a été définie, Perl l'implémentera en utilisant
+    <span class="Li">'bool'</span> (c'est-à-dire en inversant la valeur retournée par la méthode pour
+    <span class="Li">'bool'</span>) ; si la conversion booléenne est également non implémentée, Perl utilisera
+    <span class="Li">'0+'</span> ou, à défaut,
+    <span class="Li">'&quot;&quot;'</span>.</p>
+<pre>e>opérateur | peut être généré automatiquement à partir de
+         |
+         | 0+   &quot;&quot;   bool   .   x
+=========|==========================
+   0+    |       1     2
+   &quot;&quot;    |  1          2
+   bool  |  1    2
+   int   |  1    2     3
+   !     |  2    3     1
+   qr    |  2    1     3
+   .     |  2    1     3
+   x     |  2    1     3
+   .=    |  3    2     4    1
+   x=    |  3    2     4        1
+   &lt;&gt;    |  2    1     3
+   -X    |  2    1     3</pre>
+<p class="Pp">Note : L'itérateur (<span class="Li">'&lt;&gt;'</span>) et le test de fichier
+    (<span class="Li">'-X'</span>) fonctionnent normalement : si l'opérande n'est pas un glob béni ou une référence IO, il est converti en chaîne de caractères (en utilisant la méthode pour
+    <span class="Li">'&quot;&quot;'</span>,
+    <span class="Li">'0+'</span>, ou
+    <span class="Li">'bool'</span>) pour être interprété comme un glob ou un nom de fichier.</p>
+<pre>opérateur | peut être généré automatiquement à partir de
+         |
+         |  &lt;   &lt;=&gt;   neg   -=    -
+=========|==========================
+   neg   |                        1
+   -=    |                        1
+   --    |                   1    2
+   abs   | a1    a2    b1        b2    [*]
+   &lt;     |        1
+   &lt;=    |        1
+   &gt;     |        1
+   &gt;=    |        1
+   ==    |        1
+   !=    |        1
+* un parmi [a1, a2] et un parmi [b1, b2]</pre>
+<p class="Pp">Tout comme les comparaisons numériques peuvent être générées automatiquement à partir de la méthode pour
+    <span class="Li">'&lt;=&gt;'</span>, les comparaisons de chaînes peuvent être
+    générées automatiquement à partir de celle pour
+    <span class="Li">'cmp'</span> :</p>
+<pre> opérateurs          |  peut être généré automatiquement à partir de
+====================|===========================
+ lt gt le ge eq ne  |  cmp</pre>
+<p class="Pp">De même, la génération automatique pour les clés
+    <span class="Li">'+='</span> et
+    <span class="Li">'++'</span> est analogue à
+    <span class="Li">'-='</span> et
+    <span class="Li">'--'</span> ci-dessus :</p>
+<pre>opérateur | peut être généré automatiquement à partir de
+         |
+         |  +=    +
+=========|==========================
+    +=   |        1
+    ++   |   1    2</pre>
+<p class="Pp">Et d'autres variations d'affectation sont analogues à
+    <span class="Li">'+='</span> et
+    <span class="Li">'-='</span> (et similaires à
+    <span class="Li">'.='</span> et
+    <span class="Li">'x='</span> ci-dessus) :</p>
+<pre>          opérateur ||  *= /= %= **= &lt;&lt;= &gt;&gt;= &amp;= ^= |= &amp;.= ^.= |.=
+-------------------||-------------------------------------------
+généré automatiquement à partir de ||  *  /  %  **  &lt;&lt;  &gt;&gt;  &amp;  ^  |  &amp;.  ^.  |.</pre>
+<p class="Pp">Notez également que le constructeur de copie (clé
+    <span class="Li">'='</span>) peut être généré automatiquement, mais uniquement pour les objets basés sur des scalaires. Voir &quot;Constructeur de copie&quot;.</p>
+<p class="Pp"><i>Ensemble minimal d'opérations surchargées</i></p>
+<p class="Pp">Étant donné que certaines opérations peuvent être générées automatiquement à partir d'autres, il existe un ensemble minimal d'opérations qui doivent être surchargées afin de disposer de l'ensemble complet des opérations surchargées à sa disposition. Bien entendu, les opérations générées automatiquement peuvent ne pas faire exactement ce que l'utilisateur attend. L'ensemble minimal est :</p>
+<pre>+ - * / % ** &lt;&lt; &gt;&gt; x
+&lt;=&gt; cmp
+&amp; | ^ ~ &amp;. |. ^. ~.
+atan2 cos sin exp log sqrt int
+&quot;&quot; 0+ bool
+~~</pre>
+<p class="Pp">Parmi les conversions, une seule (chaîne, booléen ou numérique) est nécessaire car chacune peut être générée à partir de l'une des deux autres.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Clés_spéciales_pour_&amp;quot;use_overload&amp;quot;'><a class='permalink' href='#Clés_spéciales_pour_&amp;quot;use_overload&amp;quot;'>Clés spéciales pour &quot;use overload&quot;</a></h2>
+<p class="Pp"><span class="Li"><i>&quot;nomethod&quot;</i></span><i></i></p>
+<p class="Pp">La clé <span class="Li">'nomethod'</span> est utilisée pour spécifier une fonction de remplacement à appeler pour tout opérateur qui n'est pas surchargé individuellement. La fonction spécifiée recevra quatre paramètres. Les trois premiers arguments coïncident avec ceux qui auraient été passés à la méthode correspondante si elle avait été définie. Le quatrième argument est la clé
+    <span class="Li">&quot;use overload&quot;</span> pour cette méthode manquante. Si la fonctionnalité &quot;bitwise&quot; est activée (voir fonctionnalité), un cinquième argument TRUE est passé aux sous-routines gérant
+    <span class="Li">&quot;&amp;&quot;</span>,
+    <span class="Li">&quot;|&quot;</span>, <span class="Li">&quot;^&quot;</span>
+    et <span class="Li">&quot;~&quot;</span> pour indiquer que l'appelant attend un comportement numérique.</p>
+<p class="Pp">Par exemple, si <span class="Li">$a</span> est un objet béni dans un paquet déclarant</p>
+<pre>use overload 'nomethod' =&gt; 'catch_all', # ...</pre>
+<p class="Pp">alors l'opération</p>
+<pre>3 + $a</pre>
+<p class="Pp">pourrait (sauf si une méthode est spécifiquement déclarée pour la clé
+    <span class="Li">'+'</span>) entraîner un appel</p>
+<pre>catch_all($a, 3, 1, '+')</pre>
+<p class="Pp">Voir &quot;Comment Perl choisit une implémentation d'opérateur&quot;.</p>
+<p class="Pp"><span class="Li"><i>&quot;fallback&quot;</i></span><i></i></p>
+<p class="Pp">La valeur attribuée à la clé
+    <span class="Li">'fallback'</span> indique à Perl à quel point il doit essayer de trouver un moyen alternatif d'implémenter un opérateur manquant.</p>
+<ul class="Bl-bullet">
+  <li>défini, mais FAUX
+        <pre>use overload &quot;fallback&quot; =&gt; 0, # ... ;
+</pre>
+    <p class="Pp">Cela désactive la &quot;Génération automatique magique&quot;.</p>
+  </li>
+  <li><span class="Li">&quot;undef&quot;</span>
+    <p class="Pp">Dans le cas par défaut où aucune valeur n'est explicitement attribuée à
+        <span class="Li">&quot;fallback&quot;</span>, la génération automatique magique est activée.</p>
+  </li>
+  <li>VRAI
+    <p class="Pp">Identique à <span class="Li">&quot;undef&quot;</span>, mais
+        si un opérateur manquant ne peut pas être généré automatiquement, au lieu d'émettre un message d'erreur, Perl est autorisé à revenir à ce qu'il aurait fait pour cet opérateur s'il n'y avait pas eu de directive
+        <span class="Li">&quot;use overload&quot;</span>.</p>
+    <p class="Pp">Note : dans la plupart des cas, en particulier le &quot;Constructeur de copie&quot;, ce comportement n'est probablement pas approprié.</p>
+  </li>
+</ul>
+<p class="Pp">Voir &quot;Comment Perl choisit une implémentation d'opérateur&quot;.</p>
+<p class="Pp"><i>Constructeur de copie</i></p>
+<p class="Pp">Comme mentionné ci-dessus, cette opération est appelée lorsqu'un mutateur est appliqué à une référence qui partage son objet avec une autre référence. Par exemple, si <span class="Li">$b</span> est mathémagique, et
+    <span class="Li">'++'</span> est surchargé avec
+    <span class="Li">'incr'</span>, et <span class="Li">'='</span> est
+    surchargé avec <span class="Li">'clone'</span>, alors le code</p>
+<pre>$a = $b;
+# ... (autre code qui ne modifie pas $a ou $b) ...
+++$b;</pre>
+<p class="Pp">serait exécuté d'une manière équivalente à</p>
+<pre>$a = $b;
+# ...
+$b = $b-&gt;clone(undef, &quot;&quot;);
+$b-&gt;incr(undef, &quot;&quot;);</pre>
+<p class="Pp">Note :</p>
+<ul class="Bl-bullet">
+  <li>La sous-routine pour
+      <span class="Li">'='</span> ne surcharge pas l'opérateur d'affectation Perl : elle est uniquement utilisée pour permettre aux mutateurs de fonctionner comme décrit ici. (Voir &quot;Affectations&quot; ci-dessus.)</li>
+  <li>Comme pour les autres opérations, la sous-routine implémentant '=' reçoit trois
+      arguments, bien que les deux derniers soient toujours
+      <span class="Li">&quot;undef&quot;</span> et
+    <span class="Li">''</span>.</li>
+  <li>Le constructeur de copie n'est appelé qu'avant l'appel d'une fonction déclarée pour implémenter un mutateur, par exemple, si
+      <span class="Li">&quot;++$b;&quot;</span> dans le code ci-dessus est effectué
+      via une méthode déclarée pour la clé
+      <span class="Li">'++'</span> (ou 'nomethod', passant
+      <span class="Li">'++'</span> comme quatrième argument) ou, par autogénération,
+      <span class="Li">'+='</span>. Il n'est pas appelé si
+      l'opération d'incrémentation est effectuée par un appel à la méthode pour
+      <span class="Li">'+'</span> car, dans le code équivalent,
+        <pre>$a = $b;
+$b = $b + 1;
+</pre>
+    <p class="Pp">les données référencées par <span class="Li">$a</span> ne sont pas modifiées par l'affectation à
+        <span class="Li">$b</span> d'une référence à de nouvelles données d'objet.</p>
+  </li>
+  <li>Le constructeur de copie n'est pas appelé si Perl détermine qu'il est
+      inutile car il n'y a pas d'autre référence aux données en cours de modification.</li>
+  <li>Si <span class="Li">'fallback'</span> est indéfini ou VRAI alors un constructeur de copie peut être généré automatiquement, mais uniquement pour les objets basés sur des scalaires.
+      Dans d'autres cas, il doit être défini explicitement. Lorsqu'un objet a ses données stockées sous forme, par exemple, d'un tableau de scalaires, ce qui suit peut être approprié :
+        <pre>use overload '=' =&gt; sub { bless [ @{$_[0]} ] },  # ...
+</pre>
+  </li>
+  <li>Si <span class="Li">'fallback'</span> est VRAI et aucun constructeur de copie n'est défini, alors, pour les objets non basés sur des scalaires, Perl peut silencieusement se rabattre sur une affectation simple, c'est-à-dire une affectation de la référence de l'objet.
+      En effet, cela désactive le mécanisme du constructeur de copie car aucune nouvelle copie des données de l'objet n'est créée. Ce n'est presque certainement pas ce que vous voulez.
+      (C'est cependant cohérent : par exemple, le retour de Perl pour l'opérateur
+      <span class="Li">&quot;++&quot;</span> est d'incrémenter la référence elle-même.)</li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Comment_Perl_choisit_une_implémentation_d_opérateur'><a class='permalink' href='#Comment_Perl_choisit_une_implémentation_d_opérateur'>Comment Perl choisit une implémentation d'opérateur</a></h2>
+<p class="Pp">Lequel est vérifié en premier,
+    <span class="Li">&quot;nomethod&quot;</span> ou
+    <span class="Li">&quot;fallback&quot;</span> ? Si les deux opérandes d'un opérateur sont de types différents et que les deux surchargent l'opérateur, quelle implémentation est utilisée ? Les règles de priorité sont les suivantes :</p>
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Si le premier opérande a déclaré une sous-routine pour surcharger l'opérateur,
+      alors utiliser cette implémentation.</dd>
+  <dt>2.</dt>
+  <dd>Sinon, si la valeur de retour est VRAIE ou indéfinie pour le premier opérande,
+      alors voir si les règles de génération automatique permettent d'utiliser un autre de ses opérateurs à la place.</dd>
+  <dt>3.</dt>
+  <dd>À moins que l'opérateur ne soit une affectation
+      (<span class="Li">&quot;+=&quot;</span>,
+      <span class="Li">&quot;-=&quot;</span>, etc.), répéter l'étape (1) par rapport au second opérande.</dd>
+  <dt>4.</dt>
+  <dd>Répéter l'étape (2) par rapport au second opérande.</dd>
+  <dt>5.</dt>
+  <dd>Si le premier opérande a une méthode &quot;nomethod&quot;, alors l'utiliser.</dd>
+  <dt>6.</dt>
+  <dd>Si le second opérande a une méthode &quot;nomethod&quot;, alors l'utiliser.</dd>
+  <dt>7.</dt>
+  <dd>Si
+      <span class="Li">&quot;fallback&quot;</span> est VRAI pour les deux opérandes,
+      alors effectuer l'opération habituelle pour l'opérateur, en traitant les opérandes comme des nombres, des chaînes ou des booléens selon ce qui convient à l'opérateur (voir note).</dd>
+  <dt>8.</dt>
+  <dd>Rien n'a fonctionné - mourir.</dd>
+</dl>
+<p class="Pp">Lorsqu'il n'y a qu'un seul opérande (ou un seul opérande avec surcharge), les vérifications concernant l'autre opérande ci-dessus sont ignorées.</p>
+<p class="Pp">Il existe des exceptions aux règles ci-dessus pour les opérations de déréférencement (qui, si l'étape 1 échoue, reviennent toujours aux implémentations intégrées normales - voir Déréférencement), et pour
+    <span class="Li">&quot;~~&quot;</span> (qui a son propre ensemble de règles - voir
+    <span class="Li">&quot;Correspondance&quot;</span> sous &quot;Opérations surchargeables&quot; ci-dessus).</p>
+<p class="Pp">Note sur l'étape 7 : certains opérateurs ont une sémantique différente selon le type de leurs opérandes. Comme il n'y a aucun moyen d'indiquer à Perl de traiter les opérandes comme, par exemple, des nombres au lieu de chaînes, le résultat ici peut ne pas être ce que vous attendez. Voir &quot;BUGS ET PIÈGES&quot;.</p>
+</section>
+<section class="Ss">
+<h2 c
+<section class="Sh">
+<h1 class="Sh" id="SYNOPSIS">SYNOPSIS</h1>
+<pre>    use overload
+        '+' =&gt; \&amp;add,
+        '-' =&gt; \&amp;subtract,
+        '&quot;&quot;' =&gt; \&amp;stringify,
+        '0+' =&gt; \&amp;numeric,
+        'no overload q{}, qq{}, qw{}, qx{}, qr{}, qv{}';
+    # or
+    use overload 'fallback' =&gt; 1; # Enable default stringification/numerification
+    # or
+    no overload '+';
+    no overload qw/+ -/;
+</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION">DESCRIPTION</h1>
+<p class="Pp">The <code class="Li">overload</code> pragma allows you to change the
+    behavior of Perl operators on objects.</p>
+<p class="Pp">For example, if you have a class <code class="Li">Math::BigInt</code>,
+    you might want <code class="Li">+</code> to mean addition of big integers,
+    instead of the default behavior of adding the stringification of the objects.
+    You can do this by writing:</p>
+<pre>    package Math::BigInt;
+    use overload
+        '+' =&gt; \&amp;Math::BigInt::add,
+        '-' =&gt; \&amp;Math::BigInt::subtract,
+        '&quot;&quot;' =&gt; \&amp;Math::BigInt::as_string,
+        '0+' =&gt; \&amp;Math::BigInt::as_numeric;
+    # ...
+    package main;
+    my $x = Math::BigInt-&gt;new('1');
+    my $y = Math::BigInt-&gt;new('2');
+    my $z = $x + $y; # Calls Math::BigInt::add($x, $y)
+    print $z;        # Calls Math::BigInt::as_string($z)
+    print 0+$z;      # Calls Math::BigInt::as_numeric($z)
+</pre>
+<p class="Pp">The <code class="Li">use overload</code> directive takes a list of
+    key-value pairs. The keys are the operators you want to overload, and the
+    values are the subroutines that will be called to implement these operators.
+    The operators are given as strings.</p>
+<p class="Pp">The available operators are:</p>
+<dl class="Bl-tag">
+  <dt id="arg">arg</dt>
+  <dd>The arguments to the operator.</dd>
+  <dt id="boolean">boolean</dt>
+  <dd>The boolean context of the operator.</dd>
+  <dt id="cmp">cmp</dt>
+  <dd>The comparison operator.</dd>
+  <dt id="eq">eq</dt>
+  <dd>The string equality operator.</dd>
+  <dt id="ne">ne</dt>
+  <dd>The string inequality operator.</dd>
+  <dt id="gt">gt</dt>
+  <dd>The string greater than operator.</dd>
+  <dt id="lt">lt</dt>
+  <dd>The string less than operator.</dd>
+  <dt id="ge">ge</dt>
+  <dd>The string greater than or equal operator.</dd>
+  <dt id="le">le</dt>
+  <dd>The string less than or equal operator.</dd>
+  <dt id="infix_eq">infix_eq</dt>
+  <dd>The same as <code class="Li">eq</code>.</dd>
+  <dt id="infix_ne">infix_ne</dt>
+  <dd>The same as <code class="Li">ne</code>.</dd>
+  <dt id="infix_gt">infix_gt</dt>
+  <dd>The same as <code class="Li">gt</code>.</dd>
+  <dt id="infix_lt">infix_lt</dt>
+  <dd>The same as <code class="Li">lt</code>.</dd>
+  <dt id="infix_ge">infix_ge</dt>
+  <dd>The same as <code class="Li">ge</code>.</dd>
+  <dt id="infix_le">infix_le</dt>
+  <dd>The same as <code class="Li">le</code>.</dd>
+  <dt id="eq_num">eq_num</dt>
+  <dd>The numeric equality operator.</dd>
+  <dt id="ne_num">ne_num</dt>
+  <dd>The numeric inequality operator.</dd>
+  <dt id="gt_num">gt_num</dt>
+  <dd>The numeric greater than operator.</dd>
+  <dt id="lt_num">lt_num</dt>
+  <dd>The numeric less than operator.</dd>
+  <dt id="ge_num">ge_num</dt>
+  <dd>The numeric greater than or equal operator.</dd>
+  <dt id="le_num">le_num</dt>
+  <dd>The numeric less than or equal operator.</dd>
+  <dt id="infix_eq_num">infix_eq_num</dt>
+  <dd>The same as <code class="Li">eq_num</code>.</dd>
+  <dt id="infix_ne_num">infix_ne_num</dt>
+  <dd>The same as <code class="Li">ne_num</code>.</dd>
+  <dt id="infix_gt_num">infix_gt_num</dt>
+  <dd>The same as <code class="Li">gt_num</code>.</dd>
+  <dt id="infix_lt_num">infix_lt_num</dt>
+  <dd>The same as <code class="Li">lt_num</code>.</dd>
+  <dt id="infix_ge_num">infix_ge_num</dt>
+  <dd>The same as <code class="Li">ge_num</code>.</dd>
+  <dt id="infix_le_num">infix_le_num</dt>
+  <dd>The same as <code class="Li">le_num</code>.</dd>
+  <dt id="cmp_num">cmp_num</dt>
+  <dd>The numeric comparison operator.</dd>
+  <dt id="and">and</dt>
+  <dd>The logical AND operator.</dd>
+  <dt id="or">or</dt>
+  <dd>The logical OR operator.</dd>
+  <dt id="xor">xor</dt>
+  <dd>The logical XOR operator.</dd>
+  <dt id="amp"> &amp;</dt>
+  <dd>The bitwise AND operator.</dd>
+  <dt id="pipe">|</dd>
+  <dd>The bitwise OR operator.</dd>
+  <dt id="caret">^</dt>
+  <dd>The bitwise XOR operator.</dd>
+  <dt id="lshift"> &lt;&lt;</dt>
+  <dd>The left shift operator.</dd>
+  <dt id="rshift"> &gt;&gt;</dt>
+  <dd>The right shift operator.</dd>
+  <dt id="plus">+</dt>
+  <dd>The addition operator.</dd>
+  <dt id="minus">-</dt>
+  <dd>The subtraction operator.</dd>
+  <dt id="star">*</dt>
+  <dd>The multiplication operator.</dd>
+  <dt id="slash">/</dt>
+  <dd>The division operator.</dd>
+  <dt id="percent">%</dt>
+  <dd>The modulo operator.</dd>
+  <dt id="starstar">**</dt>
+  <dd>The exponentiation operator.</dd>
+  <dt id="negate">-negate</dt>
+  <dd>The unary negation operator.</dd>
+  <dt id="abs">abs</dt>
+  <dd>The absolute value operator.</dd>
+  <dt id="negate_unary">~</dt>
+  <dd>The bitwise NOT operator.</dd>
+  <dt id="not_logical">!</dt>
+  <dd>The logical NOT operator.</dd>
+  <dt id="preinc">++</dt>
+  <dd>The pre-increment operator.</dd>
+  <dt id="predec">--</dt>
+  <dd>The pre-decrement operator.</dd>
+  <dt id="postinc">++</dt>
+  <dd>The post-increment operator.</dd>
+  <dt id="postdec">--</dt>
+  <dd>The post-decrement operator.</dd>
+  <dt id="deref">deref</dt>
+  <dd>The dereference operator.</dd>
+  <dt id="array_ref">array ref</dt>
+  <dd>The array reference operator.</dd>
+  <dt id="hash_ref">hash ref</dt>
+  <dd>The hash reference operator.</dd>
+  <dt id="coderef">code ref</dt>
+  <dd>The code reference operator.</dd>
+  <dt id="string">string</dt>
+  <dd>The stringification operator.</dd>
+  <dt id="numeric">numeric</dt>
+  <dd>The numeric conversion operator.</dd>
+  <dt id="boolean_context">boolean context</dt>
+  <dd>The boolean context operator.</dd>
+  <dt id="splice">splice</dt>
+  <dd>The splice operator.</dd>
+  <dt id="push">push</dt>
+  <dd>The push operator.</dd>
+  <dt id="pop">pop</dt>
+  <dd>The pop operator.</dd>
+  <dt id="shift_op">shift</dt>
+  <dd>The shift operator.</dd>
+  <dt id="unshift">unshift</dt>
+  <dd>The unshift operator.</dd>
+  <dt id="exists">exists</dt>
+  <dd>The exists operator.</dd>
+  <dt id="delete">delete</dt>
+  <dd>The delete operator.</dd>
+  <dt id="keys">keys</dt>
+  <dd>The keys operator.</dd>
+  <dt id="values">values</dt>
+  <dd>The values operator.</dd>
+  <dt id="each">each</dt>
+  <dd>The each operator.</dd>
+  <dt id="scalar">scalar</dt>
+  <dd>The scalar context operator.</dd>
+  <dt id="list">list</dt>
+  <dd>The list context operator.</dd>
+  <dt id="hash">hash</dt>
+  <dd>The hash context operator.</dd>
+  <dt id="array">array</dt>
+  <dd>The array context operator.</dd>
+  <dt id="sub">sub</dt>
+  <dd>The subroutine context operator.</dd>
+  <dt id="format">format</dt>
+  <dd>The format context operator.</dd>
+  <dt id="goto">goto</dt>
+  <dd>The goto operator.</dd>
+  <dt id="grep">grep</dt>
+  <dd>The grep operator.</dd>
+  <dt id="map">map</dt>
+  <dd>The map operator.</dd>
+  <dt id="sort">sort</dt>
+  <dd>The sort operator.</dd>
+  <dt id="readline">readline</dt>
+  <dd>The readline operator.</dd>
+  <dt id="print">print</dt>
+  <dd>The print operator.</dd>
+  <dt id="say">say</dt>
+  <dd>The say operator.</dd>
+  <dt id="printf">printf</dt>
+  <dd>The printf operator.</dd>
+  <dt id="sprintf">sprintf</dt>
+  <dd>The sprintf operator.</dd>
+  <dt id="open">open</dt>
+  <dd>The open operator.</dd>
+  <dt id="close">close</dt>
+  <dd>The close operator.</dd>
+  <dt id="seek">seek</dt>
+  <dd>The seek operator.</dd>
+  <dt id="tell">tell</dt>
+  <dd>The tell operator.</dd>
+  <dt id="eof">eof</dt>
+  <dd>The eof operator.</dd>
+  <dt id="read">read</dt>
+  <dd>The read operator.</dd>
+  <dt id="write">write</dt>
+  <dd>The write operator.</dd>
+  <dt id="select">select</dt>
+  <dd>The select operator.</dd>
+  <dt id="pipe_op">pipe</dt>
+  <dd>The pipe operator.</dd>
+  <dt id="fork">fork</dt>
+  <dd>The fork operator.</dd>
+  <dt id="wait">wait</dt>
+  <dd>The wait operator.</dd>
+  <dt id="waitpid">waitpid</dt>
+  <dd>The waitpid operator.</dd>
+  <dt id="alarm">alarm</dt>
+  <dd>The alarm operator.</dd>
+  <dt id="sleep">sleep</dt>
+  <dd>The sleep operator.</dd>
+  <dt id="kill">kill</dt>
+  <dd>The kill operator.</dd>
+  <dt id="getc">getc</dt>
+  <dd>The getc operator.</dd>
+  <dt id="time">time</dt>
+  <dd>The time operator.</dd>
+  <dt id="gmtime">gmtime</dt>
+  <dd>The gmtime operator.</dd>
+  <dt id="localtime">localtime</dt>
+  <dd>The localtime operator.</dd>
+  <dt id="atan2">atan2</dt>
+  <dd>The atan2 operator.</dd>
+  <dt id="cos">cos</dt>
+  <dd>The cos operator.</dd>
+  <dt id="sin">sin</dt>
+  <dd>The sin operator.</dd>
+  <dt id="exp">exp</dt>
+  <dd>The exp operator.</dd>
+  <dt id="log">log</dt>
+  <dd>The log operator.</dd>
+  <dt id="sqrt">sqrt</dt>
+  <dd>The sqrt operator.</dd>
+  <dt id="int">int</dt>
+  <dd>The int operator.</dd>
+  <dt id="rand">rand</dt>
+  <dd>The rand operator.</dd>
+  <dt id="oct">oct</dt>
+  <dd>The oct operator.</dd>
+  <dt id="hex">hex</dt>
+  <dd>The hex operator.</dd>
+  <dt id="ord">ord</dt>
+  <dd>The ord operator.</dd>
+  <dt id="chr">chr</dt>
+  <dd>The chr operator.</dd>
+  <dt id="pack">pack</dt>
+  <dd>The pack operator.</dd>
+  <dt id="unpack">unpack</dt>
+  <dd>The unpack operator.</dd>
+  <dt id="index">index</dt>
+  <dd>The index operator.</dd>
+  <dt id="rindex">rindex</dt>
+  <dd>The rindex operator.</dd>
+  <dt id="substr">substr</dt>
+  <dd>The substr operator.</dd>
+  <dt id="length">length</dt>
+  <dd>The length operator.</dd>
+  <dt id="lc">lc</dt>
+  <dd>The lc operator.</dd>
+  <dt id="uc">uc</dt>
+  <dd>The uc operator.</dd>
+  <dt id="lcfirst">lcfirst</dt>
+  <dd>The lcfirst operator.</dd>
+  <dt id=" ucfirst">ucfirst</dt>
+  <dd>The ucfirst operator.</dd>
+  <dt id="split">split</dt>
+  <dd>The split operator.</dd>
+  <dt id="join">join</dt>
+  <dd>The join operator.</dd>
+  <dt id="scalar_context">scalar context</dt>
+  <dd>The scalar context operator.</dd>
+  <dt id="list_context">list context</dt>
+  <dd>The list context operator.</dd>
+  <dt id="hash_context">hash context</dt>
+  <dd>The hash context operator.</dd>
+  <dt id="array_context">array context</dt>
+  <dd>The array context operator.</dd>
+  <dt id="sub_context">sub context</dt>
+  <dd>The subroutine context operator.</dd>
+  <dt id="format_context">format context</dt>
+  <dd>The format context operator.</dd>
+  <dt id="goto_context">goto context</dt>
+  <dd>The goto context operator.</dd>
+  <dt id="grep_context">grep context</dt>
+  <dd>The grep context operator.</dd>
+  <dt id="map_context">map context</dt>
+  <dd>The map context operator.</dd>
+  <dt id="sort_context">sort context</dt>
+  <dd>The sort context operator.</dd>
+  <dt id="readline_context">readline context</dt>
+  <dd>The readline context operator.</dd>
+  <dt id="print_context">print context</dt>
+  <dd>The print context operator.</dd>
+  <dt id="say_context">say context</dt>
+  <dd>The say context operator.</dd>
+  <dt id="printf_context">printf context</dt>
+  <dd>The printf context operator.</dd>
+  <dt id="sprintf_context">sprintf context</dt>
+  <dd>The sprintf context operator.</dd>
+  <dt id="open_context">open context</dt>
+  <dd>The open context operator.</dd>
+  <dt id="close_context">close context</dt>
+  <dd>The close context operator.</dd>
+  <dt id="seek_context">seek context</dt>
+  <dd>The seek context operator.</dd>
+  <dt id="tell_context">tell context</dt>
+  <dd>The tell context operator.</dd>
+  <dt id="eof_context">eof context</dt>
+  <dd>The eof context operator.</dd>
+  <dt id="read_context">read context</dt>
+  <dd>The read context operator.</dd>
+  <dt id="write_context">write context</dt>
+  <dd>The write context operator.</dd>
+  <dt id="select_context">select context</dt>
+  <dd>The select context operator.</dd>
+  <dt id="pipe_context">pipe context</dt>
+  <dd>The pipe context operator.</dd>
+  <dt id="fork_context">fork context</dt>
+  <dd>The fork context operator.</dd>
+  <dt id="wait_context">wait context</dt>
+  <dd>The wait context operator.</dd>
+  <dt id="waitpid_context">waitpid context</dt>
+  <dd>The waitpid context operator.</dd>
+  <dt id="alarm_context">alarm context</dt>
+  <dd>The alarm context operator.</dd>
+  <dt id="sleep_context">sleep context</dt>
+  <dd>The sleep context operator.</dd>
+  <dt id="kill_context">kill context</dt>
+  <dd>The kill context operator.</dd>
+  <dt id="getc_context">getc context</dt>
+  <dd>The getc context operator.</dd>
+  <dt id="time_context">time context</dt>
+  <dd>The time context operator.</dd>
+  <dt id="gmtime_context">gmtime context</dt>
+  <dd>The gmtime context operator.</dd>
+  <dt id="localtime_context">localtime context</dt>
+  <dd>The localtime context operator.</dd>
+  <dt id="atan2_context">atan2 context</dt>
+  <dd>The atan2 context operator.</dd>
+  <dt id="cos_context">cos context</dt>
+  <dd>The cos context operator.</dd>
+  <dt id="sin_context">sin context</dt>
+  <dd>The sin context operator.</dd>
+  <dt id="exp_context">exp context</dt>
+  <dd>The exp context operator.</dd>
+  <dt id="log_context">log context</dt>
+  <dd>The log context operator.</dd>
+  <dt id="sqrt_context">sqrt context</dt>
+  <dd>The sqrt context operator.</dd>
+  <dt id="int_context">int context</dt>
+  <dd>The int context operator.</dd>
+  <dt id="rand_context">rand context</dt>
+  <dd>The rand context operator.</dd>
+  <dt id="oct_context">oct context</dt>
+  <dd>The oct context operator.</dd>
+  <dt id="hex_context">hex context</dt>
+  <dd>The hex context operator.</dd>
+  <dt id="ord_context">ord context</dt>
+  <dd>The ord context operator.</dd>
+  <dt id="chr_context">chr context</dt>
+  <dd>The chr context operator.</dd>
+  <dt id="pack_context">pack context</dt>
+  <dd>The pack context operator.</dd>
+  <dt id="unpack_context">unpack context</dt>
+  <dd>The unpack context operator.</dd>
+  <dt id="index_context">index context</dt>
+  <dd>The index context operator.</dd>
+  <dt id="rindex_context">rindex context</dt>
+  <dd>The rindex context operator.</dd>
+  <dt id="substr_context">substr context</dt>
+  <dd>The substr context operator.</dd>
+  <dt id="length_context">length context</dt>
+  <dd>The length context operator.</dd>
+  <dt id="lc_context">lc context</dt>
+  <dd>The lc context operator.</dd>
+  <dt id="uc_context">uc context</dt>
+  <dd>The uc context operator.</dd>
+  <dt id="lcfirst_context">lcfirst context</dt>
+  <dd>The lcfirst context operator.</dd>
+  <dt id="ucfirst_context">ucfirst context</dt>
+  <dd>The ucfirst context operator.</dd>
+  <dt id="split_context">split context</dt>
+  <dd>The split context operator.</dd>
+  <dt id="join_context">join context</dt>
+  <dd>The join context operator.</dd>
+  <dt id="enter">enter</dt>
+  <dd>The enter operator.</dd>
+  <dt id="leave">leave</dt>
+  <dd>The leave operator.</dd>
+  <dt id="eq_empty">eq_empty</dt>
+  <dd>The empty string equality operator.</dd>
+  <dt id="ne_empty">ne_empty</dt>
+  <dd>The empty string inequality operator.</dd>
+  <dt id="lt_empty">lt_empty</dt>
+  <dd>The empty string less than operator.</dd>
+  <dt id="gt_empty">gt_empty</dt>
+  <dd>The empty string greater than operator.</dd>
+  <dt id="le_empty">le_empty</dt>
+  <dd>The empty string less than or equal operator.</dd>
+  <dt id="ge_empty">ge_empty</dt>
+  <dd>The empty string greater than or equal operator.</dd>
+  <dt id="q">q</dt>
+  <dd>The single-quoted string operator.</dd>
+  <dt id="qq">qq</dt>
+  <dd>The double-quoted string operator.</dd>
+  <dt id="qw">qw</dt>
+  <dd>The word-splitting operator.</dd>
+  <dt id="qx">qx</dt>
+  <dd>The backtick operator.</dd>
+  <dt id="qr">qr</dt>
+  <dd>The regular expression operator.</dd>
+  <dt id="qv">qv</dt>
+  <dd>The interpolation-aware word-splitting operator.</dd>
+  <dt id="tr">tr</dt>
+  <dd>The tr operator.</dd>
+  <dt id="y">y</dt>
+  <dd>The y operator.</dd>
+  <dt id="s">s</dt>
+  <dd>The substitute operator.</dd>
+  <dt id="m">m</dt>
+  <dd>The match operator.</dd>
+  <dt id="rx">rx</dt>
+  <dd>The rx operator.</dd>
+  <dt id="format_arg">format_arg</dt>
+  <dd>The format_arg operator.</dd>
+  <dt id="format_ret">format_ret</dt>
+  <dd>The format_ret operator.</dd>
+</dl>
+<p class="Pp">The values can be subroutine names (as strings or references), or
+    the special string <code class="Li">fallback</code>.</p>
+<p class="Pp">If the value is a string, it is interpreted as a method name.
+    Perl will look for a method with that name in the object's class hierarchy.
+    If found, that method will be called.</p>
+<p class="Pp">If the value is a subroutine reference, that subroutine will be called.</p>
+<p class="Pp">If the value is <code class="Li">fallback</code>, it means that if
+    the operator is not found in the object's class, Perl should try the default
+    behavior for that operator (e.g., stringification or numeric conversion).</p>
+<p class="Pp">The subroutine implementing an operator will be called with the
+    object(s) as arguments. The number and order of arguments depend on the
+    operator.</p>
+<dl class="Bl-tag">
+  <dt id="Binary_operators">Binary operators (e.g., <code class="Li">+</code>,
+    <code class="Li">eq</code>):</dt>
+  <dd>The subroutine is called with two arguments: the left-hand operand and the
+      right-hand operand.</dd>
+  <dt id="Unary_operators">Unary operators (e.g., <code class="Li">++</code>,
+    <code class="Li">!</code>):</dt>
+  <dd>The subroutine is called with one argument: the operand.</dd>
+  <dt id="Ternary_operators">Ternary operators (e.g., <code class="Li">?:</code>):</dt>
+  <dd>The subroutine is called with three arguments: the condition, the true
+      expression, and the false expression.</dd>
+  <dt id="Null_operators">Null operators (e.g., <code class="Li">print</code>,
+    <code class="Li">say</code>):</dt>
+  <dd>The subroutine is called with no arguments.</dd>
+</dl>
+<p class="Pp">The return value of the subroutine is the result of the operator.</p>
+<p class="Pp">You can disable overloading for specific operators by using
+    <code class="Li">no overload</code>.</p>
+<pre>    no overload '+';      # Disable addition overloading
+    no overload qw/+ -/; # Disable addition and subtraction overloading
+</pre>
+<p class="Pp">You can also disable all overloading by using
+    <code class="Li">no overload</code> without any arguments.</p>
+<section class="Ss">
+<h2 class="Ss" id='Losing_Overloading'><a class='permalink' href='#Losing_Overloading'>Losing Overloading</a></h2>
+<p class="Pp">The restriction for the comparison operation is that even if, for
+    example, <code class="Li">"cmp"</code> should return a blessed
+    reference, the autogenerated <code class="Li">"lt"</code> function
+    will produce only a standard logical value based on the numerical value of
+    the result of <code class="Li">"cmp"</code>. In particular, a
+    working numeric conversion is needed in this case (possibly expressed in
+    terms of other conversions).</p>
+<p class="Pp">Similarly, <code class="Li">".="</code> and
+    <code class="Li">"x="</code> operators lose their mathemagical
+    properties if the string conversion substitution is applied.</p>
+<p class="Pp">When you <b>chop()</b> a mathemagical object it is promoted to a
+    string and its mathemagical properties are lost. The same can happen with
+    other operations as well.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Inheritance_and_Overloading'><a class='permalink' href='#Inheritance_and_Overloading'>Inheritance and Overloading</a></h2>
+<p class="Pp">Overloading respects inheritance via the
+    <code class="Li">@ISA</code> hierarchy. Inheritance interacts with
+    overloading in two ways.</p>
+<dl class="Bl-tag">
+  <dt id="Method_names_in_the_&quot;use_overload&quot;_directive">Method names in the
+    "use overload" directive</dt>
+  <dd>If <code class="Li">value</code> in
+        <pre>use overload key =&gt; value;
+</pre>
+    <p class="Pp">is a string, it is interpreted as a method name - which may
+        (in the usual way) be inherited from another class.</p>
+  </dd>
+  <dt id="Overloading_of_an_operation_is_inherited_by_derived_classes">Overloading of
+    an operation is inherited by derived classes</dt>
+  <dd>Any class derived from an overloaded class is also overloaded and inherits
+      its operator implementations. If the same operator is overloaded in more
+      than one ancestor then the implementation is determined by the usual
+      inheritance rules.
+    <p class="Pp">For example, if <code class="Li">"A"</code> inherits
+        from <code class="Li">"B"</code> and
+        <code class="Li">"C"</code> (in that order),
+        <code class="Li">"B"</code> overloads
+        <code class="Li">"+"</code> with
+        <code class="Li">"\&amp;D::plus_sub"</code>, and
+        <code class="Li">"C"</code> overloads
+        <code class="Li">"+"</code> by
+        <code class="Li">"plus_meth"</code>, then the subroutine
+        <code class="Li">"D::plus_sub"</code> will be called to
+        implement operation <code class="Li">"+"</code> for an object
+        in package <code class="Li">"A"</code>.</p>
+  </dd>
+</dl>
+<p class="Pp">Note that in Perl version prior to 5.18 inheritance of the
+    <code class="Li">fallback</code> key was not governed by the
+    above rules. The value of <code class="Li">fallback</code> in
+    the first overloaded ancestor was used. This was fixed in 5.18 to follow the
+    usual rules of inheritance.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Run-time_Overloading'><a class='permalink' href='#Run-time_Overloading'>Run-time Overloading</a></h2>
+<p class="Pp">Since all <code class="Li">"use"</code> directives are
+    executed at compile-time, the only way to change overloading during run-time
+    is to</p>
+<pre>eval 'use overload &quot;+&quot; =&gt; \&amp;addmethod';</pre>
+<p class="Pp">You can also use</p>
+<pre>eval 'no overload &quot;+&quot;, &quot;--&quot;, &quot;&lt;=&quot;';</pre>
+<p class="Pp">though the use of these constructs during run-time is
+    questionable.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Public_Functions'><a class='permalink' href='#Public_Functions'>Public Functions</a></h2>
+<p class="Pp">Package <code class="Li">"overload.pm"</code> provides
+    the following public functions:</p>
+<dl class="Bl-tag">
+  <dt id="overload::StrVal(arg)">overload::StrVal(arg)</dt>
+  <dd>Gives the string value of <code class="Li">"arg"</code> as in
+      the absence of stringify overloading. If you are using this to get the
+      address of a reference (useful for checking if two references point to the
+      same thing) then you may be better off using
+      <code class="Li">builtin::refaddr()</code> or
+      <code class="Li">Scalar::Util::refaddr()</code>, which are faster.</dd>
+  <dt id="overload::Overloaded(arg)">overload::Overloaded(arg)</dt>
+  <dd>Returns true if <code class="Li">"arg"</code> is subject to
+      overloading of some operations.</dd>
+  <dt id="overload::Method(obj,op)">overload::Method(obj,op)</dt>
+  <dd>Returns <code class="Li">"undef"</code> or a reference to the
+      method that implements <code class="Li">"op"</code>.
+    <p class="Pp">Such a method always takes three arguments, which will be
+        enforced if it is an XS method.</p>
+  </dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Overloading_Constants'><a class='permalink' href='#Overloading_Constants'>Overloading Constants</a></h2>
+<p class="Pp">For some applications, the Perl parser mangles constants too much.
+    It is possible to hook into this process via
+    <code class="Li">overload::constant()</code> and
+    <code class="Li">overload::remove_constant()</code> functions.</p>
+<p class="Pp">These functions take a hash as an argument. The recognized keys of
+    this hash are:</p>
+<dl class="Bl-tag">
+  <dt id="integer_constants">integer</dt>
+  <dd>to overload integer constants,</dd>
+  <dt id="float_constants">float</dt>
+  <dd>to overload floating point constants,</dd>
+  <dt id="binary_constants">binary</dt>
+  <dd>to overload octal and hexadecimal constants,</dd>
+  <dt id="q_strings">q</dt>
+  <dd>to overload <code class="Li">"q"</code>-quoted strings, constant
+      pieces of <code class="Li">"qq"</code>- and
+      <code class="Li">"qx"</code>-quoted strings and
+    here-documents,</dd>
+  <dt id="qr_constants">qr</dt>
+  <dd>to overload constant pieces of regular expressions.</dd>
+</dl>
+<p class="Pp">The corresponding values are references to functions which take
+    three arguments: the first one is the <i>initial</i> string form of the
+    constant, the second one is how Perl interprets this constant, the third one
+    is how the constant is used. Note that the initial string form does not
+    contain string delimiters, and has backslashes in backslash-delimiter
+    combinations stripped (thus the value of delimiter is not relevant for
+    processing of this string). The return value of this function is how this
+    constant is going to be interpreted by Perl. The third argument is undefined
+    unless for overloaded <code class="Li">"q"</code>- and
+    <code class="Li">"qr"</code>- constants, it is
+    <code class="Li">"q"</code> in single-quote context (comes from
+    strings, regular expressions, and single-quote HERE documents), it is
+    <code class="Li">"tr"</code> for arguments of
+    <code class="Li">"tr"</code>/<code class="Li">"y"</code>
+    operators, it is <code class="Li">"s"</code> for right-hand side
+    of <code class="Li">"s"</code>-operator, and it is
+    <code class="Li">"qq"</code> otherwise.</p>
+<p class="Pp">Since an expression <code class="Li">"ab$cd,,"</code> is
+    just a shortcut for <code class="Li">'ab' . $cd . ',,'</code>, it is
+    expected that overloaded constant strings are equipped with reasonable
+    overloaded catenation operator, otherwise absurd results will result.
+    Similarly, negative numbers are considered as negations of positive
+    constants.</p>
+<p class="Pp">Note that it is probably meaningless to call the functions
+    <b>overload::constant()</b> and <b>overload::remove_constant()</b> from
+    anywhere but <b>import()</b> and <b>unimport()</b> methods. From these
+    methods they may be called as</p>
+<pre>sub import {
+    shift;
+    return unless @_;
+    die &quot;unknown import: @_&quot; unless @_ == 1 and $_[0] eq ':constant';
+    overload::constant integer =&gt; sub {Math::BigInt-&gt;new(shift)};
+}</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='IMPLEMENTATION'>IMPLEMENTATION</h1>
+<p class="Pp">What follows is subject to change RSN.</p>
+<p class="Pp">The table of methods for all operations is cached in magic for the
+    symbol table hash for the package. The cache is invalidated during
+    processing of <code class="Li">"use overload"</code>,
+    <code class="Li">"no overload"</code>, new function definitions,
+    and changes in <code class="Li">@ISA</code>.</p>
+<p class="Pp">(Every SVish thing has a magic queue, and magic is an entry in
+    that queue. This is how a single variable may participate in multiple forms
+    of magic simultaneously. For instance, environment variables regularly have
+    two forms at once: their <code class="Li">%ENV</code> magic and their taint
+    magic. However, the magic which implements overloading is applied to the
+    stashes, which are rarely used directly, thus should not slow down
+  Perl.)</p>
+<p class="Pp">If a package uses overload, it carries a special flag. This flag
+    is also set when new functions are defined or <code class="Li">@ISA</code>
+    is modified. There will be a slight speed penalty on the very first
+    operation thereafter that supports overloading, while the overload tables
+    are updated. If there is no overloading present, the flag is turned off.
+    Thus the only speed penalty thereafter is the checking of this flag.</p>
+<p class="Pp">It is expected that arguments to methods that are not explicitly
+    supposed to be changed are constant (but this is not enforced).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COOKBOOK'>COOKBOOK</h1>
+<p class="Pp">Please add examples to what follows!</p>
+<section class="Ss">
+<h2 class="Ss">Two-face Scalars</h2>
+<p class="Pp">Put this in <i>two_face.pm</i> in your Perl library directory:</p>
+<pre>package two_face;             # Scalars with separate string and
+                              # numeric values.
+sub new { my $p = shift; bless [@_], $p }
+use overload '&quot;&quot;' =&gt; \&amp;str, '0+' =&gt; \&amp;num, fallback =&gt; 1;
+sub num {shift-&gt;[1]}
+sub str {shift-&gt;[0]}</pre>
+<p class="Pp">Use it as follows:</p>
+<pre>require two_face;
+my $seven = two_face-&gt;new(&quot;vii&quot;, 7);
+printf &quot;seven=$seven, seven=%d, eight=%d\n&quot;, $seven, $seven+1;
+print &quot;seven contains 'i'\n&quot; if $seven =~ /i/;</pre>
+<p class="Pp">(The second line creates a scalar which has both a string value,
+    and a numeric value.) This prints:</p>
+<pre>seven=vii, seven=7, eight=8
+seven contains 'i'</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss">Two-face References</h2>
+<p class="Pp">Suppose you want to create an object which is accessible as both
+    an array reference and a hash reference.</p>
+<pre>package two_refs;
+use overload '%{}' =&gt; \&amp;gethash, '@{}' =&gt; sub { $ {shift()} };
+sub new {
+    my $p = shift;
+    bless \ [@_], $p;
+}
+sub gethash {
+    my %h;
+    my $self = shift;
+    tie %h, ref $self, $self;
+    \%h;
+}
+sub TIEHASH { my $p = shift; bless \ shift, $p }
+my %fields;
+my $i = 0;
+$fields{$_} = $i++ foreach qw{zero one two three};
+sub STORE {
+    my $self = ${shift()};
+    my $key = $fields{shift()</pre>
+</section>
+</section>
+};
+    defined $key or die "Out of band access";
+    $$self->[$key] = shift;
+}
+sub FETCH {
+    my $self = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $$self->[$key];
+}
+```
+<p class="Pp">
+On peut maintenant accéder à un objet en utilisant à la fois la syntaxe de tableau et la syntaxe de hachage :
+</p>
+<pre>
+my $bar = two_refs->new(3,4,5,6);
+$bar->[2] = 11;
+$bar->{two} == 11 or die 'bad hash fetch';
+</pre>
+<p class="Pp">
+Notez plusieurs caractéristiques importantes de cet exemple. Tout d'abord, le type *réel* de $bar est une référence scalaire, et nous ne surchargons pas la déréférenciation scalaire. Ainsi, nous pouvons obtenir le contenu *réel* non surchargé de $bar en utilisant simplement $$bar (ce que nous faisons dans les fonctions qui surchargent la déréférenciation). De même, l'objet retourné par la méthode <b>TIEHASH()</b> est une référence scalaire.
+</p>
+<p class="Pp">
+Deuxièmement, nous créons une nouvelle table de hachage liée à chaque fois que la syntaxe de hachage est utilisée. Cela nous permet de ne pas nous soucier d'une éventuelle boucle de référence, qui entraînerait une fuite de mémoire.
+</p>
+<p class="Pp">
+Ces deux problèmes peuvent être résolus. Par exemple, si nous voulons surcharger la déréférenciation de hachage sur une référence à un objet qui est *implémenté* comme un hachage lui-même, le seul problème à contourner est la manière d'accéder à ce hachage *réel* (par opposition au hachage *virtuel* présenté par l'opérateur de déréférenciation surchargé). Voici une routine de récupération possible :
+</p>
+<pre>
+sub access_hash {
+    my ($self, $key) = (shift, shift);
+    my $class = ref $self;
+    bless $self, 'overload::dummy'; # Désactive le surcharge de %{}
+    my $out = $self->{$key};
+    bless $self, $class;            # Restaure le surcharge
+    $out;
+}
+</pre>
+<p class="Pp">
+Pour supprimer la création de la table de hachage liée à chaque accès, on peut utiliser un niveau d'indirection supplémentaire qui permet une structure de références non circulaire :
+</p>
+<pre>
+package two_refs1;
+use overload
+    '%{}' => sub { ${shift()}->[1] },
+    '@{}' => sub { ${shift()}->[0] };
+sub new {
+    my $p = shift;
+    my $a = [@_];
+    my %h;
+    tie %h, $p, $a;
+    bless [ $a, \%h ], $p;
+}
+sub gethash {
+    my %h;
+    my $self = shift;
+    tie %h, ref $self, $self;
+    \%h;
+}
+sub TIEHASH { my $p = shift; bless \ shift, $p }
+my %fields;
+my $i = 0;
+$fields{$_} = $i++ foreach qw{zero one two three};
+sub STORE {
+    my $a = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $a->[$key] = shift;
+}
+sub FETCH {
+    my $a = ${shift()};
+    my $key = $fields{shift()};
+    defined $key or die "Out of band access";
+    $a->[$key];
+}
+</pre>
+<p class="Pp">
+Maintenant, si $baz est surchargé comme ceci, alors $baz est une référence à une référence vers le tableau intermédiaire, qui conserve une référence vers le tableau réel et le hachage d'accès. L'objet utilisé pour le <b>tie()</b> du hachage d'accès est une référence à une référence du tableau réel, donc
+</p>
+<ul class="Bl-bullet">
+  <li>Il n'y a pas de boucles de références.</li>
+  <li>Les deux "objets" qui sont bénis dans la classe "two_refs1" sont des références à une référence d'un tableau, donc des références à un *scalaire*. Ainsi, l'expression d'accès "$$foo->[$ind]" n'implique aucune opération surchargée.</li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="Symbolic_Calculator">Calculatrice Symbolique</h2>
+<p class="Pp">
+Mettez ceci dans <i>symbolic.pm</i> dans votre répertoire de bibliothèques Perl :
+</p>
+<pre>
+package symbolic;           # Calculatrice symbolique primitive
+use overload nomethod => \&wrap;
+sub new { shift; bless ['n', @_] }
+sub wrap {
+    my ($obj, $other, $inv, $meth) = @_;
+    ($obj, $other) = ($other, $obj) if $inv;
+    bless [$meth, $obj, $other];
+}
+</pre>
+<p class="Pp">
+Ce module est très inhabituel pour un module surchargé : il ne fournit aucune opération surchargée habituelle, mais il fournit une implémentation pour "nomethod". Dans cet exemple, la sous-routine "nomethod" renvoie un objet qui encapsule les opérations effectuées sur les objets : "symbolic->new(3)" contient "['n', 3]", "2 + symbolic->new(3)" contient "['+', 2, ['n', 3]]".
+</p>
+<p class="Pp">
+Voici un exemple de script qui "calcule" le côté d'un octogone circonscrit en utilisant le package ci-dessus :
+</p>
+<pre>
+require symbolic;
+my $iter = 1;                   # 2**($iter+2) = 8
+my $side = symbolic->new(1);
+my $cnt = $iter;
+while ($cnt--) {
+    $side = (sqrt(1 + $side**2) - 1)/$side;
+}
+print "OK\n";
+</pre>
+<p class="Pp">
+La valeur de $side est
+</p>
+<pre>
+['/', ['-', ['sqrt', ['+', 1, ['**', ['n', 1], 2]],
+                    undef], 1], ['n', 1]]
+</pre>
+<p class="Pp">
+Notez que bien que nous ayons obtenu cette valeur en utilisant un petit script agréable, il n'y a pas de moyen simple d'*utiliser* cette valeur. En fait, cette valeur peut être inspectée dans le débogueur (voir perldebug), mais seulement si l'option "bareStringify" <b>O</b> est activée, et non via la commande "p".
+</p>
+<p class="Pp">
+Si l'on tente d'imprimer cette valeur, alors l'opérateur surchargé "" sera appelé, ce qui appellera l'opérateur "nomethod". Le résultat de cet opérateur sera à nouveau converti en chaîne, mais ce résultat est à nouveau de type "symbolic", ce qui entraînera une boucle infinie.
+</p>
+<p class="Pp">
+Ajoutez une méthode de jolie impression au module <i>symbolic.pm</i> :
+</p>
+<pre>
+sub pretty {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    $b = 'u' unless defined $b;
+    $a = $a->pretty if ref $a;
+    $b = $b->pretty if ref $b;
+    "[$meth $a $b]";
+}
+</pre>
+<p class="Pp">
+Maintenant, on peut terminer le script par
+</p>
+<pre>
+print "side = ", $side->pretty, "\n";
+</pre>
+<p class="Pp">
+La méthode "pretty" effectue la conversion objet-à-chaîne, il est donc naturel de surcharger l'opérateur "" en utilisant cette méthode. Cependant, à l'intérieur d'une telle méthode, il n'est pas nécessaire de faire une jolie impression des *composants* $a et $b d'un objet. Dans la sous-routine ci-dessus, "[$meth $a $b]" est une concaténation de certaines chaînes et des composants $a et $b. Si ces composants utilisent le surcharge, l'opérateur de concaténation recherchera un opérateur surchargé "."; s'il n'est pas présent, il recherchera un opérateur surchargé "". Ainsi, il suffit d'utiliser
+</p>
+<pre>
+use overload nomethod => \&wrap, '&quot;&quot;' => \&str;
+sub str {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    $b = 'u' unless defined $b;
+    "[$meth $a $b]";
+}
+</pre>
+<p class="Pp">
+Maintenant, on peut modifier la dernière ligne du script en
+</p>
+<pre>
+print "side = $side\n";
+</pre>
+<p class="Pp">
+ce qui affiche
+</p>
+<pre>
+side = [/ [- [sqrt [+ 1 [** [n 1 u] 2]] u] 1] [n 1 u]]
+</pre>
+<p class="Pp">
+et on peut inspecter la valeur dans le débogueur en utilisant toutes les méthodes possibles.
+</p>
+<p class="Pp">
+Quelque chose ne va toujours pas : considérez la variable de boucle $cnt du script. C'était un nombre, pas un objet. Nous ne pouvons pas rendre cette valeur de type "symbolic", car alors la boucle ne se terminera pas.
+</p>
+<p class="Pp">
+En effet, pour terminer le cycle, $cnt doit devenir faux. Cependant, l'opérateur "bool" pour vérifier la fausseté est surchargé (cette fois via le "" surchargé), et renvoie une longue chaîne, donc tout objet de type "symbolic" est vrai. Pour surmonter cela, nous avons besoin d'un moyen de comparer un objet à 0. En fait, il est plus facile d'écrire une routine de conversion numérique.
+</p>
+<p class="Pp">
+Voici le texte de <i>symbolic.pm</i> avec une telle routine ajoutée (et le <b>str()</b> légèrement modifié) :
+</p>
+<pre>
+package symbolic;           # Calculatrice symbolique primitive
+use overload
+    nomethod => \&wrap, '&quot;&quot;' => \&str, '0+' => \&num;
+sub new { shift; bless ['n', @_] }
+sub wrap {
+    my ($obj, $other, $inv, $meth) = @_;
+    ($obj, $other) = ($other, $obj) if $inv;
+    bless [$meth, $obj, $other];
+}
+sub str {
+    my ($meth, $a, $b) = @{+shift};
+    $a = 'u' unless defined $a;
+    if (defined $b) {
+        "[$meth $a $b]";
+    } else {
+        "[$meth $a]";
+    }
+}
+my %subr = (
+    n => sub {$_[0]},
+    sqrt => sub {sqrt $_[0]},
+    '-' => sub {shift() - shift()},
+    '+' => sub {shift() + shift()},
+    '/' => sub {shift() / shift()},
+    '*' => sub {shift() * shift()},
+    '**' => sub {shift() ** shift()},
+);
+sub num {
+    my ($meth, $a, $b) = @{+shift};
+    my $subr = $subr{$meth}
+        or die "Do not know how to ($meth) in symbolic";
+    $a = $a->num if ref $a eq __PACKAGE__;
+    $b = $b->num if ref $b eq __PACKAGE__;
+    $subr->($a,$b);
+}
+</pre>
+<p class="Pp">
+Tout le travail de conversion numérique est effectué dans <b>%subr</b> et <b>num()</b>. Bien sûr, <b>%subr</b> n'est pas complet, il ne contient que les opérateurs utilisés dans l'exemple ci-dessous. Voici la question bonus : pourquoi avons-nous besoin d'une récursion explicite dans <b>num()</b> ? (La réponse se trouve à la fin de cette section.)
+</p>
+<p class="Pp">
+Utilisez ce module comme ceci :
+</p>
+<pre>
+require symbolic;
+my $iter = symbolic->new(2);        # Polygone à 16 côtés
+my $side = symbolic->new(1);
+my $cnt = $iter;
+while ($cnt) {
+    $cnt = $cnt - 1;                # Mutateur '--' non implémenté
+    $side = (sqrt(1 + $side**2) - 1)/$side;
+}
+printf "%s=%f\n", $side, $side;
+printf "pi=%f\n", $side*(2**($iter+2));
+</pre>
+<p class="Pp">
+Il affiche (sans autant de sauts de ligne)
+</p>
+<pre>
+[/ [- [sqrt [+ 1 [** [/ [- [sqrt [+ 1 [** [n 1] 2]]] 1]
+                        [n 1]] 2]]] 1]
+[/ [- [sqrt [+ 1 [** [n 1] 2]]] 1] [n 1]]]=0.198912
+pi=3.182598
+</pre>
+<p class="Pp">
+Le module ci-dessus est très primitif. Il n'implémente pas les méthodes mutateurs ("++", "-=" et ainsi de suite), ne fait pas de copie profonde (non requis sans mutateurs !), et n'implémente que les opérations arithmétiques utilisées dans l'exemple.
+</p>
+<p class="Pp">
+Implémenter la plupart des opérations arithmétiques est facile ; il suffit d'utiliser les tables d'opérations, et de changer le code qui remplit <b>%subr</b> pour
+</p>
+<pre>
+my %subr = ( 'n' => sub {$_[0]} );
+foreach my $op (split " ", $overload::ops{with_assign}) {
+    $subr{$op} = $subr{"$op="} = eval "sub {shift() $op shift()}";
+}
+my @bins = qw(binary 3way_comparison num_comparison str_comparison);
+foreach my $op (split " ", "@overload::ops{ @bins }") {
+    $subr{$op} = eval "sub {shift() $op shift()}";
+}
+foreach my $op (split " ", "@overload::ops{qw(unary func)}") {
+    print "defining '$op'\n";
+    $subr{$op} = eval "sub {$op shift()}";
+}
+</pre>
+<p class="Pp">
+Étant donné que les sous-routines implémentant les opérateurs d'affectation ne sont pas tenues de modifier leurs opérandes (voir "Opérations Surchargables" ci-dessus), nous n'avons pas besoin de quelque chose de spécial pour
+</p>
+o make
+    <span class="Li">« += »</span> et ses semblables fonctionner, en plus d'ajouter
+    ces opérateurs à <span class="Li">\%subr</span> et de définir un constructeur de copie
+    (nécessaire car Perl n'a aucun moyen de savoir que l'implémentation de
+    <span class="Li">« += »</span> ne mute pas l'argument - voir « Constructeur de copie »).</p>
+<p class="Pp">Pour implémenter un constructeur de copie, ajoutez <span class="Li">« '='
+    =&gt; \&amp;cpy »</span> à la ligne <span class="Li">« use
+    overload »</span>, et codez (ce code suppose que les mutateurs changent
+    les choses seulement à un niveau de profondeur, donc une copie récursive n'est pas nécessaire) :</p>
+<pre>sub cpy {
+    my $self = shift;
+    bless [@$self], ref $self;
+}</pre>
+<p class="Pp">Pour faire fonctionner <span class="Li">« ++ »</span> et
+    <span class="Li">« -- »</span>, nous devons implémenter des mutateurs réels, soit directement, soit dans
+    <span class="Li">« nomethod »</span>. Nous continuons à faire les choses à l'intérieur de
+    <span class="Li">« nomethod »</span>, donc ajoutez</p>
+<pre>if ($meth eq '++' or $meth eq '--') {
+    @$obj = ($meth, (bless [@$obj]), 1); # Éviter la référence circulaire
+    return $obj;
+}</pre>
+<p class="Pp">après la première ligne de <b>wrap()</b>. Ce n'est pas l'implémentation la plus efficace, on pourrait considérer</p>
+<pre>sub inc { $_[0] = bless ['++', shift, 1]; }</pre>
+<p class="Pp">à la place.</p>
+<p class="Pp">Comme remarque finale, notez que l'on peut remplir
+    <span class="Li">\%subr</span> par</p>
+<pre>my %subr = ( 'n' =&gt; sub {$_[0]} );
+foreach my $op (split &quot; &quot;, $overload::ops{with_assign}) {
+    $subr{$op} = $subr{&quot;$op=&quot;} = eval &quot;sub {shift() $op shift()}&quot;;
+}
+my @bins = qw(binary 3way_comparison num_comparison str_comparison);
+foreach my $op (split &quot; &quot;, &quot;@overload::ops{ @bins }&quot;) {
+    $subr{$op} = eval &quot;sub {shift() $op shift()}&quot;;
+}
+foreach my $op (split &quot; &quot;, &quot;@overload::ops{qw(unary func)}&quot;) {
+    $subr{$op} = eval &quot;sub {$op shift()}&quot;;
+}
+$subr{'++'} = $subr{'+'};
+$subr{'--'} = $subr{'-'};</pre>
+<p class="Pp">Ceci termine l'implémentation d'une calculatrice symbolique primitive en 50 lignes de code Perl. Comme les valeurs numériques des sous-expressions ne sont pas mises en cache, la calculatrice est très lente.</p>
+<p class="Pp">Voici la réponse à l'exercice : Dans le cas de <b>str()</b>, nous n'avons pas besoin de récursion explicite car l'opérateur
+    <span class="Li">« . »</span> surchargé se rabattra sur un opérateur existant surchargé
+    <span class="Li">«  »</span>. Les opérateurs arithmétiques surchargés *ne se* rabattent *pas* sur une conversion numérique si
+    <span class="Li">« fallback »</span> n'est pas explicitement demandé.
+    Ainsi, sans récursion explicite, <b>num()</b> convertirait
+    <span class="Li">« ['+', $a, $b] »</span> en
+    <span class="Li">« $a + $b »</span>, ce qui reconstruirait simplement l'argument de
+    <b>num()</b>.</p>
+<p class="Pp">Si vous vous demandez pourquoi les valeurs par défaut pour la conversion sont différentes pour
+    <b>str()</b> et <b>num()</b>, notez la facilité avec laquelle on a pu écrire la calculatrice symbolique. Cette simplicité est due à un choix approprié des valeurs par défaut. Une note supplémentaire : en raison de la récursion explicite, <b>num()</b> est plus fragile que
+    <b>sym()</b> : nous devons vérifier explicitement le type de
+    <span class="Li">$a</span> et <span class="Li">$b</span>. Si les composantes
+    <span class="Li">$a</span> et <span class="Li">$b</span> sont d'un type lié, cela peut entraîner des problèmes.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Calculatrice *Vraiment* Symbolique</h2>
+<p class="Pp">On pourrait se demander pourquoi nous appelons la calculatrice ci-dessus symbolique. La raison est que le calcul réel de la valeur de l'expression est reporté jusqu'à ce que la valeur soit *utilisée*.</p>
+<p class="Pp">Pour la voir en action, ajoutez une méthode</p>
+<pre>sub STORE {
+    my $obj = shift;
+    $#$obj = 1;
+    @$obj-&gt;[0,1] = ('=', shift);
+}</pre>
+<p class="Pp">au package <span class="Li">« symbolic »</span>. Après cette modification, on peut faire</p>
+<pre>my $a = symbolic-&gt;new(3);
+my $b = symbolic-&gt;new(4);
+my $c = sqrt($a**2 + $b**2);</pre>
+<p class="Pp">et la valeur numérique de <span class="Li">$c</span> devient 5. Cependant, après avoir appelé</p>
+<pre>$a-&gt;STORE(12);  $b-&gt;STORE(5);</pre>
+<p class="Pp">la valeur numérique de <span class="Li">$c</span> devient 13. Il n'y a plus de doute que le module symbolic fournit bien une calculatrice *symbolique*.</p>
+<p class="Pp">Pour masquer les aspérités sous le capot, fournissez une interface *tied* au package <span class="Li">« symbolic »</span>. Ajoutez les méthodes</p>
+<pre>sub TIESCALAR { my $pack = shift; $pack-&gt;new(@_) }
+sub FETCH { shift }
+sub nop {  }                # Autour d'un bug</pre>
+<p class="Pp">(le bug, corrigé dans Perl 5.14, est décrit dans « BUGS »). On peut utiliser cette nouvelle interface comme</p>
+<pre>tie $a, 'symbolic', 3;
+tie $b, 'symbolic', 4;
+$a-&gt;nop;  $b-&gt;nop;          # Autour d'un bug
+my $c = sqrt($a**2 + $b**2);</pre>
+<p class="Pp">Maintenant, la valeur numérique de <span class="Li">$c</span> est 5. Après <span class="Li">« $a = 12; $b = 5 »</span>, la valeur numérique de <span class="Li">$c</span> devient 13. Pour isoler l'utilisateur du module, ajoutez une méthode</p>
+<pre>sub vars { my $p = shift; tie($_, $p), $_-&gt;nop foreach @_; }</pre>
+<p class="Pp">Maintenant</p>
+<pre>my ($a, $b);
+symbolic-&gt;vars($a, $b);
+my $c = sqrt($a**2 + $b**2);
+$a = 3; $b = 4;
+printf &quot;c5  %s=%f\n&quot;, $c, $c;
+$a = 12; $b = 5;
+printf &quot;c13  %s=%f\n&quot;, $c, $c;</pre>
+<p class="Pp">montre que la valeur numérique de <span class="Li">$c</span> suit les changements des valeurs de <span class="Li">$a</span> et <span class="Li">$b</span>.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Ilya Zakharevich &lt;<i>ilya@math.mps.ohio-state.edu</i>&gt;.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='VOIR_AUSSI'><a class='permalink' href='#VOIR_AUSSI'>VOIR AUSSI</a></h1>
+<p class="Pp">Le pragma <span class="Li">« overloading »</span> peut être utilisé pour activer ou désactiver les opérations surchargées dans une portée lexicale - voir overloading.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DIAGNOSTICS'><a class='permalink' href='#DIAGNOSTICS'>DIAGNOSTICS</a></h1>
+<p class="Pp">Lorsque Perl est exécuté avec le commutateur <b>-Do</b> ou son équivalent, le surcharge induit des messages de diagnostic.</p>
+<p class="Pp">En utilisant la commande <span class="Li">« m »</span> du débogueur Perl (voir perldebug), on peut déduire quelles opérations sont surchargées (et quelle classe ancêtre déclenche ce surcharge). Par exemple, si <span class="Li">« eq »</span> est surchargé, alors la méthode <span class="Li">« (eq »</span> est affichée par le débogueur. La méthode <span class="Li">« () »</span> correspond à la clé <span class="Li">« fallback »</span> (en fait, la présence de cette méthode indique que ce package a le surcharge activé, et c'est ce qui est utilisé par la fonction <span class="Li">« Overloaded »</span> du module <span class="Li">« overload »</span>).</p>
+<p class="Pp">Le module peut émettre les avertissements suivants :</p>
+<dl class="Bl-tag">
+  <dt id="Nombre"><a class="permalink" href="#Nombre">Nombre impair d'arguments pour
+    overload::constant</a></dt>
+  <dd>(W) L'appel à overload::constant contenait un nombre impair d'arguments.
+      Les arguments doivent être par paires.</dd>
+  <dt>'%s' n'est pas un type surchargeable</dt>
+  <dd>(W) Vous avez essayé de surcharger un type de constante que le package de surcharge ignore.</dd>
+  <dt>'%s' n'est pas une référence de code</dt>
+  <dd>(W) Le deuxième (quatrième, sixième, ...) argument de overload::constant doit
+      être une référence de code. Soit une sous-routine anonyme, soit une référence vers
+      une sous-routine.</dd>
+  <dt id="surcharge"><a class="permalink" href="#surcharge">argument overload '%s' invalide</a></dt>
+  <dd>(W) <span class="Li">« use overload »</span> a reçu un argument qu'il n'a pas reconnu. Avez-vous mal tapé un opérateur ?</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='BOGUES_ET_PIEGES'><a class='permalink' href='#BOGUES_ET_PIEGES'>BOGUES ET PIÈGES</a></h1>
+<ul class="Bl-bullet">
+  <li>Un piège lorsque fallback est VRAI et que Perl se rabat sur une implémentation intégrée
+      d'un opérateur est que certains opérateurs ont plus d'une sémantique, par exemple <span class="Li">« | »</span> :
+        <pre>use overload '0+' =&gt; sub { $_[0]-&gt;{n}; },
+    fallback =&gt; 1;
+my $x = bless { n =&gt; 4 }, &quot;main&quot;;
+my $y = bless { n =&gt; 8 }, &quot;main&quot;;
+print $x | $y, &quot;\n&quot;;
+</pre>
+    <p class="Pp">Vous pourriez vous attendre à ce que cela affiche &quot;12&quot;. En fait, cela imprime &quot;&lt;&quot; : le résultat ASCII du traitement de &quot;|&quot; comme un opérateur de chaîne bit à bit - c'est-à-dire, le résultat du traitement des opérandes comme les chaînes &quot;4&quot; et &quot;8&quot; plutôt que comme des nombres. Le fait que la numérisation (<span class="Li">« 0+ »</span>) soit implémentée mais pas la conversion en chaîne (<span class="Li">«  »</span>) ne fait aucune différence car cette dernière est simplement générée automatiquement à partir de la première.</p>
+    <p class="Pp">La seule façon de changer cela est de fournir votre propre sous-routine pour
+        <span class="Li">'|'</span>.</p>
+  </li>
+  <li>La génération automatique magique augmente le potentiel de création involontaire de structures auto-référentielles. Actuellement, Perl ne libérera pas les structures auto-référentielles tant que les cycles ne seront pas explicitement brisés. Par exemple,
+        <pre>use overload '+' =&gt; 'add';
+sub add { bless [ \$_[0], \$_[1] ] };
+</pre>
+    <p class="Pp">demande des ennuis, car</p>
+        <pre>$obj += $y;
+</pre>
+    <p class="Pp">deviendra effectivement</p>
+        <pre>$obj = add($obj, $y, undef);
+</pre>
+    <p class="Pp">avec le même résultat que</p>
+        <pre>$obj = [\$obj, \$foo];
+</pre>
+    <p class="Pp">Même si aucune variante *explicite* d'affectation des opérateurs n'est présente dans le script, elles peuvent être générées par l'optimiseur. Par exemple,</p>
+        <pre>&quot;obj = $obj\n&quot;
+</pre>
+    <p class="Pp">peut être optimisé en</p>
+        <pre>my $tmp = 'obj = ' . $obj;  $tmp .= &quot;\n&quot;;
+</pre>
+  </li>
+  <li>La table des symboles est remplie de noms ressemblant à du bruit de ligne.</li>
+  <li>Ce bug a été corrigé dans Perl 5.18, mais peut encore vous gêner si vous utilisez des versions plus anciennes :
+    <p class="Pp">Dans le but d'héritage, chaque package surchargé se comporte comme si
+        <span class="Li">« fallback »</span> était présent
+        (potentiellement indéfini). Cela peut créer des effets intéressants si un certain
+        package n'est pas surchargé, mais hérite de deux packages surchargés.</p>
+  </li>
+  <li>Avant Perl 5.14, la relation entre le surcharge et le *typage* était rompue. Le surcharge était déclenché ou non en fonction de la *classe précédente* de la variable *liée*.
+    <p class="Pp">Cela s'est produit parce que la présence du surcharge était vérifiée trop tôt, avant toute tentative d'accès *lié*. Si la classe de la valeur *récupérée* de la variable liée ne change pas, une simple solution de contournement pour le code qui doit s'exécuter sur les anciennes versions de Perl est d'accéder à la valeur (via <span class="Li">« () = $foo »</span> ou quelque chose de similaire) immédiatement après le *typage*, afin qu'après cet appel, la *classe précédente* coïncide avec la classe actuelle.</p>
+  </li>
+  <li>Les barewords ne sont pas couverts par les constantes de chaîne surchargées.</li>
+  <li>L'opérateur de plage <span class="Li">« .. »</span> ne peut pas être surchargé.</li>
+</ul>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside>
+<aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNTAXE</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#IMPLEMENTATION">IMPLÉMENTATION</a></li>
+        
+            <li><a href="#COOKBOOK">MANUEL DE CUISINE</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#SEE_ALSO">VOIR AUSSI</a></li>
+        
+            <li><a href="#DIAGNOSTICS">DIAGNOSTICS</a></li>
+        
+            <li><a href="#BUGS_AND_PITFALLS">BOGUES ET PIÈGES</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/overload.3perl.en.txt">txt</a>, 
+        
+            <a href="/man/overload.3perl.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

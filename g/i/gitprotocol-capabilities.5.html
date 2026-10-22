@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>gitprotocol-capabilities(5) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">gitprotocol-capabilities(5)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/git/">git</a></p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">GITPROTOCOL-CAPABILITIES(5)</td>
+    <td class="head-vol">Manuel Git</td>
+    <td class="head-rtitle">GITPROTOCOL-CAPABILITIES(5)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">gitprotocol-capabilities - Capacités des protocoles v0 et v1</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPIS'><a class='permalink' href='#SYNOPIS'>SYNOPIS</a></h1>
+<pre>&lt;protocole-par-les-fils&gt;</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<div class="Bd-indent">
+<br/>
+<b>Note</b>
+<p class="Pp">Ce document décrit les capacités des versions 0 et 1 du protocole
+    de paquet. Pour la version 2, veuillez vous référer à la documentation de
+    <a href='/man/gitprotocol-v2.5.en'>gitprotocol-v2(5)</a>.</p>
+</div>
+<p class="Pp">Les serveurs DEVRAIENT supporter toutes les capacités définies dans
+    ce document.</p>
+<p class="Pp">Sur la toute première ligne de la réponse initiale du serveur de
+    receive-pack et upload-pack, la première référence est suivie d'un octet NUL
+    puis d'une liste de capacités serveur délimitées par des espaces. Celles-ci
+    permettent au serveur de déclarer ce qu'il peut et ne peut pas supporter au
+    client.</p>
+<p class="Pp">Le client enverra alors une liste de capacités séparées par des
+    espaces qu'il souhaite voir activées. Le client NE DOIT PAS demander de
+    capacités que le serveur n'a pas déclaré supporter.</p>
+<p class="Pp">Le serveur DOIT diagnostiquer et abandonner si des capacités qu'il ne
+    comprend pas ont été envoyées. Le serveur NE DOIT PAS ignorer les capacités
+    que le client a demandées et que le serveur a annoncées. Par conséquent, le
+    serveur NE DOIT PAS annoncer des capacités qu'il ne comprend pas.</p>
+<p class="Pp">Les capacités <i>atomic</i>, <i>report-status</i>,
+    <i>report-status-v2</i>, <i>delete-refs</i>, <i>quiet</i> et
+    <i>push-cert</i> sont envoyées et reconnues par le processus
+    receive-pack (push vers le serveur).</p>
+<p class="Pp">Les capacités <i>ofs-delta</i> et <i>side-band-64k</i> sont envoyées
+    et reconnues par les deux protocoles upload-pack et receive-pack. Les capacités
+    <i>agent</i> et <i>session-id</i> peuvent éventuellement être envoyées dans
+    les deux protocoles.</p>
+<p class="Pp">Toutes les autres capacités ne sont reconnues que par le processus
+    upload-pack (récupération depuis le serveur).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MULTI_ACK'><a class='permalink' href='#MULTI_ACK'>MULTI_ACK</a></h1>
+<p class="Pp">La capacité <i>multi_ack</i> permet au serveur de renvoyer
+    &quot;ACK obj-id continue&quot; dès qu'il trouve un commit qu'il peut utiliser
+    comme base commune, entre les "veux" du client et les "avoirs" du
+    client.</p>
+<p class="Pp">En envoyant ceci tôt, le serveur peut potentiellement empêcher le
+    client de parcourir davantage une branche particulière de l'historique du
+    dépôt du client. Le client pourrait encore avoir besoin de parcourir d'autres
+    branches, en envoyant des lignes "have" pour celles-ci, jusqu'à ce que le
+    serveur ait une coupe complète à travers le DAG, ou que le client ait dit
+    &quot;done&quot;.</p>
+<p class="Pp">Sans multi_ack, un client envoie des lignes "have" dans
+    l'ordre de date jusqu'à ce que le serveur ait trouvé une base commune. Cela
+    signifie que le client enverra des lignes "have" qui sont déjà connues
+    par le serveur comme étant communes, car elles se chevauchent dans le temps
+    avec une autre branche sur laquelle le serveur n'a pas encore trouvé de base
+    commune.</p>
+<p class="Pp">Par exemple, supposons que le client ait des commits dans des majuscules
+    que le serveur n'a pas, et que le serveur ait des commits en minuscules que le
+    client n'a pas, comme dans le diagramme suivant :</p>
+<div class="Bd-indent">
+<pre>   +---- u ---------------------- x
+  /              +----- y
+ /              /
+a -- b -- c -- d -- E -- F
+   \
+    +--- Q -- R -- S</pre>
+</div>
+<p class="Pp">Si le client veut x, y et commence par dire have F, S, le serveur
+    ne sait pas ce que sont F, S. Finalement, le client dit &quot;have d&quot; et
+    le serveur envoie &quot;ACK d continue&quot; pour faire savoir au client d'arrêter
+    de parcourir cette ligne (donc ne pas envoyer c-b-a), mais ce n'est pas encore
+    terminé, il a besoin d'une base pour x. Le client continue avec S-R-Q, jusqu'à
+    ce que 'a' soit atteint, auquel cas le serveur a une base claire et tout se
+    termine.</p>
+<p class="Pp">Sans multi_ack, le client aurait envoyé cette chaîne c-b-a de toute
+    façon, entrelacée avec S-R-Q.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MULTI_ACK_DETAILED'><a class='permalink' href='#MULTI_ACK_DETAILED'>MULTI_ACK_DETAILED</a></h1>
+<p class="Pp">Ceci est une extension de multi_ack qui permet au client de mieux
+    comprendre l'état en mémoire du serveur. Voir la section &quot;Négociation de
+    paquet&quot; de <a href='/man/gitprotocol-pack.5.en'>gitprotocol-pack(5)</a>
+    pour plus d'informations.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NO-DONE'><a class='permalink' href='#NO-DONE'>NO-DONE</a></h1>
+<p class="Pp">Cette capacité ne doit être utilisée qu'avec le protocole HTTP
+    intelligent. Si multi_ack_detailed et no-done sont tous deux présents, alors
+    l'expéditeur est libre d'envoyer immédiatement un paquet après son premier
+    message &quot;ACK obj-id ready&quot;.</p>
+<p class="Pp">Sans no-done dans le protocole HTTP intelligent, la session du serveur
+    se terminerait et le client devrait faire un autre voyage pour envoyer
+    &quot;done&quot; avant que le serveur ne puisse envoyer le paquet. no-done
+    supprime le dernier aller-retour et réduit ainsi légèrement la latence.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THIN-PACK'><a class='permalink' href='#THIN-PACK'>THIN-PACK</a></h1>
+<p class="Pp">Un paquet mince (thin pack) est un paquet contenant des deltas qui
+    référencent des objets de base non contenus dans le paquet (mais connus pour
+    exister à la réception). Cela peut réduire considérablement le trafic réseau,
+    mais cela nécessite que le destinataire sache comment "épaissir" ces paquets en
+    ajoutant les bases manquantes au paquet.</p>
+<p class="Pp">Le serveur upload-pack annonce <i>thin-pack</i> lorsqu'il peut générer
+    et envoyer un paquet mince. Un client demande la capacité <i>thin-pack</i>
+    lorsqu'il sait comment le "raffermir", notifiant au serveur qu'il peut recevoir
+    un tel paquet. Un client NE DOIT PAS demander la capacité <i>thin-pack</i>
+    s'il ne peut pas transformer un paquet mince en un paquet autonome.</p>
+<p class="Pp">Receive-pack, en revanche, est présumé par défaut capable de gérer
+    les paquets minces, mais peut demander au client de ne pas utiliser la fonction
+    en annonçant la capacité <i>no-thin</i>. Un client NE DOIT PAS envoyer de paquet
+    mince si le serveur annonce la capacité <i>no-thin</i>.</p>
+<p class="Pp">Les raisons de cette asymétrie sont historiques. Le programme
+    receive-pack n'a existé qu'après l'invention des paquets minces, donc
+    historiquement l'implémentation de référence de receive-pack comprenait
+    toujours les paquets minces. L'ajout ultérieur de <i>no-thin</i> a permis à
+    receive-pack de désactiver la fonctionnalité de manière rétrocompatible.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SIDE-BAND,_SIDE-BAND-64K'><a class='permalink' href='#SIDE-BAND,_SIDE-BAND-64K'>SIDE-BAND,   SIDE-BAND-64K</a></h1>
+<p class="Pp">Cette capacité signifie que le serveur peut envoyer, et le client peut
+    comprendre, des rapports de progression et des informations d'erreur multiplexés
+    entrelacés avec le fichier paquet lui-même.</p>
+<p class="Pp">Ces deux options sont mutuellement exclusives. Un client moderne favorise
+    toujours <i>side-band-64k</i>.</p>
+<p class="Pp">L'un ou l'autre mode indique que les données du fichier paquet seront
+    diffusées en paquets allant jusqu'à 1000 octets dans le cas de <i>side_band</i>,
+    ou 65520 octets dans le cas de <i>side_band_64k</i>. Chaque paquet est composé
+    d'une longueur de paquet de 4 octets indiquant la quantité de données dans le
+    paquet, suivie d'un code de flux de 1 octet, puis des données réelles.</p>
+<p class="Pp">Le code de flux peut être l'un des suivants :</p>
+<div class="Bd-indent">
+<pre>1 - données du paquet
+2 - messages de progression
+3 - message d'erreur fatal juste avant l'interruption du flux</pre>
+</div>
+<p class="Pp">La capacité &quot;side-band-64k&quot; est née comme un moyen pour les
+    clients plus récents capables de gérer des paquets beaucoup plus grands de
+    demander des paquets qui sont effectivement remplis presque au maximum, tout en
+    maintenant la compatibilité ascendante pour les clients plus anciens.</p>
+<p class="Pp">De plus, avec side-band et ses messages jusqu'à 1000 octets, il s'agit
+    en fait de 999 octets de charge utile et 1 octet pour le code de flux. Avec
+    side-band-64k, même chose, vous avez jusqu'à 65519 octets de données et 1 octet
+    pour le code de flux.</p>
+<p class="Pp">Le client DOIT envoyer une seule des options &quot;side-band&quot; ou
+    &quot;side- band-64k&quot;. Le serveur DOIT diagnostiquer comme une erreur si
+    le client demande les deux.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OFS-DELTA'><a class='permalink' href='#OFS-DELTA'>OFS-DELTA</a></h1>
+<p class="Pp">Le serveur peut envoyer, et le client peut comprendre, PACKv2 avec un
+    delta faisant référence à sa base par sa position dans le paquet plutôt que par
+    un obj-id. C'est-à-dire qu'ils peuvent envoyer/lire OBJ_OFS_DELTA (alias type 6)
+    dans un fichier paquet.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AGENT'><a class='permalink' href='#AGENT'>AGENT</a></h1>
+<p class="Pp">Le serveur peut éventuellement envoyer une capacité de la forme
+    <b>agent=X</b> pour notifier au client que le serveur exécute la version
+    <b>X</b>. Le client peut éventuellement renvoyer sa propre chaîne d'agent en
+    répondant avec une capacité <b>agent=Y</b> (mais il NE DOIT PAS le faire si le
+    serveur n'a pas mentionné la capacité agent). Les chaînes <b>X</b> et <b>Y</b>
+    peuvent contenir n'importe quels caractères ASCII imprimables à l'exception de
+    l'espace (c'est-à-dire, la plage d'octets 32 &lt; x &lt; 127), et sont typiquement
+    de la forme &quot;package/version&quot; (par exemple, &quot;git/1.8.3.1&quot;). Les
+    chaînes d'agent sont purement informatives à des fins statistiques et de
+    débogage, et NE DOIVENT PAS être utilisées pour supposer programmatiquement la
+    présence ou l'absence de fonctionnalités particulières.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SESSION-ID'><a class='permalink' href='#SESSION-ID'>SESSION-ID</a></h1>
+<p class="Pp">Le serveur peut envoyer une chaîne d'identifiant de session qui
+    peut être utilisée par le client pour suivre les requêtes.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='V2'><a class='permalink' href='#V2'>V2</a></h1>
+<p class="Pp">Le serveur prend en charge le protocole de paquet v2. Voir
+    <a href='/man/gitprotocol-v2.5.en'>gitprotocol-v2(5)</a> pour les détails.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ATOMIC'><a class='permalink' href='#ATOMIC'>ATOMIC</a></h1>
+<p class="Pp">Le serveur peut effectuer une mise à jour atomique du dépôt. Si cette
+    capacité est activée, toutes les références seront mises à jour ou aucune ne
+    le sera. Cela est généralement utilisé avec la capacité <i>report-status</i>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REPOR-STATUS'><a class='permalink' href='#REPOR-STATUS'>REPOR-STATUS</a></h1>
+<p class="Pp">Le serveur peut fournir un rapport de statut détaillé de l'opération
+    de poussée. Si cette capacité est activée, le serveur renverra un rapport
+    structuré indiquant le succès ou l'échec de chaque mise à jour de référence.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='REPORT-STATUS-V2'><a class='permalink' href='#REPORT-STATUS-V2'>REPORT-STATUS-V2</a></h1>
+<p class="Pp">Une version améliorée de <i>report-status</i> qui utilise le format
+    JSON.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DELETE-REFS'><a class='permalink' href='#DELETE-REFS'>DELETE-REFS</a></h1>
+<p class="Pp">Le serveur prend en charge la suppression de références dans le cadre
+    d'une poussée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='QUIET'><a class='permalink' href='#QUIET'>QUIET</a></h1>
+<p class="Pp">Le serveur ne produira pas de sortie verbeuse pendant les opérations
+    de poussée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PUSH-CERT'><a class='permalink' href='#PUSH-CERT'>PUSH-CERT</a></h1>
+<p class="Pp">Le serveur prend en charge les certificats de poussée pour l'authentification
+    des poussées.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NO-THIN'><a class='permalink' href='#NO-THIN'>NO-THIN</a></h1>
+<p class="Pp">Le serveur ne peut pas gérer les paquets minces. Le client ne doit donc
+    pas envoyer de paquets minces.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMPRESS'><a class='permalink' href='#COMPRESS'>COMPRESS</a></h1>
+<p class="Pp">Le serveur peut gérer les données compressées (utilisant zlib).</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEFLATE-LITE-COMPRESS'><a class='permalink' href='#DEFLATE-LITE-COMPRESS'>DEFLATE-LITE-COMPRESS</a></h1>
+<p class="Pp">Le serveur peut gérer les données compressées en utilisant l'algorithme
+    deflate-lite.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id=' capacités_non_définies_dans_cette_section'><a class='permalink' href='# capacités_non_définies_dans_cette_section'>CAPACITÉS NON DÉFINIES DANS CETTE SECTION</a></h1>
+<p class="Pp">Il peut y avoir d'autres capacités annoncées par le serveur qui ne sont
+    pas explicitement documentées ici. Le comportement attendu est que le client les
+    ignore s'il ne les comprend pas, et que le serveur les ignore s'il les voit
+    demandées par le client et qu'il ne les comprend pas.</p>
+<p class="Pp">Toutefois, il est de la responsabilité du client de demander uniquement
+    les capacités qu'il comprend et que le serveur a annoncées. Le serveur ne doit
+    pas annoncer de capacités qu'il ne comprend pas.</p>
+</section>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+ class="Sh" id='OBJECT-FORMAT'&gt;<a class='permalink' href='#OBJECT-FORMAT'>FORMAT-D'OBJET
+</a></h1>Cette
+<p class="Pp">capacité, qui prend un algorithme de hachage comme argument,
+    indique que le serveur prend en charge les algorithmes de hachage donnés. Elle peut être envoyée
+    plusieurs fois ; si c'est le cas, la première donnée est celle utilisée dans la publicité des </p>refs.
+<p class="Pp">Lorsqu'elle est fournie par le client, cela indique qu'il a l'intention d'utiliser
+    l'algorithme de hachage donné pour communiquer. L'algorithme fourni doit être un
+    que le serveur prend </p>en
+<p class="Pp">charge.
+Si cette capacité n'est pas </p>fournie, on suppose que le seul
+    </section>algorithme pris en charge est SHA-1.
+<section class="Sh">
+<h1 class="Sh" id='SYMREF'><a class='permalink' href='#SYMREF'>SYMREF
+</a></h1>Cette
+<p class="Pp">capacité paramétrée est utilisée pour informer le récepteur de laquelle
+    ref symbolique pointe vers quelle ref ; par exemple,
+    "symref=HEAD:refs/heads/master" indique au récepteur que HEAD
+    pointe vers master. Cette capacité peut être répétée pour représenter plusieurs
+    symrefs.
+Les </p>serveurs
+<p class="Pp">DEVRAIENT inclure cette capacité pour la symref HEAD si elle
+    fait partie des refs envoyées.
+Les </p>clients
+<p class="Pp">PEUVENT utiliser les paramètres de cette capac</p>ité pour sélectionner
+    la branche initiale </section>appropriée lors du clonage d'un dépôt.
+SHALLOW
+<section class="Sh">
+<h1 class="Sh" id='SHALLOW'><a class='permalink' href='#SHALLOW'>Cett</a></h1>e
+<p class="Pp">capacité ajoute les commandes "deepen", "shallow" et
+    </p>"unshallow" au protocole fetch-pack/upload-pack afin que
+ </section>   les clients puissent demander des clones superficiels.
+<section class="Sh">
+<h1 class="Sh" id='DEEPEN-SINCE'><a class='permalink' href='#DEEPEN-SINCE'>DEEPEN-SINC</a></h1>E
+<p class="Pp">Cette capacité ajoute la commande "deepen-since" au
+    protocole fetch-pack/upload-pack afin que le client puisse demand</p>er des clones superficiels
+    qui sont coupés à un moment donné, au lieu d'une profondeur. C'est interne
+    équivalent </section>à faire "rev-list --max-age=&lt;horodatage&gt;" du côté
+    serveur. "deepen-since" ne peut pas être utilisé avec
+    "deepen".
+<section class="Sh">
+<h1 class="Sh" id='DEEPEN-NOT'><a class='permalink' href='#DEEPEN-NOT'>DEEPEN-NOT
+</a></h1>Cette
+<p class="Pp">capacité ajoute la commande "deepen-not" au
+    protocole fetch-pack/upload-pack afin que le client puisse demander des clones supe</p>rficiels
+    qui sont coupés à une révision spécifique, au lieu d'une profondeur. C'est interne
+    équivalent à faire "rev-list --n</section>ot &lt;rev&gt;" du côté
+    serveur. "deepen-not" ne peut pas être utilisé avec
+    "deepen", mais peut être utilisé avec "deepen-since".
+<section class="Sh">
+<h1 class="Sh" id='DEEPEN-RELATIVE'><a class='permalink' href='#DEEPEN-RELATIVE'>DEEPEN-RELATIVE
+</a></h1>Si
+<p class="Pp">cette capacité est demandée par le client, la sémantique de la
+    commande "dee</p>pen" est modifiée. L'argument "depth" est la
+    profondeur depuis la frontière</section> superficielle actuelle, au lieu de la profondeur depuis les refs
+    distantes.
+<section class="Sh">
+<h1 class="Sh" id='NO-PROGRESS'><a class='permalink' href='#NO-PROGRESS'>NO-PROGRESS
+</a></h1>Le
+<p class="Pp">client a été démarré avec "git clone -q" ou quelque chose
+    de similaire, et ne veut pas de cette bande latérale 2. Fondamenta</p>lement, le client dit simplement
+    "Je ne souhaite pas recevoir le flux 2 sur la bande latérale, alors ne me l'envoyez pas,
+ </section>   et si vous l'avez fait, je le jetterai de toute façon". Cependant,
+    le canal de bande latérale 3 est toujours utilisé pour
+<section class="Sh">
+<h1 class="Sh" id='INCLUDE-TAG'><a class='permalink' href='#INCLUDE-TAG'>les </a></h1>réponses
+<p class="Pp">d <i>'erreur.
+</i>INCLUDE-TAG
+La
+capacité include-tag concerne l'envoi d'étiquettes annotées
+    si nous envoyons les objets vers lesquels elles pointent. Si nous packons un objet pour le client,
+    et qu'un objet d'étiquette pointe exactement vers cet objet, nous packons également l'objet d'étiquette.
+    En général, cela permet à un client d'obtenir toutes les nouvelles étiquettes </p>annotées
+<p class="Pp">lorsqu'il
+    récupère une branche, en une seule connexion réseau.
+Les clients PEUVENT toujours envoyer include-tag, en le codant en dur dans une requête
+    lorsque le serveur fait la publicité de cette capacité. La décision pour un client de
+    demander include-tag n'a qu'à voir avec les désirs du client pour les données
+    d'étiquette, </p>que
+<p class="Pp">le serveur ait ou non fait la publicité d'objets dans l'espace de noms refs/tags/*.
+Les serveurs DOIVENT packer </p>les
+<p class="Pp">étiquettes si leur référent est packé et si le
+    client a demandé include-tags.
+Les clients DOIVENT être préparés au cas où un serveur aurait ignoré
+    include-tag et n'aurait pas réellement envoyé d'étiquettes dans le pack. Dans de tels cas, le
+    client DEVRAIT émettre une récupération </p>ultérieure
+<p class="Pp">pour acquérir les étiquettes qu'include-t</p>ag
+    lui aurait autrement données.
+Le </section>serveur DEVRAIT envoyer include-tag, s'il
+<section class="Sh">
+<h1 class="Sh" id='REPORT-STATUS'><a class='permalink' href='#REPORT-STATUS'>le prend en </a></h1>charge,
+<p class="Pp">que
+    des étiquettes soient disponibles <i>ou non.
+</i>REPORT-STATUS
+Le processus receive-pack peut recevoir une
+capacité report-status,
+    qui lui indique que le client veut un rapport de ce qui s'est passé
+    après l'envoi d'un fichier pack et la mise à jour des références. Si le client qui pousse demande
+    cette capacité, après avoir décompressé et mis à jour les références, le serveur répondra
+    si le fichier pack a été décompressé avec succès et si chaque
+    référence a été mise à jour avec succès. Si l'un de ces éléments n'a <a href='/man/gitprotocol-pack.5.en'>pas réussi,
+ </a>   il renverr</p>a un message d</section>'erreur. Voir
+<section class="Sh">
+<h1 class="Sh" id='REPORT-STATUS-V2'><a class='permalink' href='#REPORT-STATUS-V2'>gitprotocol-pack(5</a></h1>)
+<p class="Pp">pour des <i>exemples
+    de </i>messages.
+REPORT-STATUS-V2
+La
+    <i>capacité
+</i>report-status-v2 étend la capacité
+report-status en ajoutant de nouvelles directives "option" afin de
+    prendre en charge les références réécrites par le crochet "proc-receive". Le
+    crochet "proc-receive" peut traiter une commande pour une pseudo-référence
+    qui peut créer ou mettre à jour une référence avec un nom, un <i>new-oid et un
+ </i>   old-oid différents. Bien que la capacité <a href='/man/gitprotocol-pack.5.en'>report-sta</a>tus ne pui</p>sse pas ren</section>dre compte
+<section class="Sh">
+<h1 class="Sh" id='DELETE-REFS'><a class='permalink' href='#DELETE-REFS'>d'un </a></h1>tel
+<p class="Pp">cas. Voir
+gitprotocol-pack(5) <i>pour plus de détails.
+DELETE-REFS
+Si le serveur renvoie la
+capacité dele</i>te-refs, cela
+    signifie qu'il est capable d'accepter une valeur id-zé</p>ro comme valeur cible d'une
+    mise à jour de référence. Elle n'est pas </section>renvoyée par le client, elle informe simplement
+    le client qu'il peut
+<section class="Sh">
+<h1 class="Sh" id='QUIET'><a class='permalink' href='#QUIET'>lui </a></h1>envoyer
+<p class="Pp">des valeurs id-zéro pour supprimer des <i>références.</i>
+QUIET
+Si le serveur receive-pack fait la publicité de la
+capacité quiet,
+    il est capable de faire taire la sortie de progression lisible par l'humain qui pourrait autrement
+    être affichée lors du traitement <i>du </i>pack reçu. Un client send-pack devrait répondre avec la
+    capacité [[42]] quiet pour supprimer le rapport de progression côté serveur
+    si le <b>rappor</b>t <b>de progressi</b>on local est</p> également s</section>upprimé (par
+<section class="Sh">
+<h1 class="Sh" id='ATOMIC'><a class='permalink' href='#ATOMIC'>ex.</a></h1>,
+<p class="Pp">via
+push
+-q, ou si stderr <i>ne va pas vers un tty).
+ATOMIC
+Si le serveur envoie la
+capac</i>ité atomic, il est capable de
+    accepter des pushes atomiq</p>ues. Si le client qui pousse demande cette capacité, le
+    s</section>erveur mettra à jour les refs dans une transaction atomique.
+<section class="Sh">
+<h1 class="Sh" id='PUSH-OPTIONS'><a class='permalink' href='#PUSH-OPTIONS'>Soit </a></h1>toutes
+<p class="Pp">les refs sont
+    mises à jour, <i>soit aucune.
+PUSH-OPTIONS
+Si le serveur envoie la
+capacité push-options, il peut
+    a</i>ccepter des options de push après que les commandes de mise à jour ont été envoyées, m</p>ais avant que
+    le fichier pack ne soit diffusé. Si le client qui pousse demande ce</section>tte capacité,
+    le serveur transmettra les options aux crochets pre- et post-receive
+<section class="Sh">
+<h1 class="Sh" id='ALLOW-TIP-SHA1-IN-WANT'><a class='permalink' href='#ALLOW-TIP-SHA1-IN-WANT'>qui
+    </a></h1>traitent
+<p class="Pp">cette requête de push.
+ALLOW-TIP-SHA1-IN-WANT
+Si le serveur upload-pack fait la publicité de cette capacité, fetch-pack
+    peut envoyer des lignes "want" avec des noms d'objets qui existent sur le serveur
+    mais qui ne sont pas annoncés par upload-pack. Pour des raisons historiques, le nom de
+    cette capacité contient "sha1". Les noms d'objets sont toujours donnés <i>en utili</i>sant le</p> format</section> d'objet
+<section class="Sh">
+<h1 class="Sh" id='ALLOW-REACHABLE-SHA1-IN-WANT'><a class='permalink' href='#ALLOW-REACHABLE-SHA1-IN-WANT'>négocié via la
+capacité </a></h1>object-format.
+<p class="Pp">ALLOW-REACHABLE-SHA1-IN-WANT
+Si le serveur upload-pack fait la publicité de cette capacité, fetch-pack
+    peut envoyer des lignes "want" avec des noms d'objets qui existent sur le serveur
+    mais qui ne sont pas annoncés par upload-pack. Pour des raisons historiques, le nom de
+    cette capacité contient "sha1". Les noms d'objets sont toujours donnés
+    en utilisant <i>le form</i>at d'ob</p>jet négo</section>cié via
+<section class="Sh">
+<h1 class="Sh" id='PUSH-CERT=&amp;lt;NONCE&amp;gt;'><a class='permalink' href='#PUSH-CERT=&amp;lt;NONCE&amp;gt;'>la
+capacité </a></h1>object-format.
+<p class="Pp">PUSH-CERT=&lt;NONCE&gt;
+Le serveur receive-pack qui fait la publicité de cette capacité est disposé
+    à accept</p>er un certificat de push signé, et demande que le &lt;nonce&gt; soit
+    inclus dans le certificat de push. Un cl</section>ient send-pack NE DOIT PAS envoyer un
+    paquet push-cert à moins que le serveur receive-pack ne fasse la
+<section class="Sh">
+<h1 class="Sh" id='FILTER'><a class='permalink' href='#FILTER'>publicit</a></h1>é
+<p class="Pp">de cette
+  capacité.
+FILTER
+Si le serveur <i>upload-pack fait la publicité de la
+capacité filter,</i>
+    fetch-pack peut envoyer des commandes "filter" </p>pour demander un clone
+    partiel ou une récupérati</section>on partielle et demander au serveur d'omettre divers
+<section class="Sh">
+<h1 class="Sh" id='SESSION-ID=&amp;lt;SESSION-ID&amp;gt;'><a class='permalink' href='#SESSION-ID=&amp;lt;SESSION-ID&amp;gt;'>objets du
+    fichier </a></h1>pack.
+<p class="Pp">SESSION-ID=&lt;SESSION-ID&gt;
+Le serveur peut faire la publicité d'un ID de session qui peut être utilisé pour identifier
+    ce processus à travers plusieurs requêtes. Le client peut également faire la </p>publicité
+<p class="Pp">de son propre
+    ID de session au serveur.
+Les ID de session devraient être uniques pour un processus donné. Ils doivent tenir
+    dans une ligne de paquet, et ne doivent pas contenir de caractères non imprimables ou d'espaces.
+    <b>L'implémentation actuelle utilise</b> les ID de session trace2 (voir
+a</p>pi-trace2[1] pour plus de détail</section>s), mais cela peut changer et les
+<section class="Sh">
+<h1 class="Sh" id='GIT'><a class='permalink' href='#GIT'></a></h1>u
+<p class="Pp">tilisateurs de <a href='/man/git.1.en'>l'ID </a>de
+  </p>  se</section>ssion
+<section class="Sh">
+<h1 class="Sh" id='NOTES'><a class='permalink' href='#NOTES'>n</a></h1>e
+<dl class="Bl-tag">
+  <dt> devr</dt>aient
+  <dd>pas </dd>se </dl>fier
+<div class="Bd-indent">à ce fait.
+GIT
+P</div>artie de la
+suite</section> git(1)
+NOTES
+1.
+</div>api-trace2
+file:
+<table class="foot">
+  <tr>
+    <td class="foot-date">///usr/shar</td>e/doc
+    <td class="foot-os">/git-doc</td>/techni</tr>cal/api</table>-trace2.</section>html
+202</article>5-11-17
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Search manual page" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Git 2.52.0
+Informations </p>sur le
+    <dl>
+        <dt>paquet :
+Nom </dt>du paquet :
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/git/"&gt;</a></dd>extra/git
+        <dt>Version </dt>:
+        <dd>2.52.</dd>0-2
+        <dt>Amont </dt>:
+        <dd><a href="https://git-scm.com/">https://git-scm.</a></dd>com/
+        <dt>Licences </dt>:
+        <dd>GPL-2.</dd>0-only
+        <dt>Manuels </dt>:
+        <dd><a href="/listing/extra/git/">/listing/extr</a></dd>a/gi</dl>t</section>/
+
+<details>
+    <summary>Table des </summary>matières
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">N</a></li>OM
+        
+            <li><a href="#SYNOPSIS">SYN</a></li>OPSISSE
+        
+            <li><a href="#DESCRIPTION">DESC</a></li>RIPTION
+        
+            <li><a href="#MULTI_ACK">MUL</a></li>TI_ACK
+        
+            <li><a href="#MULTI_ACK_DETAILED">MULTI_AC</a></li>K_DETAILED
+        
+            <li><a href="#NO-DONE">NO</a></li>-DONE
+        
+            <li><a href="#THIN-PACK">THI</a></li>N-PACK
+        
+            <li><a href="#SIDE-BAND,_SIDE-BAND-64K">SIDE-BAND, </a></li>SIDE-BAND-64K
+        
+            <li><a href="#OFS-DELTA">OFS</a></li>-DELTA
+        
+            <li><a href="#AGENT">A</a></li>GENT
+        
+            <li><a href="#OBJECT-FORMAT">OBJEC</a></li>T-FORMAT
+        
+            <li><a href="#SYMREF">S</a></li>YMREF
+        
+            <li><a href="#SHALLOW">SH</a></li>ALLOW
+        
+            <li><a href="#DEEPEN-SINCE">DEEP</a></li>EN-SINCE
+        
+            <li><a href="#DEEPEN-NOT">DEE</a></li>PEN-NOT
+        
+            <li><a href="#DEEPEN-RELATIVE">DEEPEN</a></li>-RELATIVE
+        
+            <li><a href="#NO-PROGRESS">NO-P</a></li>ROGRESS
+        
+            <li><a href="#INCLUDE-TAG">INCL</a></li>UDE-TAG
+        
+            <li><a href="#REPORT-STATUS">REPOR</a></li>T-STATUS
+        
+            <li><a href="#REPORT-STATUS-V2">REPORT-</a></li>STATUS-V2
+        
+            <li><a href="#DELETE-REFS">DELE</a></li>TE-REFS
+        
+            <li><a href="#QUIET">Q</a></li>UIET
+        
+            <li><a href="#ATOMIC">A</a></li>TOMIC
+        
+            <li><a href="#PUSH-OPTIONS">PUSH</a></li>-OPTIONS
+        
+            <li><a href="#ALLOW-TIP-SHA1-IN-WANT">ALLOW-TIP-S</a></li>HA1-IN-WANT
+        
+            <li><a href="#ALLOW-REACHABLE-SHA1-IN-WANT">ALLOW-REACHABLE-</a></li>SHA1-IN-WANT
+        
+            <li><a href="#PUSH-CERT=&amp;lt;NONCE&amp;gt;">PUSH-CE</a></li>RT=&lt;NONCE&gt;
+        
+            <li><a href="#FILTER">F</a></li>ILTER
+        
+            <li><a href="#SESSION-ID=&amp;lt;SESSION-ID&amp;gt;">SESSION-ID=&lt;</a></li>SESSION-ID&gt;
+        
+            <li><a href="#GIT">G</a></li>IT
+        
+            <li><a href="#NOTES">N</a></li>O</ul>T</nav>E</details>S
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/gitprotocol-capabilities.5.en.txt">t</a>xt, 
+        
+            <a href="/man/gitprotocol-capabilities.5.en.raw">b</a></p>r</nav>u</aside></main>t
+        <footer>
+            de manuel.
+            <p>Le site web est disponible selon les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0
+               , à l</a>'exception du contenu des p</p>ages de manuel, qui possède </footer>sa propre licence
+          </body>     spécifiée dans le paqu</html>et Arch Linux correspondant.

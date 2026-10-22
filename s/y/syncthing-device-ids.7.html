@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>syncthing-device-ids(7) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">syncthing-device-ids(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/syncthing/">syncthing</a></p>
+<p class="lic">Licences: MPL-2.0</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">SYNCTHING-DEVICE-IDS(7)</td>
+    <td class="head-vol">Syncthing</td>
+    <td class="head-rtitle">SYNCTHING-DEVICE-IDS(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">syncthing-device-ids - Comprendre les identifiants de périphérique</p>
+<p class="Pp">Chaque périphérique est identifié par un identifiant de périphérique. L'identifiant de périphérique est utilisé pour la résolution d'adresses, l'authentification et l'autorisation. Le terme "identifiant de périphérique" pourrait être utilisé de manière interchangeable avec "identifiant de clé" car l'identifiant de périphérique est une propriété directe de la clé publique utilisée.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CLES'><a class='permalink' href='#CLES'>CLÉS</a></h1>
+<p class="Pp">Pour comprendre les identifiants de périphérique, nous devons examiner les mécanismes sous-jacents. Lors du premier démarrage, Syncthing crée une paire de clés publique/privée.</p>
+<p class="Pp">Actuellement, il s'agit d'une clé ECDSA de 384 bits (RSA de 3072 bits avant la v0.12.5, qui est utilisée comme exemple dans cet article). Les clés sont enregistrées sous la forme de la clé privée (<b>key.pem</b>) et d'un certificat auto-signé (<b>cert.pem</b>). La partie auto-signée n'ajoute en réalité aucune sécurité ni fonctionnalité du point de vue de Syncthing, mais elle permet l'utilisation des clés dans un échange TLS standard.</p>
+<p class="Pp">Le certificat typique ressemblera à ceci, inspecté avec <b>openssl x509</b> :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 0 (0x0)
+        Signature Algorithm: sha1WithRSAEncryption
+        Issuer: CN=syncthing
+        Validity
+            Not Before: Mar 30 21:10:52 2014 GMT
+            Not After : Dec 31 23:59:59 2049 GMT
+        Subject: CN=syncthing
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+            RSA Public Key: (3072 bit)
+                Modulus (3072 bit):
+                    00:da:83:8a:c0:95:af:0a:42:af:43:74:65:29:f2:
+                    30:e3:b9:12:d2:6b:70:93:da:0b:7b:8a:1e:e5:79:
+                    ...
+                    99:09:4c:a9:7b:ba:4a:6a:8b:3b:e6:e7:c7:2c:00:
+                    90:aa:bc:ad:94:e7:80:95:d2:1b
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Extended Key Usage:
+                TLS Web Server Authentication, TLS Web Client Authentication
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+    Signature Algorithm: sha1WithRSAEncryption
+        68:72:43:8b:83:61:09:68:f0:ef:f0:43:b7:30:a6:73:1e:a8:
+        d9:24:6c:2d:b4:bc:c9:e8:3e:0b:1e:3c:cc:7a:b2:c8:f1:1d:
+        ...
+        88:7e:e2:61:aa:4c:02:e3:64:b0:da:70:3a:cd:1c:3d:86:db:
+        df:54:b9:4e:be:1b</pre>
+</div>
+</div>
+<p class="Pp">Nous pouvons voir ici que le certificat n'est guère plus qu'un conteneur pour la clé publique ; le numéro de série est zéro et l'Émetteur (Issuer) et le Sujet (Subject) sont tous deux "syncthing" là où un nom qualifié pourrait normalement être attendu.</p>
+<p class="Pp">Un utilisateur avancé pourrait remplacer les fichiers <b>key.pem</b> et <b>cert.pem</b> par une paire de clés générée directement par l'utilitaire <b>openssl</b> ou par un autre mécanisme.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='IDENTIFIANTS_DE_PERIPHERIQUE'><a class='permalink' href='#IDENTIFIANTS_DE_PERIPHERIQUE'>IDENTIFIANTS DE PÉRIPHÉRIQUE</a></h1>
+<p class="Pp">Pour former un identifiant de périphérique, le hachage SHA-256 des données du certificat sous forme DER est calculé. Cela signifie que le hachage couvre toutes les informations sous la section <b>Certificate:</b> ci-dessus.</p>
+<p class="Pp">Le hachage produit un hachage de 256 bits que nous encodons en base32. La base32 encode cinq bits par caractère, nous avons donc besoin de 256 / 5 = 51,2 caractères pour encoder l'identifiant de périphérique. Cela devient 52 caractères en pratique, mais 52 caractères en base32 décoderaient 260 bits, ce qui n'est pas un nombre entier d'octets. L'encodage base32 ajoute du remplissage jusqu'à 280 bits (le multiple suivant de 5 et 8 bits), de sorte que l'identifiant résultant ressemble à ceci :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>MFZWI3DBONSGYYLTMRWGC43ENRQXGZDMMFZWI3DBONSGYYLTMRWA====</pre>
+</div>
+</div>
+<p class="Pp">Le remplissage (<b>====</b>) est supprimé, l'identifiant du périphérique est divisé en quatre groupes, et des <i>chiffres de contrôle</i>
+<a href='https://forum.syncthing.net/t/v0-9-0-new-node-id-format/478'>https://forum.syncthing.net/t/v0-9-0-new-node-id-format/478</a>
+sont ajoutés pour chaque groupe. À des fins de présentation, l'identifiant du périphérique est groupé avec des tirets, ce qui donne la valeur finale :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">
+<pre>MFZWI3D-BONSGYC-YLTMRWG-C43ENR5-QXGZDMM-FZWI3DP-BONSGYY-LTMRWAD</pre>
+</div>
+</div>
+<section class="Ss">
+<h2 class="Ss" id='établissement_de_la_connexion'><a class='permalink' href='#établissement_de_la_connexion'>Établissement de la connexion</a></h2>
+<p class="Pp">Nous savons maintenant ce que sont les identifiants de périphérique, voici comment ils sont utilisés dans Syncthing. Lorsque vous ajoutez un identifiant de périphérique à la configuration, Syncthing tente de se connecter à ce périphérique. La première chose à faire est de déterminer l'adresse IP et le port de connexion. Il y a trois possibilités ici :</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>L'adresse IP et le port peuvent être définis statiquement dans la configuration. L'adresse IP peut tout aussi bien être un nom d'hôte, donc si vous avez une adresse IP statique ou une configuration DNS dynamique, cela pourrait être une bonne option.</li>
+  <li>Utilisation de la découverte locale, si activée. Chaque instance Syncthing sur un réseau local diffuse périodiquement des informations sur elle-même (identifiant du périphérique, adresse, numéro de port). Si nous avons vu l'une de ces diffusions pour un identifiant de périphérique donné, c'est là que nous essayons de nous connecter.</li>
+  <li>Utilisation de la découverte globale, si activée. Chaque instance Syncthing s'annonce au service de découverte globale (identifiant du périphérique et numéro de port externe - l'adresse interne n'est pas annoncée au serveur global). Si nous n'avons pas d'adresse statique et n'avons vu aucune annonce locale, le serveur de découverte globale sera interrogé pour une adresse.</li>
+</ul>
+</div>
+<p class="Pp">Une fois que nous avons une adresse et un port, une connexion TCP est établie et une poignée de main TLS est effectuée. Dans le cadre de la poignée de main, les deux périphériques présentent leurs certificats. Une fois la poignée de main terminée et le certificat du pair connu, les étapes suivantes sont effectuées :</p>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>1.</dt>
+  <dd>Calculer l'identifiant du périphérique distant en traitant le certificat reçu comme ci-dessus.</dd>
+  <dt>2.</dt>
+  <dd>Éliminer quelques possibles erreurs de configuration - c'est-à-dire si l'identifiant du périphérique est celui du périphérique local ou d'un périphérique auquel nous avons déjà une connexion active. Abandonner la connexion dans ces cas.</dd>
+  <dt>3.</dt>
+  <dd>Vérifier l'identifiant du périphérique distant par rapport à la configuration. S'il ne s'agit pas d'un identifiant de périphérique que nous attendons, abandonner la connexion.</dd>
+  <dt>4.</dt>
+  <dd>Vérifier le <b>CommonName</b> du certificat par rapport à la configuration. Par défaut, nous nous attendons à ce qu'il soit <b>syncthing</b>, mais lors de l'utilisation de certificats personnalisés, cela peut être modifié.</dd>
+  <dt>5.</dt>
+  <dd>Si tout est vérifié jusqu'à présent, accepter la connexion.</dd>
+</dl>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UNE_DIGRESSION_SUR_LES_COLLISIONS'><a class='permalink' href='#UNE_DIGRESSION_SUR_LES_COLLISIONS'>UNE DIGRESSION SUR LES COLLISIONS</a></h1>
+<p class="Pp">Le hachage SHA-256 est cryptographiquement résistant aux collisions. Cela signifie qu'il n'y a aucun moyen connu de créer deux messages différents avec le même hachage.</p>
+<p class="Pp">Vous pouvez soutenir qu'il existe bien sûr des collisions - il y a une quantité infinie d'entrées et une quantité finie de sorties - donc par définition, il existe une quantité infinie de messages qui aboutissent au même hachage.</p>
+<p class="Pp">Je vais citer <i>Stack Overflow</i>
+    <a href='https://stackoverflow.com/questions/4014090/is-it-safe-to-ignore-the-possibility-of-sha-collisions-in-practice'>https://stackoverflow.com/questions/4014090/is-it-safe-to-ignore-the-possibility-of-sha-collisions-in-practice</a>
+    ici :</p>
+<div class="Bd-indent">
+<div class="Bd-indent">La réponse habituelle est la suivante : quelle est la probabilité qu'un astéroïde malveillant percute la Terre dans la seconde qui suit, anéantissant la civilisation telle que nous la connaissons et tuant quelques milliards de personnes ? On peut soutenir que tout événement malheureux dont la probabilité est inférieure à celle-ci n'est en fait pas très important.
+<p class="Pp">Si nous avons une fonction de hachage "parfaite" avec une taille de sortie n, et que nous avons p messages à hacher (la longueur de chaque message n'est pas importante), alors la probabilité de collision est d'environ p²/2ⁿ⁺¹ (c'est une approximation valable pour p "petit", c'est-à-dire considérablement inférieur à 2ⁿ/2). Par exemple, avec SHA-256 (n=256) et un milliard de messages (p=10⁹), la probabilité est d'environ 4,3*10⁻⁶⁰.</p>
+<p class="Pp">Un astéroïde meurtrier se produit environ une fois tous les 30 millions d'années en moyenne. Cela conduit à une probabilité qu'un tel événement se produise dans la seconde qui suit d'environ 10⁻¹⁵. C'est 45 ordres de grandeur plus probable qu'une collision SHA-256. En bref, si vous trouvez les collisions SHA-256 effrayantes, vos priorités sont erronées.</p>
+</div>
+</div>
+<p class="Pp">Il convient également de noter que la propriété de SHA-256 que nous utilisons n'est pas simplement la résistance aux collisions, mais la résistance à une attaque de préimage, c'est-à-dire même si vous pouvez trouver deux messages qui produisent une collision de hachage, cela ne vous aide pas à attaquer Syncthing (ou TLS en général). Vous devez créer un message qui correspond exactement au hachage que mon certificat possède déjà, sinon vous n'entrerez pas.</p>
+<p class="Pp">Notez également qu'il ne suffit pas de trouver une séquence aléatoire de bits qui</p>
+</div>
+</section>
+                
+</section>
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+n pas avoir le même hachage que mon certificat. Vous devez créer un certificat signé valide encodé en DER qui a le même hachage que le mien. La difficulté de ceci est considérablement supérieure à la difficulté déjà considérable de trouver une collision SHA-256.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PROBLEMES_ET_VULNERABILITES'><a class='permalink' href='#PROBLEMES_ET_VULNERABILITES'>PROBLEMES ET VULNERABILITES</a></h1>
+<p class="Pp">Autant que je sache, voici les problèmes ou problèmes potentiels avec le mécanisme ci-dessus.</p>
+<section class="Ss">
+<h2 class="Ss" id='Usurpation_de_decouverte'><a class='permalink' href='#Usurpation_de_decouverte'>Usurpation de decouverte</a></h2>
+<p class="Pp">Actuellement, le mécanisme de découverte locale n'est pas protégé par la cryptographie. Cela signifie que tout appareil peut en théorie s'annoncer pour n'importe quel identifiant d'appareil et potentiellement recevoir des connexions pour cet appareil à partir du réseau local.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Les_longs_identifiants_d_appareil_sont_penibles'><a class='permalink' href='#Les_longs_identifiants_d_appareil_sont_penibles'>Les longs identifiants d'appareil sont pénibles</a></h2>
+<p class="Pp">C'est une bouche à oreille à lire au téléphone, ennuyeux à taper dans un SMS ou même dans un ordinateur. Et cela doit être fait deux fois, une fois pour chaque côté.</p>
+<p class="Pp">Ce n'est pas une vulnérabilité en soi, mais un problème d'expérience utilisateur. Il existe diverses solutions possibles:</p>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Utilisez des identifiants d'appareil plus courts avec une vérification basée sur l'identifiant complet ("Vous avez saisi MFZWI3 ; j'ai trouvé et connecté un appareil avec l'identifiant MFZWI3-DBONSG-YYLTMR-WGC43E-NRQXGZ-DMMFZW-I3DBON-SGYYLT-MRWA, veuillez confirmer que c'est correct").</li>
+  <li>Utilisez des identifiants d'appareil plus courts avec une authentification hors bande, à la manière de l'appairage Bluetooth. Vous saisissez un code PIN unique dans Syncthing et donnez ce code PIN plus un identifiant d'appareil court à un autre utilisateur. Lors de la première connexion, les deux côtés vérifient que l'autre connaît le code PIN correct avant d'accepter la connexion.</li>
+</ul>
+</div>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTEUR'><a class='permalink' href='#AUTEUR'>AUTEUR</a></h1>
+<p class="Pp">Les auteurs de Syncthing</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DROITS_D_AUTEUR'><a class='permalink' href='#DROITS_D_AUTEUR'>DROITS D'AUTEUR</a></h1>
+<p class="Pp">2014-2025, Les auteurs de Syncthing</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">23 novembre 2025</td>
+    <td class="foot-os">v2.0.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/syncthing/">extra/syncthing</a></dd>
+        <dt>Version :</dt>
+        <dd>2.0.12-1</dd>
+        <dt>En amont :</dt>
+        <dd><a href="https://syncthing.net/">https://syncthing.net/</a></dd>
+        <dt>Licences :</dt>
+        <dd>MPL-2.0</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/syncthing/">/listing/extra/syncthing/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#KEYS">CLES</a></li>
+        
+            <li><a href="#DEVICE_IDS">IDENTIFIANTS_APPAREILS</a></li>
+        
+            <li><a href="#AN_ASIDE_ABOUT_COLLISIONS">UNE ASIDE SUR LES COLLISIONS</a></li>
+        
+            <li><a href="#PROBLEMS_AND_VULNERABILITIES">PROBLEMES_ET_VULNERABILITES</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+            <li><a href="#COPYRIGHT">DROITS_AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/syncthing-device-ids.7.fr.txt">txt</a>, 
+        
+            <a href="/man/syncthing-device-ids.7.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

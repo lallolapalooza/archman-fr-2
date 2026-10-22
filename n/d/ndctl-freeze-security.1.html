@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ndctl-freeze-security(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">ndctl-freeze-security(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/x86_64/ndctl/">ndctl</a></p>
+<p class="lic">Licences: LGPL</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">NDCTL-FREEZE-SECURITY(1)</td>
+    <td class="head-vol">Manuel ndctl</td>
+    <td class="head-rtitle">NDCTL-FREEZE-SECURITY(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">ndctl-freeze-security - Définit le(s) DIMM(s) spécifié(s) pour rejeter les futures opérations de sécurité</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNTAXE'><a class='permalink' href='#SYNTAXE'>SYNTAXE</a></h1>
+<pre><i>ndctl freeze-security</i> &lt;nmem0&gt; [&lt;nmem1&gt;..&lt;nmemN&gt;] [&lt;options&gt;]</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Empêche toute opération de sécurité ultérieure sur les DIMM(s) spécifiés jusqu'au prochain redémarrage. Ceci est utilisé dans les scénarios où l'administrateur a effectué toutes les actions de sécurité attendues pour le démarrage actuel et souhaite que le DIMM applique / verrouille l'état actuel.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXEMPLES'><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<div class="Bd-indent">
+<pre>$ ndctl list -d nmem0
+[
+  {
+    &quot;dev&quot;:&quot;nmem0&quot;,
+    &quot;id&quot;:&quot;cdab-0a-07e0-ffffffff&quot;,
+    &quot;handle&quot;:0,
+    &quot;phys_id&quot;:0,
+    &quot;security&quot;:&quot;unlocked&quot;
+  }
+]
+$ ndctl freeze-security  nmem0
+security froze 1 nmem.
+$ ndctl list -d nmem0
+[
+  {
+    &quot;dev&quot;:&quot;nmem0&quot;,
+    &quot;id&quot;:&quot;cdab-0a-07e0-ffffffff&quot;,
+    &quot;handle&quot;:0,
+    &quot;phys_id&quot;:0,
+    &quot;security&quot;:&quot;unlocked&quot;,
+    &quot;security_frozen&quot;:true
+  },
+]</pre>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS'><a class='permalink' href='#OPTIONS'>OPTIONS</a></h1>
+<p class="Pp">&lt;dimm&gt;</p>
+<div class="Bd-indent">Un nom de périphérique <i>nmemX</i>, ou un numéro d'identifiant de DIMM. Restreint l'opération aux DIMM(s) spécifiés. Le mot-clé <i>all</i> peut être spécifié pour indiquer l'absence de restriction, cependant cela équivaut à ne pas fournir d'option --dimm du tout.</div>
+<p class="Pp">-b, --bus=</p>
+<div class="Bd-indent">Un numéro d'identifiant de bus, ou une chaîne de fournisseur (par exemple, &quot;ACPI.NFIT&quot;). Restreint l'opération aux bus spécifiés. Le mot-clé <i>all</i> peut être spécifié pour indiquer l'absence de restriction, cependant cela équivaut à ne pas fournir d'option --bus du tout.</div>
+<p class="Pp">-v, --verbose</p>
+<div class="Bd-indent">Émet des messages de débogage.</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='THEORIE_DE_FONCTIONNEMENT'><a class='permalink' href='#THEORIE_DE_FONCTIONNEMENT'>THÉORIE DE FONCTIONNEMENT</a></h1>
+<p class="Pp">Les méthodes spécifiques aux périphériques Intel (DSM) spécification v1.7 et v1.8 [1] ont introduit les opérations de gestion de sécurité suivantes : activation du mot de passe, mise à jour du mot de passe, déverrouillage du DIMM, désactivation de la sécurité, effacement sécurisé (cryptographique), écrasement, activation du mot de passe maître, mise à jour du mot de passe maître et effacement sécurisé du mot de passe maître.</p>
+<p class="Pp">La gestion de la sécurité pour les NVDIMM est composée de deux parties. Le frontend utilise le framework de gestion des clés Linux (clés fiables et chiffrées [2]) pour stocker les mots de passe chiffrés dans le keyring géré par le noyau. L'interface pour cela est l'utilitaire <i>keyutils</i> qui utilise les API de gestion des clés dans le noyau Linux. Le backend prend la charge utile déchiffrée (qui est le mot de passe du DIMM) et la transmet au DIMM.</p>
+<p class="Pp">Contrairement aux autres DSM qui sont composées par libndctl et envoyées au noyau via un ioctl, les DSM de sécurité sont gérées via l'attribut <i>security</i> sysfs sous le périphérique <i>dimm</i>. Un <i>key-ID</i> est écrit dans l'attribut <i>security</i> et le noyau récupère le matériel de clé associé du keyring utilisateur maintenu par le noyau.</p>
+<p class="Pp">Le processus de sécurité commence par la génération d'une <i>clé maître</i> utilisée pour sceller (chiffrer) le mot de passe du DIMM. Il peut y avoir une <i>clé maître</i> commune utilisée pour chiffrer le mot de passe de chaque DIMM, ou une clé distincte peut être générée pour chaque DIMM. La <i>clé maître</i> est également appelée <i>key-encryption-key</i> (kek). La <i>kek</i> peut être générée par le TPM (Trusted Platform Module) du système, ou alternativement, la <i>System Master Key</i> peut également être utilisée comme <i>kek</i>.</p>
+<p class="Pp">À des fins de test, une clé utilisateur avec une charge utile aléatoire peut également être utilisée comme <i>kek</i>. Voir [2] pour plus de détails. Pour effectuer des opérations de sécurité, il est attendu que la <i>kek</i> ait été ajoutée au keyring utilisateur du noyau comme montré dans l'exemple ci-dessous :</p>
+<div class="Bd-indent">
+<pre># keyctl show
+Session Keyring
+ 736023423 --alswrv      0     0  keyring: _ses
+ 675104189 --alswrv      0 65534   \_ keyring: _uid.0
+ 680187394 --alswrv      0     0       \_ trusted: nvdimm-master</pre>
+</div>
+<p class="Pp">Avant d'effectuer l'une des opérations de sécurité, toutes les régions associées au DIMM concerné doivent être désactivées. Pour l'opération <i>overwrite</i>, en plus des <i>regions</i>, le <i>dimm</i> doit également être désactivé.</p>
+<p class="Pp">[1] <i></i>
+    <a href='http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf'>http://pmem.io/documents/NVDIMM_DSM_Interface-V1.8.pdf</a>
+  <br/>
+  [2] <i></i>
+    <a href='https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst'>https://www.kernel.org/doc/Documentation/security/keys/trusted-encrypted.rst</a></p>
+<p class="Pp">Les sous-sections suivantes décrivent les spécificités de chaque fonctionnalité de sécurité.</p>
+<section class="Ss">
+<h2 class="Ss" id='UNLOCK'><a class='permalink' href='#UNLOCK'>DÉVERROUILLAGE</a></h2>
+<p class="Pp">Le déverrouillage est effectué par le noyau, cependant une étape de préparation doit avoir lieu avant que le DSM de déverrouillage puisse être émis par le noyau. Il est attendu que depuis l'initramfs, une commande de configuration (ndctl <i>load-keys</i>) soit exécutée avant que le module libnvdimm ne soit chargé par modprobe. Cette commande injectera la <i>kek</i> et les mots de passe chiffrés dans le keyring utilisateur du noyau. Pendant la <i>probe</i> du pilote libnvdimm, il va :</p>
+<div class="Bd-indent"> 1. Vérifier l'état de sécurité du périphérique et voir si le DIMM est verrouillé</div>
+<div class="Bd-indent"> 2. Demander le mot de passe chiffré associé du keyring utilisateur du noyau</div>
+<div class="Bd-indent"> 3. Utiliser la <i>kek</i> pour déchiffrer le mot de passe</div>
+<div class="Bd-indent"> 4. Créer le DSM de déverrouillage, copier la charge utile déchiffrée dans le DSM</div>
+<div class="Bd-indent"> 5. Émettre le DSM pour déverrouiller le DIMM</div>
+<p class="Pp">Si le DIMM est déjà déverrouillé, le noyau tentera de revalider le mot de passe. Si nous ne parvenons pas à revalider le mot de passe, le noyau verrouillera la sécurité et interdira toute modification de configuration de sécurité ultérieure. Un paramètre de module du noyau est disponible pour outrepasser ce comportement.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SETUP_USER_PASSPHRASE'><a class='permalink' href='#SETUP_USER_PASSPHRASE'>CONFIGURATION MOT DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">Pour configurer le mot de passe d'un DIMM, il est attendu que la <i>kek</i> à utiliser soit présente dans le keyring utilisateur du noyau. La <i>kek</i> chiffre le mot de passe du DIMM en utilisant le format de clé <i>enc32</i>. Le mot de passe en clair n'est jamais fourni par l'utilisateur et ne lui est jamais rendu visible. Il est généré aléatoirement par le noyau et l'espace utilisateur n'y a pas accès. Après chiffrement, un blob binaire du mot de passe est écrit dans le répertoire de stockage des blobs de mot de passe (/etc/ndctl/keys). L'utilisateur est responsable de sauvegarder les blobs de mot de passe dans un emplacement sécurisé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='UPDATE_USER_PASSPHRASE'><a class='permalink' href='#UPDATE_USER_PASSPHRASE'>MISE À JOUR MOT DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">L'opération de mise à jour du mot de passe utilisateur utilise la même commande DSM que l'activation du mot de passe utilisateur. La majeure partie du travail est effectuée côté gestion des clés. L'utilisateur a la possibilité de fournir une nouvelle <i>kek</i> pour le nouveau mot de passe, mais continuer à utiliser la <i>kek</i> existante est également acceptable. Les opérations suivantes sont effectuées pour <i>update-passphrase</i> :</p>
+<div class="Bd-indent"> 1. Supprimer le mot de passe chiffré du keyring utilisateur du noyau.</div>
+<div class="Bd-indent"> 2. Renommer le blob de mot de passe en old.</div>
+<div class="Bd-indent"> 3. Charger ce blob de mot de passe ancien dans le keyring avec le nom &quot;old&quot;.</div>
+<div class="Bd-indent"> 4. Créer le nouveau mot de passe et le chiffrer avec la <i>kek</i>.</div>
+<div class="Bd-indent"> 5. Envoyer le DSM avec les anciens et nouveaux mots de passe déchiffrés.</div>
+<div class="Bd-indent"> 6. Supprimer l'ancien mot de passe et le blob de mot de passe du keyring.</div>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='REMOVE_USER_PASSPHRASE'><a class='permalink' href='#REMOVE_USER_PASSPHRASE'>SUPPRIMER MOT DE PASSE UTILISATEUR</a></h2>
+<p class="Pp">Le <i>key-ID</i> du mot de passe à supprimer est écrit dans sysfs. Le noyau envoie ensuite le DSM pour désactiver la sécurité, puis le mot de passe est supprimé du keyring et le blob de mot de passe associé est supprimé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='CRYPTO_(SECURE)_ERASE'><a class='permalink' href='#CRYPTO_(SECURE)_ERASE'>EFFACEMENT CRYPTOGRAPHIQUE (SÉCURISÉ)</a></h2>
+<p class="Pp">Cette opération est similaire à remove-passphrase. Le noyau émet une instruction WBINVD avant et après l'opération pour garantir qu'il n'y a pas de corruption de données due à un cache CPU obsolète. Utilisez la commande sanitize-dimm de ndctl avec l'option <span class="Li">--crypto-erase</span> pour effectuer cette opération.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='OVERWRITE'><a class='permalink' href='#OVERWRITE'>ÉCRASUREMENT</a></h2>
+<p class="Pp">Ceci est invoqué en utilisant l'option <span class="Li">--overwrite</span> pour <i>sanitize-dimm</i> de ndctl. L'opération d'écrasement efface l'intégralité du NVDIMM. L'opération peut prendre un temps considérable. REMARQUE : Lorsque la commande retourne avec succès, cela signifie simplement que l'écrasement a été démarré avec succès, et non qu'il est terminé. Par la suite, <i>ndctl wait-overwrite</i> peut être utilisé pour attendre les NVDIMM qui effectuent l'écrasement. Lors de l'achèvement réussi d'un écrasement, l'instruction WBINVD est émise par le noyau. Si les options --crypto-erase et --overwrite sont toutes deux fournies, alors crypto-erase est effectué avant overwrite.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='SECURITY_FREEZE'><a class='permalink' href='#SECURITY_FREEZE'>SECURITY   FREEZE</a></h2>
+<p class="Pp">Cette opération ne nécessite pas de phrase secrète. Cela bloquera toute commande de sécurité autre qu'une requête de statut jusqu'au prochain démarrage.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='MASTER_PASSPHRASE_SETUP,_UPDATE,_and_CRYPTO_ERASE'><a class='permalink' href='#MASTER_PASSPHRASE_SETUP,_UPDATE,_and_CRYPTO_ERASE'>MASTER   PASSPHRASE SETUP, UPDATE, and CRYPTO ERASE</a></h2>
+<p class="Pp">Ces opérations sont similaires à l'activation et à la mise à jour de la phrase secrète utilisateur. La seule différence est qu'une phrase secrète différente est utilisée. La phrase secrète principale n'a aucun rapport avec la clé principale (<i>kek</i>) qui est utilisée pour le chiffrement de toute phrase secrète.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COPYRIGHT'><a class='permalink' href='#COPYRIGHT'>COPYRIGHT</a></h1>
+<p class="Pp">Copyright &#x00A9; 2016 - 2022, Intel Corporation. Licence GPLv2 : GNU GPL version 2 <i></i> <a href='http://gnu.org/licenses/gpl.html'>http://gnu.org/licenses/gpl.html</a>. Ceci est un logiciel libre : vous êtes libre de le modifier et de le redistribuer. Il n'y a AUCUNE GARANTIE, dans la mesure permise par la loi.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2024-07-18</td>
+    <td class="foot-os">ndctl</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/x86_64/ndctl/">extra/ndctl</a></dd>
+        <dt>Version :</dt>
+        <dd>79-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/pmem/ndctl">https://github.com/pmem/ndctl</a></dd>
+        <dt>Licences :</dt>
+        <dd>LGPL</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/ndctl/">/listing/extra/ndctl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SYNOPSIS">SYNOPIS</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#EXAMPLES">EXEMPLES</a></li>
+        
+            <li><a href="#OPTIONS">OPTIONS</a></li>
+        
+            <li><a href="#THEORY_OF_OPERATION">THÉORIE DE FONCTIONNEMENT</a></li>
+        
+            <li><a href="#COPYRIGHT">DROIT D'AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/ndctl-freeze-security.1.fr.txt">txt</a>, 
+        
+            <a href="/man/ndctl-freeze-security.1.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

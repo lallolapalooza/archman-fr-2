@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libarchive_internals(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">libarchive_internals(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/libarchive/">libarchive</a></p>
+<p class="lic">Licences: BSD-2-Clause</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LIBARCHIVE_INTERNALS(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">LIBARCHIVE_INTERNALS(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp"><code class="Nm">libarchive_internals</code> &#x2014;
+    <span class="Nd">description des interfaces internes de libarchive</span></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='APERÇU'><a class='permalink' href='#APERÇU'>APERÇU</a></h1>
+<p class="Pp">La bibliothèque <code class="Nm">libarchive</code> fournit une interface
+    flexible pour lire et écrire des fichiers d'archives en flux, tels que tar et
+    cpio. En interne, elle suit une conception modulaire en couches qui devrait
+    faciliter l'ajout de nouveaux formats d'archives et de compression.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ARCHITECTURE_GÉNÉRALE'><a class='permalink' href='#ARCHITECTURE_GÉNÉRALE'>ARCHITECTURE GÉNÉRALE</a></h1>
+<p class="Pp">Externellement, libarchive expose la plupart des opérations via une
+    interface opaque de type objet. Les objets
+    <a class="Xr" href="/man/archive_entry.3.en">archive_entry(3)</a> stockent
+    des informations sur un seul objet du système de fichiers. Le reste de la
+    bibliothèque fournit des installations pour écrire des objets
+    <a class="Xr" href="/man/archive_entry.3.en">archive_entry(3)</a> dans des
+    fichiers d'archives, les lire depuis des fichiers d'archives et les écrire
+    sur disque. (Il est prévu d'ajouter une installation pour lire également des
+    objets <a class="Xr" href="/man/archive_entry.3.en">archive_entry(3)</a>
+    depuis le disque.)</p>
+<p class="Pp">Les API de lecture et d'écriture ont chacune quatre couches : une
+    couche d'API publique, une couche de format qui comprend le format de fichier
+    d'archive, une couche de compression et une couche d'E/S. La couche d'E/S est
+    entièrement exposée aux clients qui peuvent la remplacer entièrement par leurs
+    propres fonctions.</p>
+<p class="Pp">Afin de fournir autant de cohérence que possible aux clients,
+    certaines fonctions publiques sont virtualisées. À terme, il devrait être
+    possible pour les clients d'ouvrir une archive ou un écrivain de disque, puis
+    d'utiliser un seul ensemble de code pour sélectionner et écrire des entrées,
+    quel que soit la destination.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ARCHITECTURE_DE_LECTURE'><a class='permalink' href='#ARCHITECTURE_DE_LECTURE'>ARCHITECTURE DE LECTURE</a></h1>
+<p class="Pp">De l'extérieur, les clients utilisent l'API
+    <a class="Xr" href="/man/archive_read.3.en">archive_read(3)</a> pour
+    manipuler un objet <code class="Nm">archive</code> afin de lire des entrées
+    et des corps à partir d'un flux d'archive. En interne, l'objet
+    <code class="Nm">archive</code> est converti en un objet
+    <code class="Nm">archive_read</code>, qui contient toutes les données spécifiques
+    à la lecture. L'API comporte quatre couches : La couche la plus basse est la
+    couche d'E/S. Cette couche peut être remplacée par les clients, mais la
+    plupart des clients utilisent les rappels d'E/S fournis, par exemple, par
+    <a class="Xr" href="/man/archive_read_open_memory.3.en">archive_read_open_memory(3)</a>
+    et
+    <a class="Xr" href="/man/archive_read_open_fd.3.en">archive_read_open_fd(3)</a>.
+    La couche de compression appelle la couche d'E/S pour lire les octets et les
+    décompresse pour la couche de format. La couche de format décompresse un flux
+    d'octets décompressés et crée des objets <code class="Nm">archive_entry</code>
+    à partir des données entrantes. La couche d'API suit l'état général (par
+    exemple, elle empêche les clients de lire des données avant de lire un en-tête)
+    et invoque les opérations des couches de format et de compression via des
+    pointeurs de fonction enregistrés. En particulier, la couche d'API pilote
+    le processus de détection de format : lors de l'ouverture de l'archive, elle
+    lit un bloc initial de données et l'offre à chaque gestionnaire de compression
+    enregistré. Celui qui obtient la meilleure enchère est initialisé avec le
+    premier bloc. De même, les gestionnaires de format sont interrogés pour voir
+    quel gestionnaire convient le mieux à chaque archive. (Avant la version 2.4.0,
+    les enchérisseurs de format étaient invoqués pour chaque entrée, mais cette
+    conception entravait la récupération des erreurs.)</p>
+<section class="Ss">
+<h2 class="Ss">Couche d'E/S et Rappels Client</h2>
+<p class="Pp">L'API de lecture fait des efforts pour être conviviale pour les
+    clients. Par conséquent, il y a peu de restrictions sur le comportement des
+    rappels client.</p>
+<p class="Pp">Le rappel de lecture client est censé fournir un bloc de données à
+    chaque appel. Un retour de longueur zéro indique la fin du fichier, mais
+    sinon, les blocs peuvent être aussi petits qu'un octet ou aussi grands que le
+    fichier entier. En particulier, les blocs peuvent avoir des tailles
+    différentes.</p>
+<p class="Pp">Le rappel de saut client renvoie le nombre d'octets effectivement
+    sautés, ce qui peut être bien inférieur au saut demandé. La seule exigence
+    est que le saut ne soit pas plus grand. En particulier, les clients sont
+    autorisés à retourner zéro pour tout saut qu'ils ne souhaitent pas gérer. Le
+    rappel de saut ne doit jamais être invoqué avec une valeur négative.</p>
+<p class="Pp">Gardez à l'esprit que tous les clients ne lisent pas depuis le
+    disque : les clients lisant depuis des réseaux peuvent fournir des blocs de
+    tailles différentes à chaque requête et ne peuvent pas du tout sauter ; les
+    clients avancés peuvent utiliser
+    <a class="Xr" href="/man/mmap.2.en">mmap(2)</a> pour lire le fichier entier
+    en mémoire d'un coup et retourner le fichier entier à libarchive en un seul
+    bloc ; d'autres clients peuvent initier des opérations d'E/S asynchrones pour
+    le bloc suivant à chaque requête.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Couche_de_Décompression'><a class='permalink' href='#Couche_de_Décompression'>Couche de Décompression</a></h2>
+<p class="Pp">La couche de décompression gère non seulement la décompression, mais
+    met également en mémoire tampon les données afin que les gestionnaires de format
+    voient un modèle d'E/S beaucoup plus agréable. L'API de décompression est un
+    modèle en deux étapes de prévisualisation/consommation. Une requête
+    <code class="Fn">read_ahead</code> spécifie une quantité minimale de lecture ;
+    la couche de décompression doit fournir un pointeur vers au moins cette
+    quantité de données. Si plus de données sont immédiatement disponibles, elle
+    devrait en renvoyer plus : la couche de format gère les lectures de données en
+    masse en demandant un minimum d'un octet et en copiant ensuite autant de
+    données que disponibles.</p>
+<p class="Pp" id="consume">Un appel ultérieur à la fonction
+    <a class="permalink" href="#consume"><code class="Fn">consume</code></a>()
+    avance le pointeur de lecture. Notez que les données renvoyées par un appel
+    <code class="Fn">read_ahead</code>() sont garanties de rester en place
+    jusqu'au prochain appel à <code class="Fn">read_ahead</code>(). Les appels
+    intermédiaires à <code class="Fn">consume</code>() ne doivent pas provoquer
+    le déplacement des données.</p>
+<p class="Pp">Les requêtes de saut doivent toujours être traitées exactement. Les
+    gestionnaires de décompression qui ne peuvent pas avancer ne doivent pas
+    enregistrer de gestionnaire de saut ; la couche d'API remplit un gestionnaire
+    de saut générique qui lit et ignore les données.</p>
+<p class="Pp">Un gestionnaire de décompression a un cycle de vie spécifique :</p>
+<dl class="Bl-tag Bl-compact">
+  <dt id="__archive_read_register_compression">Enregistrement/Configuration</dt>
+  <dd>Lorsque le client invoque la fonction de support publique, le gestionnaire
+      de décompression invoque la fonction interne
+      <a class="permalink" href="#__archive_read_register_compression"><code class="Fn">__archive_read_register_compression</code></a>()
+      pour fournir les fonctions d'enchère et d'initialisation. Cette fonction
+      renvoie <code class="Cm">NULL</code> en cas d'erreur ou sinon un pointeur
+      vers une <code class="Cm">struct decompressor_t</code>. Cette structure
+      contient un emplacement <var class="Va">void * config</var> qui peut être
+      utilisé pour stocker toute information de personnalisation.</dd>
+  <dt>Enchère</dt>
+  <dd>La fonction d'enchère est invoquée avec un pointeur et la taille d'un bloc
+      de données. Le décompresseur peut accéder à ses données de configuration via
+      l'élément <var class="Va">decompressor</var> de l'objet
+      <code class="Cm">archive_read</code>. La fonction d'enchère est par ailleurs
+      sans état. En particulier, elle ne doit effectuer aucune opération d'E/S.
+    <p class="Pp">La valeur renvoyée par la fonction d'enchère indique sa
+        pertinence pour la gestion de ce flux de données. Une enchère de zéro
+        garantira que ce décompresseur ne sera jamais invoqué. Renvoie zéro si les
+        vérifications de nombres magiques échouent. Sinon, votre implémentation
+        initiale devrait renvoyer le nombre de bits effectivement vérifiés. Par
+        exemple, si vous vérifiez deux octets complets et trois bits d'un autre
+        octet, l'enchère est de 19. Notez que le bloc initial peut être très court ;
+        faites attention à n'inspecter que les données qui vous sont fournies.
+        (Les décompresseurs actuels nécessitent deux octets pour une enchère
+        correcte.)</p>
+  </dd>
+  <dt>Initialiser</dt>
+  <dd>Le meilleur enchérisseur verra sa fonction d'initialisation appelée. Cette
+      fonction doit initialiser les emplacements restants de l'objet
+      <code class="Cm">struct decompressor_t</code> pointé par l'élément
+      <var class="Va">decompressor</var> de l'objet
+      <var class="Va">archive_read</var>. En particulier, elle doit allouer toutes
+      les données de travail dont elle a besoin dans l'emplacement
+      <var class="Va">data</var> de cette structure. La fonction d'initialisation
+      est appelée avec le bloc de données qui a été utilisé pour le test. À ce
+      stade, le décompresseur est responsable de toutes les requêtes d'E/S vers les
+      rappels client. Le décompresseur est libre de lire plus de données si et
+      quand nécessaire.</dd>
+  <dt>Satisfaire les requêtes d'E/S</dt>
+  <dd>La couche de format invoquera les fonctions
+      <var class="Va">read_ahead</var>, <var class="Va">consume</var> et
+      <var class="Va">skip</var> selon les besoins.</dd>
+  <dt>Terminer</dt>
+  <dd>La méthode de fin n'est appelée qu'une seule fois lors de la fermeture de
+      l'archive. Elle doit libérer tout ce qui est stocké dans les emplacements
+      <var class="Va">data</var> et <var class="Va">config</var> de l'objet
+      <var class="Va">decompressor</var>. Elle ne doit pas invoquer le rappel de
+      fermeture client.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss">Couche de Format</h2>
+<p class="Pp">Les formats de lecture ont un cycle de vie similaire à celui des
+    gestionnaires de décompression :</p>
+<dl class="Bl-tag Bl-compact">
+  <dt>Enregistrement</dt>
+  <dd>Allouez votre privé</dd>
+</dl>
+</section>
+</div>
+</section>
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>libarchive_internals(3) — libarchive internals</title>
+        <link rel="stylesheet" type="text/css" href="/css/style.css">
+        <link rel="stylesheet" type="text/css" href="/css/man.css">
+    </head>
+    <body>
+        
+        <main class="man-page">
+            <article>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NAME</a></h1>
+<p class="Pp"><code class="Nm">libarchive</code> internals — libarchive internals</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OVERVIEW'><a class='permalink' href='#OVERVIEW'>OVERVIEW</a></h1>
+<p class="Pp">This document describes the internal architecture of the
+    <code class="Nm">libarchive</code> library.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='GENERAL_ARCHITECTURE'><a class='permalink' href='#GENERAL_ARCHITECTURE'>GENERAL ARCHITECTURE</a></h1>
+<p class="Pp">The <code class="Nm">libarchive</code> library is layered to separate
+    the concerns of client API, format handling, compression handling, and I/O.</p>
+<section class="Ss">
+<h2 class="Ss" id='Format_Layer'><a class='permalink' href='#Format_Layer'>Format Layer</a></h2>
+<p class="Pp">The format layer is responsible for understanding the structure of
+    a specific archive format (like tar, cpio, or zip). It exposes a standard API
+    to the layer above it.</p>
+<p class="Pp">For each format, the following operations are usually supported:</p>
+<dl class="Bl-tag">
+<dt><b>Initialization</b></dt>
+<dd>The format must initialize its data structures and pointers.</dd>
+<dt id="read_ahead">Bid</dt>
+<dd>Formate la requête d'enchère en appelant la méthode de décompression
+      <a class="permalink" href="#read_ahead"><code class="Fn">read_ahead</code></a>()
+      mais sans appeler la méthode <code class="Fn">consume</code>(). Cela permet à chaque
+      enchérisseur de regarder en avance dans le flux d'entrée. Les enchérisseurs ne
+      devraient pas regarder plus loin que nécessaire, car les recherches longues
+      mettent la couche de décompression sous pression pour mettre en mémoire tampon
+      beaucoup de données. La plupart des formats ne nécessitent que quelques centaines
+      d'octets d'anticipation ; les recherches de quelques kilo-octets sont raisonnables.
+      (Le lecteur ISO9660 anticipe parfois de 48k, ce qui devrait être considéré comme
+      une limite supérieure.)</dd>
+<dt>Read header</dt>
+<dd>La lecture de l'en-tête est généralement la partie la plus complexe de tout format.
+      Il existe quelques stratégies notables : Pour des formats comme tar ou cpio,
+      la lecture et l'analyse de l'en-tête sont simples car les en-têtes alternent avec
+      les données. Pour les formats qui stockent toutes les données d'en-tête au début
+      du fichier, la première requête de lecture d'en-tête peut devoir lire tous les
+      en-têtes en mémoire et stocker ces données, triées par l'emplacement des données
+      du fichier. Les requêtes de lecture d'en-tête ultérieures sauteront au début des
+      données du fichier et retourneront l'en-tête correspondant.</dd>
+<dt>Read Data</dt>
+<dd>L'interface de lecture des données prend en charge les fichiers épars ; cela
+      nécessite que chaque appel retourne un bloc de données spécifiant le décalage
+      et la taille du fichier. Cela peut vous obliger à suivre attentivement
+      l'emplacement afin de pouvoir retourner des décalages de fichier précis pour chaque
+      lecture. N'oubliez pas que le décompresseur retournera autant de données qu'il en
+      possède. Généralement, vous voudrez demander un octet, examiner la valeur de retour
+      pour voir combien de données sont disponibles, et éventuellement la réduire au montant
+      que vous pouvez utiliser. Vous devriez appeler consume pour chaque bloc juste avant
+      de le retourner.</dd>
+<dt id="data_skip">Skip All Data</dt>
+<dd>L'appel de saut de données doit ignorer toutes les données du fichier et le remplissage
+      final. Ceci est appelé automatiquement par la couche API juste avant chaque lecture
+      d'en-tête. Il est également appelé en réponse à l'appel par le client de la fonction publique
+      <a class="permalink" href="#data_skip"><code class="Fn">data_skip</code></a>().</dd>
+<dt>Cleanup</dt>
+<dd>Lors du nettoyage, le format doit libérer toute sa mémoire allouée.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss">API Layer</h2>
+<p class="Pp">XXX à faire XXX</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='WRITE_ARCHITECTURE'><a class='permalink' href='#WRITE_ARCHITECTURE'>WRITE ARCHITECTURE</a></h1>
+<p class="Pp">L'API d'écriture a un ensemble similaire de quatre couches : une couche
+    API, une couche de format, une couche de compression et une couche d'E/S. L'enregistrement
+    ici est beaucoup plus simple car un seul format et une seule compression peuvent être
+    enregistrés à la fois.</p>
+<section class="Ss">
+<h2 class="Ss">I/O Layer and Client Callbacks</h2>
+<p class="Pp">XXX à écrire XXX</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Compression_Layer'><a class='permalink' href='#Compression_Layer'>Compression Layer</a></h2>
+<p class="Pp">XXX à écrire XXX</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">Format Layer</h2>
+<p class="Pp">XXX à écrire XXX</p>
+</section>
+<section class="Ss">
+<h2 class="Ss">API Layer</h2>
+<p class="Pp">XXX à écrire XXX</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='WRITE_DISK_ARCHITECTURE'><a class='permalink' href='#WRITE_DISK_ARCHITECTURE'>WRITE_DISK ARCHITECTURE</a></h1>
+<p class="Pp">L'API <code class="Nm">write_disk</code> est conçue pour ressembler à
+    l'API d'écriture pour les clients. Comme elle ne gère pas plusieurs formats ou compressions,
+    elle n'est pas organisée en couches en interne.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='GENERAL_SERVICES'><a class='permalink' href='#GENERAL_SERVICES'>GENERAL SERVICES</a></h1>
+<p class="Pp">Les objets <code class="Nm">archive_read</code>, <code class="Nm">archive_write</code>,
+    et <code class="Nm">archive_write_disk</code> contiennent tous un objet
+    <code class="Nm">archive</code> initial qui fournit un support commun pour un ensemble de
+    services standard. (Rappelons que C90 ANSI/ISO garantit que vous pouvez caster librement
+    entre un pointeur vers une structure et un pointeur vers le premier élément de cette
+    structure.) L'objet <code class="Nm">archive</code> a une valeur magique qui indique à quelle
+    API cet objet est associé, des emplacements pour stocker les informations d'erreur,
+    et des pointeurs de fonction pour les fonctions API virtualisées.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='MISCELLANEOUS_NOTES'><a class='permalink' href='#MISCELLANEOUS_NOTES'>MISCELLANEOUS NOTES</a></h1>
+<p class="Pp">La connexion de bibliothèques d'archivage existantes à libarchive est
+    généralement assez difficile. En particulier, de nombreuses bibliothèques existantes supposent
+    fortement que vous lisez à partir d'un fichier ; elles se déplacent en avant et en arrière
+    au besoin pour localiser diverses informations. En revanche, libarchive ne se déplace
+    jamais en arrière dans son entrée, ce qui nécessite parfois des approches très différentes.</p>
+<p class="Pp">Par exemple, le support ISO9660 de libarchive fonctionne très différemment
+    de la plupart des lecteurs ISO9660. Le support libarchive utilise une conception de file
+    d'attente de travail qui maintient une liste des entrées connues triées par leur emplacement
+    dans l'entrée. Chaque fois que l'implémentation ISO9660 de libarchive demande le prochain
+    en-tête, elle vérifie cette liste pour trouver le prochain élément sur le disque. Les
+    répertoires sont analysés lorsqu'ils sont rencontrés et de nouveaux éléments sont ajoutés
+    à la liste. Cette conception repose fortement sur l'image ISO9660 étant optimisée de
+    manière à ce que les répertoires se trouvent toujours plus tôt sur le disque que les
+    fichiers qu'ils décrivent.</p>
+<p class="Pp">Selon le format spécifique, de telles approches peuvent ne pas être possibles.
+    La spécification du format ZIP, par exemple, permet aux archiveurs de stocker des informations
+    clés uniquement à la fin du fichier. En théorie, il est possible de créer des archives ZIP
+    qui ne peuvent pas être lues sans recherche. Heureusement, de telles archives sont très
+    rares, et libarchive peut lire la plupart des archives ZIP, bien qu'elle ne puisse pas
+    toujours extraire autant d'informations qu'un programme ZIP dédié.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SEE_ALSO'><a class='permalink' href='#SEE_ALSO'>SEE ALSO</a></h1>
+<p class="Pp"><a class="Xr" href="/man/archive_entry.3.en">archive_entry(3)</a>,
+    <a class="Xr" href="/man/archive_read.3.en">archive_read(3)</a>,
+    <a class="Xr" href="/man/archive_write.3.en">archive_write(3)</a>,
+    <a class="Xr" href="/man/archive_write_disk.3.en">archive_write_disk(3)</a>,
+    <a class="Xr" href="/man/libarchive.3.en">libarchive(3)</a></p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='HISTORY'><a class='permalink' href='#HISTORY'>HISTORY</a></h1>
+<p class="Pp">La bibliothèque <code class="Nm">libarchive</code> est apparue pour la première
+    fois dans <span class="Ux">FreeBSD 5.3</span>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHORS'><a class='permalink' href='#AUTHORS'>AUTHORS</a></h1>
+<p class="Pp">La bibliothèque <code class="Nm">libarchive</code> a été écrite par
+    <span class="An">Tim Kientzle</span> &#x27E8;kientzle@acm.org&#x27E9;.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">26 janvier 2011</td>
+    <td class="foot-os">Linux 6.17.8-arch1-1</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher une page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/libarchive/">core/libarchive</a></dd>
+        <dt>Version :</dt>
+        <dd>3.8.4-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://libarchive.org/">https://libarchive.org/</a></dd>
+        <dt>Licences :</dt>
+        <dd>BSD-2-Clause</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/libarchive/">/listing/core/libarchive/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NAME</a></li>
+        
+            <li><a href="#OVERVIEW">OVERVIEW</a></li>
+        
+            <li><a href="#GENERAL_ARCHITECTURE">GENERAL ARCHITECTURE</a></li>
+        
+            <li><a href="#READ_ARCHITECTURE">READ ARCHITECTURE</a></li>
+        
+            <li><a href="#WRITE_ARCHITECTURE">WRITE ARCHITECTURE</a></li>
+        
+            <li><a href="#WRITE_DISK_ARCHITECTURE">WRITE_DISK ARCHITECTURE</a></li>
+        
+            <li><a href="#GENERAL_SERVICES">GENERAL SERVICES</a></li>
+        
+            <li><a href="#MISCELLANEOUS_NOTES">MISCELLANEOUS NOTES</a></li>
+        
+            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+        
+            <li><a href="#HISTORY">HISTORY</a></li>
+        
+            <li><a href="#AUTHORS">AUTHORS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/libarchive_internals.3.en.txt">txt</a>, 
+        
+            <a href="/man/libarchive_internals.3.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>lvmautoactivation(7) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">lvmautoactivation(7)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/lvm2/">lvm2</a></p>
+<p class="lic">Licences: GPL-2.0-only, LGPL-2.1-only</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">LVMAUTOACTIVATION(7)</td>
+    <td class="head-vol">Manuel d'informations diverses</td>
+    <td class="head-rtitle">LVMAUTOACTIVATION(7)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">lvmautoactivation — Autoactivation LVM</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="DESCRIPTION"><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">L'autoactivation est l'activation des LV effectuée automatiquement
+    par le système en réponse à l'attachement de périphériques LVM à la machine.
+    Lorsque tous les PV d'un VG sont attachés, le VG est complet et les LV du VG
+    sont activés.</p>
+<p class="Pp">L'autoactivation des VG, ou de LV spécifiques, peut être empêchée
+    en utilisant vgchange ou lvchange --setautoactivation&#x00A0;n. La
+    configuration <a href='/man/lvm.conf.5.fr'>lvm.conf(5)</a>
+    <b>auto_activation_volume_list</b> est une autre façon de limiter
+  l'autoactivation.</p>
+<section class="Ss">
+<h2 class="Ss" id="autoactivation_par_evenement"><a class='permalink' href='#autoactivation_par_evenement'>autoactivation par événement</a></h2>
+<p class="Pp">L'autoactivation LVM est &quot;basée sur les événements&quot;, où les VG
+    complets sont activés en réponse à des uevents qui se produisent pendant le
+    démarrage du système ou à tout moment après le démarrage du système. Une
+    ancienne forme d'autoactivation était &quot;statique&quot;, où les VG complets
+    sont activés à un point fixe pendant le démarrage du système par un service
+    systemd, et non en réponse à des événements.</p>
+<p class="Pp">L'autoactivation basée sur les événements est pilotée par udev, les
+    règles udev et systemd. Lorsqu'un périphérique est attaché à une machine, un
+    uevent est généré par le noyau pour notifier l'espace utilisateur du nouveau
+    périphérique. systemd-udev exécute les règles udev pour traiter le nouveau
+    périphérique. Les règles Udev utilisent blkid pour identifier le périphérique
+    comme un PV LVM et exécutent ensuite la règle udev spécifique à LVM pour le
+    périphérique, ce qui déclenche l'autoactivation.</p>
+<p class="Pp">Il existe deux variantes d'autoactivation basée sur les événements qui
+    peuvent être utilisées sur un système, en fonction de la règle udev LVM
+    installée (trouvée dans <i>/lib/udev/rules.d/</i>). Ce qui suit résume les
+    étapes de chaque règle qui mènent à l'autoactivation :</p>
+<p class="Pp"><b>69-dm-lvm-metad.rules</b></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>périphérique /dev/name avec majeur:mineur X:Y est attaché à la machine</dd>
+  <dt>&#x2022;</dt>
+  <dd>systemd/udev exécute blkid pour identifier /dev/name comme un PV LVM</dd>
+  <dt>&#x2022;</dt>
+  <dd>la règle udev 69-dm-lvm-metad.rules est exécutée pour /dev/name</dd>
+  <dt>&#x2022;</dt>
+  <dd>la règle udev LVM exécute le service systemd lvm2-pvscan@X:Y.service</dd>
+  <dt>&#x2022;</dt>
+  <dd>le service lvm2-pvscan exécute :
+    <br/>
+    pvscan --cache -aay --major X --minor Y</dd>
+  <dt>&#x2022;</dt>
+  <dd>pvscan lit le périphérique, enregistre que le PV est en ligne (voir pvs_online),
+      et vérifie si le VG est complet.</dd>
+  <dt>&#x2022;</dt>
+  <dd>si le VG est complet, pvscan crée le fichier temporaire vgs_online, et
+      active le VG.</dd>
+  <dt>&#x2022;</dt>
+  <dd>la sortie de la commande d'activation peut être vue via systemctl status
+      lvm2-pvscan*</dd>
+</dl>
+<p class="Pp"><b>69-dm-lvm.rules</b></p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>périphérique /dev/name avec majeur:mineur X:Y est attaché à la machine</dd>
+  <dt>&#x2022;</dt>
+  <dd>systemd/udev exécute blkid pour identifier /dev/name comme un PV LVM</dd>
+  <dt>&#x2022;</dt>
+  <dd>la règle udev 69-dm-lvm.rules est exécutée pour /dev/name</dd>
+  <dt>&#x2022;</dt>
+  <dd>la règle udev LVM exécute :
+    <br/>
+    pvscan --cache --listvg --checkcomplete --vgonline --autoactivation event
+      --udevoutput --journal=output /dev/name</dd>
+  <dt>&#x2022;</dt>
+  <dd>pvscan lit le périphérique, enregistre que le PV est en ligne (voir pvs_online),
+      et vérifie si le VG est complet.</dd>
+  <dt>&#x2022;</dt>
+  <dd>si le VG est complet, pvscan crée le fichier temporaire vgs_online, et imprime
+      le nom du VG pour que la règle udev l'importe :
+      LVM_VG_NAME_COMPLETE='vgname'</dd>
+  <dt>&#x2022;</dt>
+  <dd>si la règle udev LVM voit LVM_VG_NAME_COMPLETE de pvscan, elle active
+      le VG en utilisant un service systemd transitoire nommé
+      lvm-activate-&lt;vgname&gt;.</dd>
+  <dt>&#x2022;</dt>
+  <dd>le service lvm-activate-&lt;vgname&gt; exécute
+    <br/>
+    vgchange -aay --autoactivation event &lt;vgname&gt;</dd>
+  <dt>&#x2022;</dt>
+  <dd>la sortie de la commande d'activation peut être vue via journalctl -u
+      lvm-activate-&lt;vgname&gt;</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="options_pvscan"><a class='permalink' href='#options_pvscan'>options pvscan</a></h2>
+<dl class="Bl-tag">
+  <dt id="cache-2"><a class="permalink" href="#cache-2"><b>--cache</b></a></dt>
+  <dd>Lire l'argument &lt;device&gt; (et uniquement cet appareil), et enregistrer
+      que le PV est en ligne en créant le fichier <i>/run/lvm/pvs_online/&lt;pvid&gt;</i>
+      contenant le nom du VG et le périphérique pour le PV.</dd>
+  <dt id="aay-2"><a class="permalink" href="#aay-2"><b>-aay</b></a></dt>
+  <dd>Activer le VG depuis la commande pvscan (inclut implicitement
+      --checkcomplete et --vgonline).</dd>
+  <dt id="checkcomplete-2"><a class="permalink" href="#checkcomplete-2"><b>--checkcomplete</b></a></dt>
+  <dd>Vérifier si le VG est complet, c'est-à-dire si tous les PV sont présents sur
+      le système, en vérifiant les fichiers <i>/run/lvm/pvs_online/&lt;pvid&gt;</i>.</dd>
+  <dt id="vgonline-2"><a class="permalink" href="#vgonline-2"><b>--vgonline</b></a></dt>
+  <dd>Créer <i>/run/lvm/vgs_online/&lt;vgname&gt;</i> si le VG est complet
+      (utilisé pour garantir qu'une seule commande effectue l'activation).</dd>
+  <dt id="autoactivation-2"><a class="permalink" href="#autoactivation-2"><b>--autoactivation
+    event</b></a></dt>
+  <dd>Informer la commande qu'elle est utilisée pour l'autoactivation basée sur
+      les événements.</dd>
+  <dt id="listvg-2"><a class="permalink" href="#listvg-2"><b>--listvg</b></a></dt>
+  <dd>Afficher le nom du VG utilisant le périphérique.</dd>
+  <dt id="udevoutput-2"><a class="permalink" href="#udevoutput-2"><b>--udevoutput</b></a></dt>
+  <dd>Afficher uniquement la sortie qui peut être importée dans la règle udev,
+      en utilisant le format de clé d'environnement udev, c'est-à-dire NAME='value'.</dd>
+  <dt id="journal-output"><a class="permalink" href="#journal-output"><b>--journal=output</b></a></dt>
+  <dd>Envoyer la sortie de commande standard au journal (lorsque la sortie standard
+      est réservée à la sortie udev).</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="fichiers_run"><a class='permalink' href='#fichiers_run'>fichiers run</a></h2>
+<p class="Pp">Les commandes d'autoactivation utilisent un certain nombre de fichiers
+    temporaires dans <i>/run/lvm</i> (avec l'attente qu'ils soient effacés entre
+    les redémarrages).</p>
+<dl class="Bl-tag">
+  <dt id="pvs_online-2"><a class="permalink" href="#pvs_online-2"><b>pvs_online</b></a></dt>
+  <dd>pvscan --cache crée un fichier ici pour chaque PV attaché. Le fichier
+      est nommé avec le PVID et contient le nom du VG et les informations du
+      périphérique. L'existence du fichier est utilisée pour déterminer quand tous
+      les PV d'un VG donné sont présents. Les informations du périphérique dans ces
+      fichiers sont également utilisées pour optimiser la localisation des
+      périphériques d'un VG lorsque le VG est activé.</dd>
+  <dt id="pvs_lookup-2"><a class="permalink" href="#pvs_lookup-2"><b>pvs_lookup</b></a></dt>
+  <dd>pvscan --cache crée un fichier ici nommé pour un VG (s'il n'en existe
+      pas déjà un). Le fichier contient une liste de PVIDs dans le VG. Ceci est
+      nécessaire lorsqu'un PV est traité sans métadonnées VG, auquel cas la liste
+      des PVIDs du fichier de recherche est utilisée pour vérifier si le VG est
+      complet.</dd>
+  <dt id="vgs_online-2"><a class="permalink" href="#vgs_online-2"><b>vgs_online</b></a></dt>
+  <dd>La première commande d'activation (pvscan ou vgchange) à créer un fichier
+      ici, nommé pour le VG, activera le VG. Ceci résout une course lorsque des
+      commandes concurrentes tentent d'activer un VG simultanément.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="autoactivation_statique"><a class='permalink' href='#autoactivation_statique'>autoactivation statique</a></h2>
+<p class="Pp">Une méthode d'autoactivation statique n'est plus fournie par lvm.
+    Définir event_activation=0 désactive toujours l'autoactivation basée sur les
+    événements. ATTENTION : désactiver l'activation par événement sans alternative
+    peut empêcher un système de démarrer. Un service systemd personnalisé pourrait
+    être écrit pour exécuter l'autoactivation pendant le démarrage du système,
+    auquel cas désactiver l'autoactivation par événement pourrait être utile.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="filtre_lvm.conf"><a class='permalink' href='#filtre_lvm.conf'>filtre lvm.conf</a></h2>
+<p class="Pp">Les liens symboliques des périphériques de <i>/dev/disk/</i> peuvent
+    être utilisés dans le filtre de <a href='/man/lvm.conf.5.fr'>lvm.conf(5)</a>
+    pour se prémunir contre les changements de noms de périphériques du noyau. Les
+    préfixes <i>/dev/disk/by-path/</i> ou <i>/dev/disk/by-id/</i> doivent être
+    inclus dans les noms de filtre ; ces préfixes aident lvm à détecter que des
+    noms de liens symboliques sont utilisés. Les filtres contenant des liens
+    symboliques nécessitent une correspondance spéciale par les commandes exécutées
+    dans la règle udev lvm.</p>
+<p class="Pp">Les liens symboliques courants, par exemple commençant par wwn-,
+    scsi-, pci-, ou lvm-pv-uuid-, sont recommandés. Les liens symboliques peu
+    communs ou personnalisés créés par des règles udev personnalisées peuvent être
+    moins fiables. Si une règle udev personnalisée crée des liens symboliques
+    utilisés dans le filtre lvm, alors la règle udev doit être démarrée avant la
+    règle lvm.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="EXEMPLES"><a class='permalink' href='#EXEMPLES'>EXEMPLES</a></h1>
+<p class="Pp">Le VG &quot;vg&quot; contient deux PV :</p>
+<pre># pvs -o name,vgname,uuid /dev/sdb /dev/sdc
+  PV         VG PV UUID
+  /dev/sdb   vg 1uKpaT-lFOZ-NLHX-j4jI-OBi1-QpdE-HZ5hZY
+  /dev/sdc   vg 5J3tM8-aIPe-2vbd-DBe7-bvRq-TGj0-DaKV2G</pre>
+<p class="Pp">utilisation de --cache :</p>
+<pre># pvscan --cache /dev/sdb
+  pvscan[12922] PV /dev/sdb online.
+# pvscan --cache /dev/sdc
+  pvscan[12923] PV /dev/sdc online.</pre>
+<pre># cat /run/lvm/pvs_online/1uKpaTlFOZNLHXj4jIOBi1QpdEHZ5hZY
+8:16
+vg:vg
+dev:/dev/sdb
+# cat /run/lvm/pvs_online/5J3tM8aIPe</pre>
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        
+    </body>
+</html>
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>lvmautoactivation(7) — LVM TOOLS</title>
+        <link rel="stylesheet" href="/css/styles.css">
+        <link rel="stylesheet" href="/css/man.css">
+    </head>
+    <body>
+        
+        <main class="page-content">
+            <article class="man-page">
+                <section class="Sh">
+                    <h1 class="Sh" id="NAME">NAME</h1>
+                    <p class="Name"><code>lvmautoactivation</code>, <code>pvscan</code> — LVM auto-activation</p>
+                </section>
+                <section class="Sh">
+                    <h1 class="Sh" id="DESCRIPTION">DESCRIPTION</h1>
+                    <p class="Pp">The LVM auto-activation feature allows the system to automatically activate all logical volumes
+                        and volume groups on boot or on plug-in of storage devices.</p>
+                    <p class="Pp">The auto-activation is controlled by the <code>auto_activation_volume_groups</code>
+                        parameter in <code>lvm.conf(5)</code>.</p>
+                    <p class="Pp">The <code>pvscan</code> command can be used to scan for physical volumes and activate
+                        volume groups based on certain criteria. The following options are relevant for auto-activation:</p>
+                    <ul class="Bl-item">
+                        <li><code>--cache</code>: Scans for LVM metadata on devices and updates the LVM cache.</li>
+                        <li><code>-aay</code>, <code>--all y</code>: Activates all LVM objects (physical volumes, volume
+                            groups, and logical volumes) that are found.</li>
+                        <li><code>--listvg</code>: Lists the volume groups found.</li>
+                        <li><code>--checkcomplete</code>: Checks if a volume group is complete (all physical volumes are
+                            available).</li>
+                        <li><code>--vgonline</code>: Brings a volume group online if it is complete.</li>
+                        <li><code>--udevoutput</code>: Outputs information in a format suitable for udev rules.</li>
+                        <li><code>--listlvs</code>: Lists the logical volumes found.</li>
+                    </ul>
+                </section>
+                <section class="Sh">
+                    <h1 class="Sh" id="EXAMPLES">EXAMPLES</h1>
+                    <pre># pvscan --cache -aay /dev/sdb
+  PV /dev/sdb    VG vg            [1.00 GiB]
+  PV /dev/sdc    VG vg            [1.00 GiB]
+  Total: 2 [2.00 GiB]
+
+  VG vg is complete.
+  1 logical volume(s) in volume group "vg" now active</pre>
+                    <p class="Pp">This command scans for physical volumes, assuming they belong to the volume group
+                        "vg". If the volume group is complete (i.e., all its physical volumes are present), it will be
+                        activated.</p>
+                    <pre># cat /run/lvm/pvs_online/1uKpaTlFOZNLHXj4jIOBi1QpdEHZ5hZY
+8:16
+vg:vg
+dev:/dev/sdb
+# cat /run/lvm/pvs_online/5J3tM8aIPe2vbdDBe7bvRqTGj0DaKV2G
+8:32
+vg:vg
+dev:/dev/sdc</pre>
+                    <p class="Pp">The files in <code>/run/lvm/pvs_online/</code> track online physical volumes.
+                        The filename is a hash of the PV UUID.</p>
+                    <pre># ls /run/lvm/vgs_online/vg
+/run/lvm/vgs_online/vg</pre>
+                    <p class="Pp">The presence of a file or directory in <code>/run/lvm/vgs_online/</code> indicates
+                        that the volume group is online.</p>
+                    <p class="Pp">use of -aay:</p>
+                    <pre># pvscan --cache -aay /dev/sdb
+  pvscan[12935] PV /dev/sdb online, VG vg incomplete (need 1).
+# pvscan --cache -aay /dev/sdc
+  pvscan[12936] PV /dev/sdc online, VG vg is complete.
+  pvscan[12936] VG vg run autoactivation.
+  1 logical volume(s) in volume group "vg" now active</pre>
+                    <p class="Pp">In this example, scanning <code>/dev/sdb</code> shows that the volume group "vg" is
+                        incomplete because one physical volume is missing. Scanning <code>/dev/sdc</code> completes the
+                        volume group "vg", and it is then auto-activated.</p>
+                    <pre># cat /run/lvm/pvs_online/1uKpaTlFOZNLHXj4jIOBi1QpdEHZ5hZY
+8:16
+vg:vg
+dev:/dev/sdb
+$ cat /run/lvm/pvs_online/5J3tM8aIPe2vbdDBe7bvRqTGj0DaKV2G
+8:32
+vg:vg
+dev:/dev/sdc
+# ls /run/lvm/vgs_online/vg
+/run/lvm/vgs_online/vg</pre>
+                    <p class="Pp">use of --listvg:</p>
+                    <pre># pvscan --cache --listvg /dev/sdb
+  VG vg
+# pvscan --cache --listvg /dev/sdc
+  VG vg</pre>
+                    <p class="Pp">This command simply lists the volume groups associated with the specified physical
+                        volumes.</p>
+                    <pre># cat /run/lvm/pvs_online/1uKpaTlFOZNLHXj4jIOBi1QpdEHZ5hZY
+8:16
+vg:vg
+dev:/dev/sdb
+$ cat /run/lvm/pvs_online/5J3tM8aIPe2vbdDBe7bvRqTGj0DaKV2G
+8:32
+vg:vg
+dev:/dev/sdc</pre>
+                    <p class="Pp">use of --checkcomplete:</p>
+                    <pre># pvscan --cache --listvg --checkcomplete --vgonline /dev/sdb
+  pvscan[12996] PV /dev/sdb online, VG vg incomplete (need 1).
+  VG vg incomplete
+# pvscan --cache --listvg --checkcomplete --vgonline /dev/sdc
+  pvscan[12997] PV /dev/sdc online, VG vg is complete.
+  VG vg complete</pre>
+                    <p class="Pp">This command checks if the volume group is complete and brings it online if it is.
+                        The first command shows it's incomplete, while the second shows it becomes complete after scanning
+                        <code>/dev/sdc</code>.</p>
+                    <p class="Pp">use of --udevoutput:</p>
+                    <pre># pvscan --cache --listvg --checkcomplete --vgonline --udevoutput /dev/sdb
+LVM_VG_NAME_INCOMPLETE='vg'
+# pvscan --cache --listvg --checkcomplete --vgonline --udevoutput /dev/sdc
+LVM_VG_NAME_COMPLETE='vg'</pre>
+                    <p class="Pp">This command outputs information in a format suitable for udev rules. It indicates whether
+                        the volume group is complete or incomplete.</p>
+                    <p class="Pp">use of --listlvs:</p>
+                    <pre># lvs -o name,devices vg
+  LV    Devices
+  lvol0 /dev/sdb(0)
+  lvol1 /dev/sdc(0)
+  lvol2 /dev/sdb(1),/dev/sdc(1)</pre>
+                    <p class="Pp">This command lists the logical volumes and the physical extents they use within the
+                        volume group "vg".</p>
+                    <pre># pvscan --cache --listlvs --checkcomplete /dev/sdb
+  pvscan[13288] PV /dev/sdb online, VG vg incomplete (need 1).
+  VG vg incomplete
+  LV vg/lvol0 complete
+  LV vg/lvol2 incomplete
+# pvscan --cache --listlvs --checkcomplete /dev/sdc
+  pvscan[13289] PV /dev/sdc online, VG vg is complete.
+  VG vg complete
+  LV vg/lvol1 complete
+  LV vg/lvol2 complete</pre>
+                    <p class="Pp">This command scans for physical volumes, checks the completeness of the volume group,
+                        and lists the status of logical volumes. It shows which logical volumes are complete based on the
+                        available physical volumes.</p>
+                </section>
+                <section class="Sh">
+                    <h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE ALSO</a></h1>
+                    <p class="Pp"><a href="/man/lvm.8.en">lvm(8)</a>, <a href="/man/lvm.conf.5.en">lvm.conf(5)</a>,
+                        <a href="/man/lvchange.8.en">lvchange(8)</a>,
+                        <a href="/man/pvscan.8.en">pvscan(8)</a></p>
+                </section>
+                <table class="foot">
+                    <tr>
+                        <td class="foot-date">LVM TOOLS 2.03.37(2) (2025-11-21)</td>
+                        <td class="foot-os">Red Hat, Inc.</td>
+                    </tr>
+                </table>
+            </article>
+            <aside id="sidebar">
+                <section class="search">
+                    <form action="/search" class="search direct-search" role="search">
+                        <input type="search" placeholder="Search manual page" name="q" value="">
+                        <input type="submit" name="go" value="Go">
+                    </form>
+                </section>
+                <section class="package-info">
+                    <p>Package information:</p>
+                    <dl>
+                        <dt>Package name:</dt>
+                        <dd><a href="https://www.archlinux.org/packages/core/x86_64/lvm2/">core/lvm2</a></dd>
+                        <dt>Version:</dt>
+                        <dd>2.03.37-1</dd>
+                        <dt>Upstream:</dt>
+                        <dd><a href="https://sourceware.org/lvm2/">https://sourceware.org/lvm2/</a></dd>
+                        <dt>Licenses:</dt>
+                        <dd>GPL-2.0-only, LGPL-2.1-only</dd>
+                        <dt>Manuals:</dt>
+                        <dd><a href="/listing/core/lvm2/">/listing/core/lvm2/</a></dd>
+                    </dl>
+                </section>
+                <details>
+                    <summary>Table of contents</summary>
+                    <nav class="toc">
+                        <ul>
+                            <li><a href="#NAME">NAME</a></li>
+                            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+                            <li><a href="#EXAMPLES">EXAMPLES</a></li>
+                            <li><a href="#SEE_ALSO">SEE ALSO</a></li>
+                        </ul>
+                    </nav>
+                </details>
+                <nav class="other-formats">
+                    <p>Other formats:
+                        <a href="/man/lvmautoactivation.7.en.txt">txt</a>,
+                        <a href="/man/lvmautoactivation.7.en.raw">raw</a>
+                    </p>
+                </nav>
+            </aside>
+        </main>
+        <footer>
+            
+            <p>The website is available under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>
+               license, except for the contents of the manual pages, which have their own license
+               specified in the corresponding Arch Linux package.
+            </p>
+        </footer>
+    </body>
+</html>

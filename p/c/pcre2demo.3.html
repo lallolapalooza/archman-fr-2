@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pcre2demo(3) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pcre2demo(3)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/pcre2/">pcre2</a></p>
+<p class="lic">Licences: BSD-2-Clause, BSD-3-Clause AVEC PCRE2-exception</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PCRE2DEMO(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">PCRE2DEMO(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">PCRE2DEMO - Programme de démonstration C pour PCRE2</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CODE_SOURCE'><a class='permalink' href='#CODE_SOURCE'>CODE SOURCE</a></h1>
+<div class="Bd-indent">
+<pre><span class="Li">/*************************************************</span>
+<span class="Li">*           PROGRAMME DE DÉMONSTRATION PCRE2         *</span>
+<span class="Li">*************************************************/</span>
+<span class="Li">/* Ceci est un programme de démonstration pour illustrer une méthode simple</span>
+<span class="Li">d'utilisation de la bibliothèque d'expressions régulières PCRE2 à partir</span>
+<span class="Li">d'un programme C. Voir la documentation de pcre2sample pour une courte discussion</span>
+<span class="Li">(&quot;man pcre2sample&quot; si vous avez les pages de manuel PCRE2 installées). PCRE2 est</span>
+<span class="Li">une API révisée de la bibliothèque, et est incompatible avec l'API PCRE originale.</span>
+<span class="Li">Il existe en fait trois bibliothèques, chacune supportant une largeur d'unités</span>
+<span class="Li">de code différente. Ce programme de démonstration utilise la bibliothèque 8 bits.</span>
+<span class="Li">Par défaut, chaque unité de code est traitée comme un caractère séparé, mais si</span>
+<span class="Li">le motif commence par &quot;(*UTF)&quot;, lui-même et le sujet sont traités comme des chaînes</span>
+<span class="Li">UTF-8, où les caractères peuvent occuper plusieurs unités de code.</span>
+<span class="Li">Dans les environnements de type Unix, si PCRE2 est installé dans vos bibliothèques</span>
+<span class="Li">système standard, vous devriez pouvoir compiler ce programme en utilisant cette</span>
+<span class="Li">commande :</span>
+<span class="Li">cc -Wall pcre2demo.c -lpcre2-8 -o pcre2demo</span>
+<span class="Li">Si PCRE2 n'est pas installé dans un endroit standard, il est probable qu'il soit</span>
+<span class="Li">installé avec le support du mécanisme pkg-config. Si vous avez pkg-config, vous</span>
+<span class="Li">pouvez compiler ce programme en utilisant cette commande :</span>
+<span class="Li">cc -Wall pcre2demo.c `pkg-config --cflags --libs libpcre2-8` -o pcre2demo</span>
+<span class="Li">Si vous n'avez pas pkg-config, vous devrez peut-être utiliser quelque chose comme ceci :</span>
+<span class="Li">cc -Wall pcre2demo.c -I/usr/local/include -L/usr/local/lib \</span>
+<span class="Li">  -R/usr/local/lib -lpcre2-8 -o pcre2demo</span>
+<span class="Li">Remplacez &quot;/usr/local/include&quot; et &quot;/usr/local/lib&quot; par l'emplacement des fichiers</span>
+<span class="Li">d'en-tête et de bibliothèque de PCRE2 sur votre système. Seuls certains systèmes</span>
+<span class="Li">d'exploitation (Solaris en fait partie) utilisent l'option -R.</span>
+<span class="Li">Compilation sous Windows :</span>
+<span class="Li">Si vous souhaitez lier statiquement ce programme à un fichier .a non-dll, vous devez</span>
+<span class="Li">définir PCRE2_STATIC avant d'inclure pcre2.h, donc dans cet environnement,</span>
+<span class="Li">décommentez la ligne suivante. */</span>
+<span class="Li">/* #define PCRE2_STATIC */</span>
+<span class="Li">/* La macro PCRE2_CODE_UNIT_WIDTH doit être définie avant d'inclure pcre2.h.</span>
+<span class="Li">Pour un programme qui utilise une seule largeur d'unités de code, la définir à 8, 16 ou 32</span>
+<span class="Li">permet d'utiliser des noms de fonctions génériques tels que pcre2_compile(). Notez</span>
+<span class="Li">que changer simplement 8 en 16 (par exemple) n'est pas suffisant pour convertir</span>
+<span class="Li">ce programme afin qu'il traite des caractères de 16 bits. Même dans un environnement</span>
+<span class="Li">entièrement en 16 bits, où les fonctions de manipulation de chaînes telles que strcmp()</span>
+<span class="Li">et printf() fonctionnent avec des caractères de 16 bits, le code de gestion de la</span>
+<span class="Li">table des sous-chaînes nommées devra toujours être modifié. */</span>
+<span class="Li">#define PCRE2_CODE_UNIT_WIDTH 8</span>
+<span class="Li">#include &lt;stdio.h&gt;</span>
+<span class="Li">#include &lt;string.h&gt;</span>
+<span class="Li">#include &lt;pcre2.h&gt;</span>
+<span class="Li">/**************************************************************************</span>
+<span class="Li">* Voici le programme. L'API inclut le concept de &quot;contextes&quot; pour          *</span>
+<span class="Li">* configurer des exigences d'interface inhabituelles pour la compilation et *</span>
+<span class="Li">* la correspondance, telles que des gestionnaires de mémoire personnalisés et *</span>
+<span class="Li">* des définitions de nouvelle ligne non standard.                            *</span>
+<span class="Li">* Ce programme ne fait rien de tout cela, il n'utilise donc aucun contexte,  *</span>
+<span class="Li">* passant toujours NULL là où un contexte pourrait être donné.             *</span>
+<span class="Li">**************************************************************************/</span>
+<span class="Li">int main(int argc, char **argv)</span>
+<span class="Li">{</span>
+<span class="Li">pcre2_code *re;</span>
+<span class="Li">PCRE2_SPTR pattern;     /* PCRE2_SPTR est un pointeur vers des unités de code non signées */</span>
+<span class="Li">PCRE2_SPTR subject;     /* de la largeur appropriée (dans ce cas, 8 bits). */</span>
+<span class="Li">PCRE2_SPTR name_table;</span>
+<span class="Li">int errornumber;</span>
+<span class="Li">int find_all, caseless_match;</span>
+<span class="Li">int i;</span>
+<span class="Li">int rc;</span>
+<span class="Li">uint32_t namecount;</span>
+<span class="Li">uint32_t name_entry_size;</span>
+<span class="Li">PCRE2_SIZE erroroffset;</span>
+<span class="Li">PCRE2_SIZE *ovector;</span>
+<span class="Li">PCRE2_SIZE ovector_last[2];</span>
+<span class="Li">PCRE2_SIZE subject_length;</span>
+<span class="Li">pcre2_match_data *match_data;</span>
+<span class="Li">/**************************************************************************</span>
+<span class="Li">* Tout d'abord, traitons la ligne de commande. Options :                   *</span>
+<span class="Li">* - &quot;-g&quot; pour demander une correspondance répétée afin de trouver toutes les     *</span>
+<span class="Li">*   occurrences, comme l'option /g de Perl. Nous définissons la variable       *</span>
+<span class="Li">*   find_all à une valeur non nulle si l'option -g est présente.              *</span>
+<span class="Li">* - &quot;-i&quot; pour demander une correspondance sans distinction de casse, comme      *</span>
+<span class="Li">*   l'option /i de Perl. Nous définissons la variable caseless_match à          *</span>
+<span class="Li">*   PCRE2_CASELESS si l'option -i est présente.                               *</span>
+<span class="Li">**************************************************************************/</span>
+<span class="Li">find_all = 0;</span>
+<span class="Li">caseless_match = 0;</span>
+<span class="Li">for (i = 1; i &lt; argc; i++)</span>
+<span class="Li">  {</span>
+<span class="Li">  if (strcmp(argv[i], &quot;-g&quot;) == 0) find_all = 1;</span>
+<span class="Li">  else if (strcmp(argv[i], &quot;-i&quot;) == 0) caseless_match = PCRE2_CASELESS;</span>
+<span class="Li">  else if (argv[i][0] == '-')</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;Option non reconnue %s\n&quot;, argv[i]);</span>
+<span class="Li">    return 1;</span>
+<span class="Li">    }</span>
+<span class="Li">  else break;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Après les options, nous exigeons exactement deux arguments, qui sont le motif</span>
+<span class="Li">et la chaîne de sujet. */</span>
+<span class="Li">if (argc - i != 2)</span>
+<span class="Li">  {</span>
+<span class="Li">  printf(&quot;Exactement deux arguments requis : une expression régulière et une chaîne de sujet\n&quot;);</span>
+<span class="Li">  return 1;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Le motif et le sujet sont des arguments char, ils peuvent donc être simplement</span>
+<span class="Li">convertis en PCRE2_SPTR car nous travaillons avec des unités de code 8 bits. La</span>
+<span class="Li">longueur du sujet est convertie en PCRE2_SIZE pour la forme, bien que PCRE2_SIZE</span>
+<span class="Li">soit en fait défini comme size_t. */</span>
+<span class="Li">pattern = (PCRE2_SPTR)argv[i];</span>
+<span class="Li">subject = (PCRE2_SPTR)argv[i+1];</span>
+<span class="Li">subject_length = (PCRE2_SIZE)strlen((char *)subject);</span>
+<span class="Li">/*************************************************************************</span>
+<span class="Li">* Nous allons maintenant compiler le motif d'expression régulière, et gérer *</span>
+<span class="Li">* toute erreur détectée.                                                *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">re = pcre2_compile(</span>
+<span class="Li">  pattern,               /* le motif */</span>
+<span class="Li">  PCRE2_ZERO_TERMINATED, /* indique que le motif est terminé par zéro */</span>
+<span class="Li">  caseless_match,        /* éventuellement activer la correspondance sans casse */</span>
+<span class="Li">  &amp;errornumber,          /* pour le numéro d'erreur */</span>
+<span class="Li">  &amp;erroroffset,          /* pour le décalage d'erreur */</span>
+<span class="Li">  NULL);                 /* utiliser le contexte de compilation par défaut */</span>
+<span class="Li">/* La compilation a échoué : afficher le message d'erreur et quitter. */</span>
+<span class="Li">if (re == NULL)</span>
+<span class="Li">  {</span>
+<span class="Li">  PCRE2_UCHAR buffer[256];</span>
+<span class="Li">  pcre2_get_error_message(errornumber, buffer, sizeof(buffer));</span>
+<span class="Li">  printf(&quot;La compilation PCRE2 a échoué à l'offset %d : %s\n&quot;, (int)erroroffset,</span>
+<span class="Li">    buffer);</span>
+<span class="Li">  return 1;</span>
+<span class="Li">  }</span>
+<span class="Li">/*************************************************************************</span>
+<span class="Li">* Si la compilation a réussi, nous appelons PCRE2 à nouveau, afin de faire une *</span>
+<span class="Li">* correspondance de motif avec la chaîne de sujet. Ceci ne fait qu'UNE     *</span>
+<span class="Li">* correspondance. Si une correspondance supplémentaire est nécessaire, elle sera *</span>
+<span class="Li">* effectuée ci-dessous. Avant d'exécuter la correspondance, nous devons     *</span>
+<span class="Li">* configurer un bloc match_data pour stocker le résultat.                   *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">match_data = pcre2_match_data_create_from_pattern(re, NULL);</span>
+<span class="Li">if (match_data == NULL)</span>
+<span class="Li">  {</span>
+<span class="Li">  printf(&quot;La création de match_data a échoué\n&quot;);</span>
+<span class="Li">  pcre2_code_free(re);  /* Libérer la mémoire du code compilé */</span>
+<span class="Li">  return 1;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Nous pouvons obtenir la table des noms et le nombre de noms, au cas où</span>
+<span class="Li">une correspondance serait réussie. */</span>
+<span class="Li">rc = pcre2_pattern_info(re, PCRE2_INFO_NAMECOUNT, &amp;namecount, sizeof(namecount));</span>
+<span class="Li">if (rc == 0)</span>
+<span class="Li">  {</span>
+<span class="Li">  rc = pcre2_pattern_info(re, PCRE2_INFO_NAMETABLE, &amp;name_table,</span>
+<span class="Li">    sizeof(name_table));</span>
+<span class="Li">  if (rc != 0) name_table = NULL; /* L'échec signifie pas de noms */</span>
+<span class="Li">  }</span>
+<span class="Li">else</span>
+<span class="Li">  {</span>
+<span class="Li">  namecount = 0;</span>
+<span class="Li">  name_table = NULL;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Pour la table des sous-chaînes nommées, nous avons besoin de savoir quelle est</span>
+<span class="Li">la taille de chaque entrée. */</span>
+<span class="Li">rc = pcre2_pattern_info(re, PCRE2_INFO_NAMEENTRYSIZE, &amp;name_entry_size,</span>
+<span class="Li">  sizeof(name_entry_size));</span>
+<span class="Li">if (rc != 0) name_entry_size = 0;</span>
+<span class="Li">/*************************************************************************</span>
+<span class="Li">* Maintenant, exécutez le motif contre le sujet. Notez que le sujet est passé *</span>
+<span class="Li">* en tant que PCRE2_SPTR, et sa longueur comme PCRE2_SIZE.                 *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">rc = pcre2_match(</span>
+<span class="Li">  re,                   /* le compilé regex */</span>
+<span class="Li">  subject,              /* le sujet à rechercher */</span>
+<span class="Li">  subject_length,       /* la longueur du sujet */</span>
+<span class="Li">  0,                    /* décalage de départ dans le sujet */</span>
+<span class="Li">  0,                    /* options de correspondance */</span>
+<span class="Li">  match_data,           /* bloc de données de correspondance */</span>
+<span class="Li">  NULL);                /* utiliser le contexte de correspondance par défaut */</span>
+<span class="Li">/* Si une correspondance a été trouvée, imprimez les détails. */</span>
+<span class="Li">if (rc < 0)</span>
+<span class="Li">{</span>
+<span class="Li">  if (rc == PCRE2_ERROR_NOMATCH)</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;Aucune correspondance trouvée\n&quot;);</span>
+<span class="Li">    }</span>
+<span class="Li">  else</span>
+<span class="Li">    {</span>
+<span class="Li">    PCRE2_UCHAR buffer[256];</span>
+<span class="Li">    pcre2_get_error_message(rc, buffer, sizeof(buffer));</span>
+<span class="Li">    printf(&quot;Erreur lors de la correspondance : %s\n&quot;, buffer);</span>
+<span class="Li">    }</span>
+<span class="Li">}</span>
+<span class="Li">else</span>
+<span class="Li">{</span>
+<span class="Li">  PCRE2_SIZE *offsets;</span>
+<span class="Li">  PCRE2_SPTR names;</span>
+<span class="Li">  ovector = pcre2_get_ovector_pointer(match_data);</span>
+<span class="Li">  ovector_last[0] = ovector[0];  /* Stocker le début de la première correspondance */</span>
+<span class="Li">  ovector_last[1] = ovector[1];  /* Stocker la fin de la première correspondance */</span>
+<span class="Li">  printf(&quot;Correspondance trouvée !\n&quot;);</span>
+<span class="Li">  printf(&quot;Correspondance de la chaîne : &quot;);</span>
+<span class="Li">  for (i = 0; i < rc; i++)</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;%d/%d=%.*s\n&quot;, i, namecount,</span>
+<span class="Li">      (int)(ovector[2*i+1] - ovector[2*i]),</span>
+<span class="Li">      subject + ovector[2*i]);</span>
+<span class="Li">    /* Si nous avons des noms, essayons de les imprimer. */</span>
+<span class="Li">    if (namecount > 0)</span>
+<span class="Li">      {</span>
+<span class="Li">      names = name_table + (i * name_entry_size);</span>
+<span class="Li">      printf(&quot;  (Nommé : %.*s)\n&quot;, (int)names[0], (PCRE2_SPTR)(names + 1));</span>
+<span class="Li">      }</span>
+<span class="Li">    }</span>
+<span class="Li">  /* Si find_all est activé, continuez à rechercher des correspondances. */</span>
+<span class="Li">  if (find_all)</span>
+<span class="Li">    {</span>
+<span class="Li">    PCRE2_SIZE subject_offset = ovector_last[1]; /* Commencez après la dernière correspondance */</span>
+<span class="Li">    for (;;)</span>
+<span class="Li">      {</span>
+<span class="Li">      rc = pcre2_match(</span>
+<span class="Li">        re,                /* le compilé regex */</span>
+<span class="Li">        subject,           /* le sujet à rechercher */</span>
+<span class="Li">        subject_length,    /* la longueur du sujet */</span>
+<span class="Li">        subject_offset,    /* décalage de départ dans le sujet */</span>
+<span class="Li">        0,                 /* options de correspondance */</span>
+<span class="Li">        match_data,        /* bloc de données de correspondance */</span>
+<span class="Li">        NULL);             /* utiliser le contexte de correspondance par défaut */</span>
+<span class="Li">      if (rc < 0)</span>
+<span class="Li">        {</span>
+<span class="Li">        if (rc == PCRE2_ERROR_NOMATCH)</span>
+<span class="Li">          {</span>
+<span class="Li">          printf(&quot;Plus de correspondances.\n&quot;);</span>
+<span class="Li">          break;</span>
+<span class="Li">          }</span>
+<span class="Li">        else</span>
+<span class="Li">          {</span>
+<span class="Li">          PCRE2_UCHAR buffer[256];</span>
+<span class="Li">          pcre2_get_error_message(rc, buffer, sizeof(buffer));</span>
+<span class="Li">          printf(&quot;Erreur lors de la correspondance répétée : %s\n&quot;, buffer);</span>
+<span class="Li">          break;</span>
+<span class="Li">          }</span>
+<span class="Li">        }</span>
+<span class="Li">      /* Nous avons trouvé une autre correspondance. */</span>
+<span class="Li">      ovector = pcre2_get_ovector_pointer(match_data);</span>
+<span class="Li">      printf(&quot;Correspondance suivante : &quot;);</span>
+<span class="Li">      for (i = 0; i < rc; i++)</span>
+<span class="Li">        {</span>
+<span class="Li">        printf(&quot;%d/%d=%.*s\n&quot;, i, namecount,</span>
+<span class="Li">          (int)(ovector[2*i+1] - ovector[2*i]),</span>
+<span class="Li">          subject + ovector[2*i]);</span>
+<span class="Li">        /* Si nous avons des noms, essayons de les imprimer. */</span>
+<span class="Li">        if (namecount > 0)</span>
+<span class="Li">          {</span>
+<span class="Li">          names = name_table + (i * name_entry_size);</span>
+<span class="Li">          printf(&quot;  (Nommé : %.*s)\n&quot;, (int)names[0], (PCRE2_SPTR)(names + 1));</span>
+<span class="Li">          }</span>
+<span class="Li">        }</span>
+<span class="Li">      subject_offset = ovector[1]; /* Commencez après cette correspondance */</span>
+<span class="Li">      }</span>
+<span class="Li">    }</span>
+<span class="Li">}</span>
+<span class="Li">/* Libérez la mémoire allouée pour le bloc de données de correspondance et le</span>
+<span class="Li">code compilé. */</span>
+<span class="Li">pcre2_match_data_free(match_data);</span>
+<span class="Li">pcre2_code_free(re);</span>
+<span class="Li">return 0;</span>
+<span class="Li">}</span>
+<span class="Li">/* End of pcre2demo.c */</span></pre>
+</div>
+</section>
+</div>
+</section>
+
+            </article>
+            <aside id="content-right">
+                
+            </aside>
+        </main>
+        <footer>
+        </footer>
+    </body>
+</html>
+<span class="Li">lding the result. Using  *</span>
+<span class="Li">* pcre2_match_data_create_from_pattern() ensures that the block is       *</span>
+<span class="Li">* exactly the right size for the number of capturing parentheses in the  *</span>
+<span class="Li">* pattern. If you need to know the actual size of a match_data block as  *</span>
+<span class="Li">* a number of bytes, you can find it like this:                          *</span>
+<span class="Li">*                                                                        *</span>
+<span class="Li">* PCRE2_SIZE match_data_size = pcre2_get_match_data_size(match_data);    *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">match_data = pcre2_match_data_create_from_pattern(re, NULL);</span>
+<span class="Li">/* Now run the match. */</span>
+<span class="Li">rc = pcre2_match(</span>
+<span class="Li">  re,                   /* the compiled pattern */</span>
+<span class="Li">  subject,              /* the subject string */</span>
+<span class="Li">  subject_length,       /* the length of the subject */</span>
+<span class="Li">  0,                    /* start at offset 0 in the subject */</span>
+<span class="Li">  0,                    /* default options */</span>
+<span class="Li">  match_data,           /* block for storing the result */</span>
+<span class="Li">  NULL);                /* use default match context */</span>
+<span class="Li">/* Matching failed: handle error cases */</span>
+<span class="Li">if (rc &lt; 0)</span>
+<span class="Li">  {</span>
+<span class="Li">  switch(rc)</span>
+<span class="Li">    {</span>
+<span class="Li">    case PCRE2_ERROR_NOMATCH: printf(&quot;No match\n&quot;); break;</span>
+<span class="Li">    /*</span>
+<span class="Li">    Handle other special cases if you like</span>
+<span class="Li">    */</span>
+<span class="Li">    default: printf(&quot;Matching error %d\n&quot;, rc); break;</span>
+<span class="Li">    }</span>
+<span class="Li">  pcre2_match_data_free(match_data);   /* Release memory used for the match */</span>
+<span class="Li">  pcre2_code_free(re);                 /*   data and the compiled pattern. */</span>
+<span class="Li">  return 1;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Match succeeded. Get a pointer to the output vector, where string offsets</span>
+<span class="Li">are stored. */</span>
+<span class="Li">ovector = pcre2_get_ovector_pointer(match_data);</span>
+<span class="Li">printf(&quot;Match succeeded at offset %d\n&quot;, (int)ovector[0]);</span>
+<span class="Li">/*************************************************************************</span>
+<span class="Li">* We have found the first match within the subject string. If the output *</span>
+<span class="Li">* vector wasn't big enough, say so. Then output any substrings that were *</span>
+<span class="Li">* captured.                                                              *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">/* The output vector wasn't big enough. This should not happen, because we used</span>
+<span class="Li">pcre2_match_data_create_from_pattern() above. */</span>
+<span class="Li">if (rc == 0)</span>
+<span class="Li">  printf(&quot;ovector was not big enough for all the captured substrings\n&quot;);</span>
+<span class="Li">/* Since release 10.38 PCRE2 has locked out the use of \K in lookaround</span>
+<span class="Li">assertions. This is the recommended behaviour. However, the option</span>
+<span class="Li">PCRE2_EXTRA_ALLOW_LOOKAROUND_BSK allows applications to re-enable the old</span>
+<span class="Li">behaviour. If that is set, it is possible to run patterns such as /(?=.\K)/ that</span>
+<span class="Li">use \K in an assertion to set the start of a match later than its end. In this</span>
+<span class="Li">demonstration program, we show how to detect this case, although it cannot arise</span>
+<span class="Li">because the option is never set. */</span>
+<span class="Li">if (ovector[0] &gt; ovector[1])</span>
+<span class="Li">  {</span>
+<span class="Li">  printf(&quot;\\K was used in an assertion to set the match start after its end.\n&quot;</span>
+<span class="Li">    &quot;From end to start the match was: %.*s\n&quot;, (int)(ovector[0] - ovector[1]),</span>
+<span class="Li">      (char *)(subject + ovector[1]));</span>
+<span class="Li">  printf(&quot;Run abandoned\n&quot;);</span>
+<span class="Li">  pcre2_match_data_free(match_data);</span>
+<span class="Li">  pcre2_code_free(re);</span>
+<span class="Li">  return 1;</span>
+<span class="Li">  }</span>
+<span class="Li">/* Show substrings stored in the output vector by number. Obviously, in a real</span>
+<span class="Li">application you might want to do things other than print them. */</span>
+<span class="Li">for (i = 0; i &lt; rc; i++)</span>
+<span class="Li">  {</span>
+<span class="Li">  PCRE2_SPTR substring_start = subject + ovector[2*i];</span>
+<span class="Li">  PCRE2_SIZE substring_length = ovector[2*i+1] - ovector[2*i];</span>
+<span class="Li">  printf(&quot;%2d: %.*s\n&quot;, i, (int)substring_length, (char *)substring_start);</span>
+<span class="Li">  }</span>
+<span class="Li">/**************************************************************************</span>
+<span class="Li">* That concludes the basic part of this demonstration program. We have    *</span>
+<span class="Li">* compiled a pattern, and performed a single match. The code that follows *</span>
+<span class="Li">* shows first how to access named substrings, and then how to code for    *</span>
+<span class="Li">* repeated matches on the same subject.                                   *</span>
+<span class="Li">**************************************************************************/</span>
+<span class="Li">/* See if there are any named substrings, and if so, show them by name. First</span>
+<span class="Li">we have to extract the count of named parentheses from the pattern. */</span>
+<span class="Li">(void)pcre2_pattern_info(</span>
+<span class="Li">  re,                   /* the compiled pattern */</span>
+<span class="Li">  PCRE2_INFO_NAMECOUNT, /* get the number of named substrings */</span>
+<span class="Li">  &amp;namecount);          /* where to put the answer */</span>
+<span class="Li">if (namecount == 0)</span>
+<span class="Li">  printf(&quot;No named substrings\n&quot;);</span>
+<span class="Li">else</span>
+<span class="Li">  {</span>
+<span class="Li">  PCRE2_SPTR tabptr;</span>
+<span class="Li">  printf(&quot;Named substrings\n&quot;);</span>
+<span class="Li">  /* Before we can access the substrings, we must extract the table for</span>
+<span class="Li">  translating names to numbers, and the size of each entry in the table. */</span>
+<span class="Li">  (void)pcre2_pattern_info(</span>
+<span class="Li">    re,                       /* the compiled pattern */</span>
+<span class="Li">    PCRE2_INFO_NAMETABLE,     /* address of the table */</span>
+<span class="Li">    &amp;name_table);             /* where to put the answer */</span>
+<span class="Li">  (void)pcre2_pattern_info(</span>
+<span class="Li">    re,                       /* the compiled pattern */</span>
+<span class="Li">    PCRE2_INFO_NAMEENTRYSIZE, /* size of each entry in the table */</span>
+<span class="Li">    &amp;name_entry_size);        /* where to put the answer */</span>
+<span class="Li">  /* Now we can scan the table and, for each entry, print the number, the name,</span>
+<span class="Li">  and the substring itself. In the 8-bit library the number is held in two</span>
+<span class="Li">  bytes, most significant first. */</span>
+<span class="Li">  tabptr = name_table;</span>
+<span class="Li">  for (i = 0; i &lt; namecount; i++)</span>
+<span class="Li">    {</span>
+<span class="Li">    int n = (tabptr[0] &lt;&lt; 8) | tabptr[1];</span>
+<span class="Li">    printf(&quot;(%d) %*s: %.*s\n&quot;, n, name_entry_size - 3, tabptr + 2,</span>
+<span class="Li">      (int)(ovector[2*n+1] - ovector[2*n]), subject + ovector[2*n]);</span>
+<span class="Li">    tabptr += name_entry_size;</span>
+<span class="Li">    }</span>
+<span class="Li">  }</span>
+<span class="Li">/*************************************************************************</span>
+<span class="Li">* If the &quot;-g&quot; option was given on the command line, we want to continue  *</span>
+<span class="Li">* to search for additional matches in the subject string, in a similar   *</span>
+<span class="Li">* way to the /g option in Perl. This turns out to be trickier than you   *</span>
+<span class="Li">* might think because of the possibility of matching an empty string.    *</span>
+<span class="Li">*                                                                        *</span>
+<span class="Li">* To help with this task, PCRE2 provides the pcre2_next_match() helper.  *</span>
+<span class="Li">*************************************************************************/</span>
+<span class="Li">if (!find_all)     /* Check for -g */</span>
+<span class="Li">  {</span>
+<span class="Li">  pcre2_match_data_free(match_data);  /* Release the memory that was used */</span>
+<span class="Li">  pcre2_code_free(re);                /* for the match data and the pattern. */</span>
+<span class="Li">  return 0;                           /* Exit the program. */</span>
+<span class="Li">  }</span>
+<span class="Li">/* Loop for second and subsequent matches */</span>
+<span class="Li">ovector_last[0] = ovector[0];</span>
+<span class="Li">ovector_last[1] = ovector[1];</span>
+<span class="Li">for (;;)</span>
+<span class="Li">  {</span>
+<span class="Li">  PCRE2_SIZE start_offset;</span>
+<span class="Li">  uint32_t options;</span>
+<span class="Li">  /* After each successful match, we use pcre2_next_match() to obtain the match</span>
+<span class="Li">  parameters for subsequent match attempts. */</span>
+<span class="Li">  if (!pcre2_next_match(match_data, &amp;start_offset, &amp;options))</span>
+<span class="Li">    break;</span>
+<span class="Li">  /* Run the next matching operation */</span>
+<span class="Li">  rc = pcre2_match(</span>
+<span class="Li">    re,                   /* the compiled pattern */</span>
+<span class="Li">    subject,              /* the subject string */</span>
+<span class="Li">    subject_length,       /* the length of the subject */</span>
+<span class="Li">    start_offset,         /* starting offset in the subject */</span>
+<span class="Li">    options,              /* options */</span>
+<span class="Li">    match_data,           /* block for storing the result */</span>
+<span class="Li">    NULL);                /* use default match context */</span>
+<span class="Li">  /* If this match attempt fails, exit the loop for subsequent matches. */</span>
+<span class="Li">  if (rc == PCRE2_ERROR_NOMATCH)</span>
+<span class="Li">    break;</span>
+<span class="Li">  /* Other matching errors are not recoverable. */</span>
+<span class="Li">  if (rc &lt; 0)</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;Matching error %d\n&quot;, rc);</span>
+<span class="Li">    pcre2_match_data_free(match_data);</span>
+<span class="Li">    pcre2_code_free(re);</span>
+<span class="Li">    return 1;</span>
+<span class="Li">    }</span>
+<span class="Li">  /* This demonstration program depends on pcre2_next_match() to ensure that the</span>
+<span class="Li">  loop for second and subsequent matches does not run forever. However, it would</span>
+<span class="Li">  be robust practice for a production application to verify this. The following</span>
+<span class="Li">  block of code shows how to do this. This error case is not reachable unless</span>
+<span class="Li">  there is a bug in PCRE2.</span>
+<span class="Li">  Because this program does not set the PCRE2_EXTRA_ALLOW_LOOKAROUND_BSK option,</span>
+<span class="Li">  the logic is simple. We verify that either ovector[1] has advanced, or that we</span>
+<span class="Li">  have an empty match touching the end of a previous non-empty match. See the</span>
+<span class="Li">  API documentation for guidance if y</span>
+<div>
+<section class="doc-section">
+<h2 id="SOURCE_CODE">SOURCE CODE</h2>
+<pre><code class="language-c">notre application utilise</span>
+<span class="Li">  PCRE2_EXTRA_ALLOW_LOOKAROUND_BSK et recherche plusieurs correspondances. */</span>
+<span class="Li">  if (!(ovector[1] &gt; ovector_last[1] ||</span>
+<span class="Li">        (ovector[1] == ovector[0] &amp;&amp; ovector_last[1] &gt; ovector_last[0] &amp;&amp;</span>
+<span class="Li">         ovector[1] == ovector_last[1])))</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;\\K a été utilisé dans une assertion pour produire des correspondances non avancées.\n&quot;);</span>
+<span class="Li">    printf(&quot;Exécution abandonnée\n&quot;);</span>
+<span class="Li">    pcre2_match_data_free(match_data);</span>
+<span class="Li">    pcre2_code_free(re);</span>
+<span class="Li">    return 1;</span>
+<span class="Li">    }</span>
+<span class="Li">  ovector_last[0] = ovector[0];</span>
+<span class="Li">  ovector_last[1] = ovector[1];</span>
+<span class="Li">  /* Correspondance réussie. */</span>
+<span class="Li">  printf(&quot;\nCorrespondance réussie à nouveau à l&#39;offset %d\n&quot;, (int)ovector[0]);</span>
+<span class="Li">  /* La correspondance a réussi, mais le vecteur de sortie n&#39;était pas assez grand. Cela</span>
+<span class="Li">  ne devrait pas arriver. */</span>
+<span class="Li">  if (rc == 0)</span>
+<span class="Li">    printf(&quot;Le vecteur ovector n&#39;était pas assez grand pour toutes les sous-chaînes capturées\n&quot;);</span>
+<span class="Li">  /* Nous nous protégeons contre des motifs tels que /(?=.\K)/ qui utilisent \K dans une assertion pour</span>
+<span class="Li">  définir le début d&#39;une correspondance après sa fin. Comme expliqué ci-dessus, ce cas</span>
+<span class="Li">  ne devrait pas se produire car ce programme de démonstration ne définit pas l&#39;option</span>
+<span class="Li">  PCRE2_EXTRA_ALLOW_LOOKAROUND_BSK, cependant, nous incluons le code montrant</span>
+<span class="Li">  comment le détecter. */</span>
+<span class="Li">  if (ovector[0] &gt; ovector[1])</span>
+<span class="Li">    {</span>
+<span class="Li">    printf(&quot;\\K a été utilisé dans une assertion pour définir le début de la correspondance après sa fin.\n&quot;</span>
+<span class="Li">      &quot;De la fin au début, la correspondance était : %.*s\n&quot;, (int)(ovector[0] - ovector[1]),</span>
+<span class="Li">        (char *)(subject + ovector[1]));</span>
+<span class="Li">    printf(&quot;Exécution abandonnée\n&quot;);</span>
+<span class="Li">    pcre2_match_data_free(match_data);</span>
+<span class="Li">    pcre2_code_free(re);</span>
+<span class="Li">    return 1;</span>
+<span class="Li">    }</span>
+<span class="Li">  /* Comme précédemment, afficher les sous-chaînes stockées dans le vecteur de sortie par numéro, puis</span>
+<span class="Li">  également les sous-chaînes nommées. */</span>
+<span class="Li">  for (i = 0; i &lt; rc; i++)</span>
+<span class="Li">    {</span>
+<span class="Li">    PCRE2_SPTR substring_start = subject + ovector[2*i];</span>
+<span class="Li">    size_t substring_length = ovector[2*i+1] - ovector[2*i];</span>
+<span class="Li">    printf(&quot;%2d: %.*s\n&quot;, i, (int)substring_length, (char *)substring_start);</span>
+<span class="Li">    }</span>
+<span class="Li">  if (namecount == 0)</span>
+<span class="Li">    printf(&quot;Aucune sous-chaîne nommée\n&quot;);</span>
+<span class="Li">  else</span>
+<span class="Li">    {</span>
+<span class="Li">    PCRE2_SPTR tabptr = name_table;</span>
+<span class="Li">    printf(&quot;Sous-chaînes nommées\n&quot;);</span>
+<span class="Li">    for (i = 0; i &lt; namecount; i++)</span>
+<span class="Li">      {</span>
+<span class="Li">      int n = (tabptr[0] &lt;&lt; 8) | tabptr[1];</span>
+<span class="Li">      printf(&quot;(%d) %*s: %.*s\n&quot;, n, name_entry_size - 3, tabptr + 2,</span>
+<span class="Li">        (int)(ovector[2*n+1] - ovector[2*n]), subject + ovector[2*n]);</span>
+<span class="Li">      tabptr += name_entry_size;</span>
+<span class="Li">      }</span>
+<span class="Li">    }</span>
+<span class="Li">  }      /* Fin de la boucle pour trouver la deuxième et les correspondances suivantes */</span>
+<span class="Li">printf(&quot;\n&quot;);</span>
+<span class="Li">pcre2_match_data_free(match_data);</span>
+<span class="Li">pcre2_code_free(re);</span>
+<span class="Li">return 0;</span>
+<span class="Li">}</span>
+<span class="Li">/* Fin de pcre2demo.c */</span></code></pre>
+</section>
+</div>
+</section>
+</div>
+<table class="foot">
+<tr>
+<td class="foot-date">24 mars 2025</td>
+<td class="foot-os">PCRE2 10.47</td>
+</tr>
+</table>
+
+</section>
+
+</article>
+<aside id="sidebar">
+
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page man" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/pcre2/">core/pcre2</a></dd>
+        <dt>Version :</dt>
+        <dd>10.47-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://github.com/PCRE2Project/pcre2">https://github.com/PCRE2Project/pcre2</a></dd>
+        <dt>Licences :</dt>
+        <dd>BSD-2-Clause, BSD-3-Clause AVEC PCRE2-exception</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/pcre2/">/listing/core/pcre2/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#SOURCE_CODE">CODE SOURCE</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/pcre2demo.3.fr.txt">txt</a>, 
+        
+            <a href="/man/pcre2demo.3.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+</aside>
+        
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages man, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

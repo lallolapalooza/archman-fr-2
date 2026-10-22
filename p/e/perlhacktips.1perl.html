@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perlhacktips(1perl) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perlhacktips.1perl</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/core/x86_64/perl/">perl</a></p>
+<p class="lic">Licences: Artistic-1.0-Perl OR GPL-1.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLHACKTIPS(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLHACKTIPS(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">perlhacktips - Conseils pour le piratage du code C principal de Perl</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Ce document vous aidera à apprendre la meilleure façon de pirater le code C principal de Perl. Il couvre les problèmes courants, le débogage, le profilage, et plus encore.</p>
+<p class="Pp">Si vous n'avez pas encore lu perlhack et perlhacktut, vous voudrez peut-être le faire d'abord.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='COMMON_PROBLEMS'><a class='permalink' href='#COMMON_PROBLEMS'>PROBLÈMES COURANTS</a></h1>
+<p class="Pp">La source Perl autorise désormais certaines fonctionnalités spécifiques de C99 dont nous savons qu'elles sont prises en charge par toutes les plateformes, mais elle suit principalement les règles d'ANSI C89. Vous ne vous souciez pas qu'une plateforme particulière ait une version défectueuse de Perl ? J'entends dire qu'il y a toujours une forte demande de programmeurs J2EE.</p>
+<section class="Ss">
+<h2 class="Ss" id='Perl_environment_problems'><a class='permalink' href='#Perl_environment_problems'>Problèmes d'environnement Perl</a></h2>
+<ul class="Bl-bullet">
+  <li>Ne pas compiler avec le multithreading
+    <p class="Pp">Compiler avec le multithreading (-Duseithreads) réécrit complètement les prototypes de fonction de Perl. Il est préférable d'essayer vos modifications avec cela. Lié à cela est la différence entre les API &quot;Perl_-less&quot; et &quot;Perl_-ly&quot;, par exemple :</p>
+        <pre>Perl_sv_setiv(aTHX_ ...);
+sv_setiv(...);
+</pre>
+    <p class="Pp">La première passe explicitement le contexte, ce qui est nécessaire pour par exemple les builds multithreadés. La seconde le fait implicitement ; ne les mélangez pas. Si vous ne passez pas un aTHX_, vous devrez faire un dTHX comme première chose dans la fonction.</p>
+    <p class="Pp">Voir &quot;Comment plusieurs interpréteurs et la concurrence sont pris en charge&quot; dans perlguts pour une discussion plus approfondie sur le contexte.</p>
+  </li>
+  <li>Ne pas compiler avec -DDEBUGGING
+    <p class="Pp">La définition DEBUGGING expose plus de code au compilateur, donc plus de façons pour que les choses tournent mal. Vous devriez l'essayer.</p>
+  </li>
+  <li>Introduction de variables globales (non en lecture seule)
+    <p class="Pp">N'introduisez aucune variable globale modifiable, vraiment globale ou statique de fichier. Elles sont de mauvais goût et compliquent le multithreading et d'autres formes de concurrence. La bonne façon est de les introduire comme de nouvelles variables d'interpréteur, voir <i>intrpvar.h</i> (tout à la fin pour la compatibilité binaire).</p>
+    <p class="Pp">L'introduction de variables globales en lecture seule (const) est acceptable, tant que vous vérifiez avec par exemple <span class="Li">&quot;nm libperl.a|egrep -v ' [TURtr] &quot;</span> (si votre <span class="Li">&quot;nm&quot;</span> a une sortie de style BSD) que les données que vous avez ajoutées sont réellement en lecture seule. (Si c'est le cas, elles ne devraient pas apparaître dans la sortie de cette commande.)</p>
+    <p class="Pp">Si vous voulez avoir des chaînes statiques, rendez-les constantes :</p>
+        <pre>static const char etc[] = &quot;...&quot;;
+</pre>
+    <p class="Pp">Si vous voulez avoir des tableaux de chaînes constantes, notez soigneusement la bonne combinaison de <span class="Li">&quot;const&quot;</span> :</p>
+        <pre>static const char * const yippee[] =
+    {&quot;hi&quot;, &quot;ho&quot;, &quot;silver&quot;};
+</pre>
+  </li>
+  <li>Ne pas exporter votre nouvelle fonction
+    <p class="Pp">Certaines plateformes (Win32, AIX, VMS, OS/2, pour n'en nommer que quelques-unes) exigent que toute fonction faisant partie de l'API publique (la bibliothèque Perl partagée) soit explicitement marquée comme exportée. Voir la discussion sur <i>embed.pl</i> dans perlguts.</p>
+  </li>
+  <li>Exporter votre nouvelle fonction
+    <p class="Pp">Le nouveau résultat brillant soit d'une nouvelle fonctionnalité authentique, soit de votre arduous refactoring est maintenant prêt et correctement exporté. Alors, que pourrait-il bien se passer ?</p>
+    <p class="Pp">Peut-être simplement que votre fonction n'avait pas besoin d'être exportée en premier lieu. Perl a une longue et pas si glorieuse histoire d'exportation de fonctions qu'il n'aurait pas dû.</p>
+    <p class="Pp">Si la fonction est utilisée uniquement à l'intérieur d'un fichier source, faites-en une fonction statique. Voir la discussion sur <i>embed.pl</i> dans perlguts.</p>
+    <p class="Pp">Si la fonction est utilisée dans plusieurs fichiers, mais destinée uniquement à l'usage interne de Perl (et cela devrait être le cas courant), ne l'exportez pas vers l'API publique. Voir la discussion sur <i>embed.pl</i> dans perlguts.</p>
+  </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='C99'><a class='permalink' href='#C99'>C99</a></h2>
+<p class="Pp">À partir de la version 5.35.5, nous autorisons désormais certaines fonctionnalités de C99 dans le code source C principal. Cependant, le code des extensions à double durée de vie doit toujours être uniquement C89, car il doit compiler contre des versions antérieures de Perl s'exécutant sur des plateformes plus anciennes. Notez également que nos en-têtes doivent également être valides en tant que C++, car les extensions XS écrites en C++ doivent les inclure, par conséquent les <i>initialiseurs de membres de structure</i> ne peuvent pas être utilisés dans les en-têtes.</p>
+<p class="Pp">La prise en charge de C99 est encore loin d'être complète sur toutes les plateformes que nous prenons actuellement en charge. Comme base, nous ne pouvons supposer que des sémantiques C89 avec les fonctionnalités C99 spécifiques décrites ci-dessous, dont nous avons vérifié qu'elles fonctionnent partout. Il est acceptable de sonder des fonctionnalités C99 supplémentaires et de les utiliser là où elles sont disponibles, à condition qu'il existe également un mécanisme de repli pour les compilateurs qui ne prennent pas en charge la fonctionnalité. Par exemple, nous utilisons le stockage local de thread C11 lorsqu'il est disponible, mais nous nous rabattons sur les API spécifiques aux threads POSIX sinon.</p>
+<p class="Pp">Le code peut utiliser (et dépendre) des fonctionnalités C99 suivantes :</p>
+<ul class="Bl-bullet">
+  <li>déclarations mixtes et code</li>
+  <li>types d'entiers 64 bits
+    <p class="Pp">Pour la cohérence avec le code source existant, utilisez les typedefs <span class="Li">&quot;I64&quot;</span> et <span class="Li">&quot;U64&quot;</span>, au lieu d'utiliser directement <span class="Li">&quot;long long&quot;</span> et <span class="Li">&quot;unsigned long long&quot;</span>.</p>
+  </li>
+  <li>macros variadiques
+        <pre>void greet(char *file, unsigned int line, char *format, ...);
+#define logged_greet(...) greet(__FILE__, __LINE__, __VA_ARGS__);
+</pre>
+    <p class="Pp">Notez que <span class="Li">&quot;__VA_OPT__&quot;</span> est standardisé depuis C23 et C++20. Avant cela, c'était une extension gcc.</p>
+  </li>
+  <li>déclarations dans les boucles for
+        <pre>for (const char *p = message; *p; ++p) {
+    putchar(*p);
+}
+</pre>
+  </li>
+  <li>initialiseurs de membres de structure
+    <p class="Pp">Mais pas dans les en-têtes, car la prise en charge n'a été ajoutée au C++ que relativement récemment.</p>
+    <p class="Pp">Par conséquent, c'est acceptable dans le code C et XS, mais pas dans les en-têtes :</p>
+        <pre>struct message {
+    char *action;
+    char *target;
+};
+struct message mcguffin = {
+    .target = &quot;initialiseurs de membres de structure&quot;,
+    .action = &quot;Construit&quot;
+ };
+</pre>
+    <p class="Pp">Vous ne pouvez pas utiliser la syntaxe similaire pour les littéraux composites, car nous compilons également Perl à l'aide de compilateurs C++ :</p>
+        <pre>/* c'est acceptable */
+struct message m = {
+    .target = &quot;une cible&quot;,
+    .action = &quot;une action&quot;
+};
+/* ce n'est pas valide en C++ */
+m = (struct message){
+    .target = &quot;une cible&quot;,
+    .action = &quot;une action&quot;
+};
+</pre>
+    <p class="Pp">Bien que les descripteurs de structure soient utilisables, les descripteurs de tableau associés ne le sont pas, car ils ne sont pas du tout pris en charge par C++.</p>
+  </li>
+  <li>membres de tableau flexibles
+    <p class="Pp">Ceci est conforme aux normes :</p>
+        <pre>struct greeting {
+    unsigned int len;
+    char message[];
+};
+</pre>
+    <p class="Pp">Cependant, le code source utilise déjà le hack &quot;chumminess non garantie avec le compilateur&quot; dans de nombreux endroits :</p>
+        <pre>struct greeting {
+    unsigned int len;
+    char message[1];
+};
+</pre>
+    <p class="Pp">Strictement, c'est un comportement indéfini d'accéder au-delà de <span class="Li">&quot;message[0]&quot;</span>, mais il s'agit d'un hack couramment utilisé depuis l'époque de K&amp;R, et son utilisation n'a pas posé de problème pratique nulle part (dans le code source de Perl ou tout autre code C courant). Par conséquent, on ne sait pas ce que nous gagnerions en passant activement à l'approche C99.</p>
+  </li>
+  <li>commentaires <span class="Li">&quot;//&quot;</span>
+    <p class="Pp">Tous les compilateurs que nous avons testés en prennent en charge l'utilisation. Tous les humains que nous avons testés n'en prennent pas en charge l'utilisation.</p>
+  </li>
+  <li>booléens
+    <p class="Pp">Vous pouvez utiliser <span class="Li">&quot;bool&quot;</span>, <span class="Li">&quot;true&quot;</span>, et <span class="Li">&quot;false&quot;</span> tels que fournis par <span class="Li">&quot;&lt;stdbool.h&gt;&quot;</span> (ou nativement en C++).</p>
+  </li>
+</ul>
+<p class="Pp">Le code ne doit explicitement pas utiliser d'autres fonctionnalités C99. Par exemple :</p>
+<ul class="Bl-bullet">
+  <li>tableaux de longueur variable
+    <p class="Pp">Non pris en charge par <b>aucun</b> MSVC, et cela ne changera pas.</p>
+    <p class="Pp">Même les tableaux de longueur &quot;variable&quot; où la variable est une expression constante sont des erreurs de syntaxe sous MSVC.</p>
+  </li>
+  <li>types C99 dans <span class="Li">&quot;&lt;stdint.h&gt;&quot;</span>
+    <p class="Pp">Utilisez <span class="Li">&quot;PERL_INT_FAST8_T&quot;</span> etc. tels que définis dans <i>handy.h</i></p>
+  </li>
+  <li>chaînes de format C99 dans
+      <span class="Li">&quot;&lt;inttypes.h&gt;&quot;</span>
+    <p class="Pp"><span class="Li">&quot;snprintf&quot;</span> dans la libc VMS n'a ajouté la prise en charge de <span class="Li">&quot;PRIdN&quot;</span> etc. que très récemment, ce qui signifie que des binaires vivants</p>
+  </li>
+</ul>
+</div>
+</section>
+                
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+installations portées
+        sans cela, ou des formats tels que <span class="Li">%zu</span>.</p>
+    <p class="Pp">(Le <span class="Li">&quot;sv_catpvf&quot;</span> etc de Perl utilise
+        le code d'analyse dans <i>sv.c</i>, qui prend en charge le
+        modificateur <span class="Li">&quot;z&quot;</span>, ainsi que des formats spécifiques à Perl
+        tels que <span class="Li">&quot;SVf&quot;</span>.)</p>
+  </li>
+</ul>
+<p class="Pp">Si vous souhaitez utiliser une fonctionnalité C99 non répertoriée ci-dessus, vous devez
+    faire l'une des choses suivantes :</p>
+<ul class="Bl-bullet">
+  <li>Sondez-la dans <i>Configure</i>, définissez une variable dans <i>config.sh</i> et
+      ajoutez une logique de secours dans les en-têtes pour les plateformes qui ne la possèdent pas.</li>
+  <li>Écrivez du code de test et vérifiez qu'il fonctionne sur les plateformes que nous devons prendre en charge,
+      avant de vous y fier inconditionnellement.</li>
+</ul>
+<p class="Pp">Il est probable que vous souhaitiez répéter le même plan que celui utilisé pour obtenir
+    l'ensemble actuel de fonctionnalités C99. Voir le message à
+    <a href='https://markmail.org/thread/odr4fjrn72u2fkpz'>https://markmail.org/thread/odr4fjrn72u2fkpz</a> pour les sondes C99 que nous
+    avons utilisées auparavant. Notez que les deux compilateurs les plus "difficiles" semblent être
+    MSVC et le compilateur du vendeur sur VMS. À ce jour, tous les compilateurs *nix ont
+    été beaucoup plus flexibles dans ce qu'ils prennent en charge.</p>
+<p class="Pp">Sur les plateformes *nix, <i>Configure</i> tente de définir les indicateurs du compilateur
+    de manière appropriée. Tous les compilateurs du vendeur que nous avons testés prenaient en charge C99 (ou C11) par défaut.
+    Cependant, les anciennes versions de gcc utilisent par défaut C89, ou autorisent <i>la plupart</i> des fonctionnalités C99 (avec des avertissements), mais interdisent <i>les déclarations dans les boucles for</i>
+    à moins que <span class="Li">&quot;-std=gnu99&quot;</span> ne soit ajouté. L'alternative
+    <span class="Li">&quot;-std=c99&quot;</span> <b>pourrait</b> sembler meilleure,
+    mais son utilisation sur certaines plateformes peut empêcher
+    <span class="Li">&quot;&lt;unistd.h&gt;&quot;</span> de déclarer certains prototypes, ce qui casse la compilation.
+    L'indicateur <span class="Li">&quot;-ansi&quot;</span> de gcc implique
+    <span class="Li">&quot;-std=c89&quot;</span>, nous ne pouvons donc plus le définir,
+    d'où l'option Configure
+    <span class="Li">&quot;-gccansipedantic&quot;</span> qui n'ajoute désormais que
+    <span class="Li">&quot;-pedantic&quot;</span>.</p>
+<p class="Pp">Les fichiers source du cœur de Perl (ceux situés au niveau supérieur de la distribution source)
+    sont automatiquement compilés avec autant que possible des indicateurs
+    <span class="Li">&quot;-std=gnu99&quot;</span>,
+    <span class="Li">&quot;-pedantic&quot;</span>, et une sélection d'indicateurs
+    <span class="Li">&quot;-W&quot;</span> (voir cflags.SH). Les fichiers dans
+    <i>ext/</i>, <i>dist/</i>, <i>cpan/</i>, etc. sont compilés avec les mêmes indicateurs
+    que ceux que Perl installé utiliserait pour compiler les extensions XS.</p>
+<p class="Pp">Fondamentalement, il est sûr de supposer que <i>Configure</i> et
+    <i>cflags.SH</i> ont choisi la meilleure combinaison d'indicateurs pour la version
+    de gcc sur la plateforme, et toute tentative d'ajouter d'autres indicateurs liés à
+    l'application d'un dialecte C entraînera des problèmes soit localement, soit sur d'autres systèmes
+    vers lesquels le code est expédié.</p>
+<p class="Pp">Nous pensons que le support C99 dans gcc 3.1 est suffisant pour nous,
+    mais nous n'avons pas de gcc vieux de 19 ans sous la main pour le vérifier :-) Si vous avez
+    des compilateurs anciens du vendeur qui ne prennent pas C99 par défaut, les indicateurs que vous pourriez vouloir essayer sont</p>
+<dl class="Bl-tag">
+  <dt id="AIX"><a class="permalink" href="#AIX">AIX</a></dt>
+  <dd><span class="Li">&quot;-qlanglvl=stdc99&quot;</span></dd>
+  <dt id="HP/UX"><a class="permalink" href="#HP/UX">HP/UX</a></dt>
+  <dd><span class="Li">&quot;-AC99&quot;</span></dd>
+  <dt id="Solaris"><a class="permalink" href="#Solaris">Solaris</a></dt>
+  <dd><span class="Li">&quot;-xc99&quot;</span></dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Noms_de_symboles_et_pollution_de_namespace'><a class='permalink' href='#Noms_de_symboles_et_pollution_de_namespace'>Noms de symboles et pollution de namespace</a></h2>
+<p class="Pp"><i>Choisir des noms de symboles légaux</i></p>
+<p class="Pp">C réserve à son implémentation tout symbole dont le nom commence par un trait de soulignement suivi immédiatement soit d'une lettre majuscule <span class="Li">&quot;[A-Z]&quot;</span>, soit d'un autre trait de soulignement. C++ réserve en outre tout symbole contenant deux traits de soulignement consécutifs, et réserve de plus dans l'espace de noms global tout symbole commençant par un trait de soulignement, pas seulement ceux suivis d'une majuscule. Nous nous intéressons à C++ car les fichiers d'en-tête (<i>*.h</i>) doivent pouvoir être compilés par lui, et certaines personnes développent entièrement avec un compilateur C++.</p>
+<p class="Pp">Les conséquences de l'échec de cette démarche sont probablement nulles. À moins que vous ne tombiez sur un nom que l'implémentation utilise, les choses fonctionneront. En fait, le cœur de Perl présente plus de quelques cas d'utilisation de symboles réservés par l'implémentation. (Ceux-ci sont progressivement modifiés.) Mais votre code pourrait cesser de fonctionner à tout moment où l'implémentation déciderait d'utiliser un nom que vous aviez déjà choisi, potentiellement des années auparavant.</p>
+<p class="Pp">Il est donc préférable de :</p>
+<dl class="Bl-tag">
+  <dt id="Ne"><a class="permalink" href="#Ne"><b>Ne pas commencer un nom de symbole au niveau du fichier par un trait de soulignement</b> ; (<i>par exemple</i>, n'utilisez pas :
+    &quot;_FOOBAR&quot;)</a></dt>
+  <dd>Il est acceptable d'avoir un symbole dans une fonction ou un bloc tel que
+      <span class="Li">&quot;_ref&quot;</span>, commençant par un trait de soulignement
+      suivi d'une lettre minuscule.</dd>
+  <dt id="Ne~2"><a class="permalink" href="#Ne~2"><b>Ne pas utiliser deux traits de soulignement consécutifs dans un nom de symbole</b> ; (<i>par exemple</i>, n'utilisez pas
+    &quot;FOO__BAR&quot;)</a></dt>
+  <dd></dd>
+</dl>
+<p class="Pp">POSIX réserve également de nombreux symboles. Voir la section 2.2.2 dans
+    <a href='https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html'>https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html</a>.
+    Perl entre également en conflit avec cela.</p>
+<p class="Pp">Perl se réserve pour son utilisation tout symbole commençant par
+    <span class="Li">&quot;Perl&quot;</span>,
+    <span class="Li">&quot;perl&quot;</span>, ou
+    <span class="Li">&quot;PL_&quot;</span>. Chaque fois que vous introduisez une macro dans
+    un fichier d'en-tête qui ne respecte pas cette convention, vous créez la possibilité d'un conflit de nom avec un module XS existant, à moins que vous ne la limitiez, par exemple,</p>
+<pre>#ifdef PERL_CORE
+#  define my_symbol
+#endif</pre>
+<p class="Pp">Il existe de nombreux symboles dans les fichiers d'en-tête qui ne sont pas de cette forme,
+    et qui sont accessibles depuis l'espace de noms XS, intentionnellement ou non, à peu près tout dans
+    <i>config.h</i>, par exemple.</p>
+<p class="Pp">Devoir utiliser l'un de ces préfixes nuit à la lisibilité du code, et n'a pas posé de problème réel pour les noms non triviaux. Des choses comme Perl définissant sa propre macro <span class="Li">&quot;MAX&quot;</span>
+    ont été problématiques, mais elles ont été rapidement découvertes, et une garde
+    <span class="Li">&quot;#ifdef&#x00A0;PERL_CORE&quot;</span> a été ajoutée.</p>
+<p class="Pp">Il n'y a donc pas de règle imposée concernant l'utilisation de tels symboles, soyez simplement conscient des problèmes.</p>
+<p class="Pp"><i>Choisir de bons noms de symboles</i></p>
+<p class="Pp">Idéalement, un nom de symbole doit décrire correctement et précisément son objectif. Mais il y a une tension entre cela et obtenir des noms qui sont trop longs et donc maladroits à taper et à lire. Les métaphores pourraient être utiles (un nom poétique), mais celles-ci ont tendance à être culturellement spécifiques et peuvent ne pas être comprises par quelqu'un dont la langue maternelle n'est pas l'anglais, ou même qui provient d'un milieu culturel différent. De plus, le talent d'écrire de la poésie semble rare chez les programmeurs.</p>
+<p class="Pp">Certains noms de symboles ne reflètent pas leur objectif, mais sont
+    néanmoins utilisables en raison de conventions de longue date. Ceux-ci sont souvent originaires du domaine des mathématiques, où
+    <span class="Li">&quot;i&quot;</span> et
+    <span class="Li">&quot;j&quot;</span> sont fréquemment utilisés comme indices, et
+    <span class="Li">&quot;n&quot;</span> comme compte de population. Depuis au moins les années 1950, les programmes informatiques utilisent
+    <span class="Li">&quot;i&quot;</span>, <i>etc.</i> comme variables de boucle.</p>
+<p class="Pp">Notre recommandation est de choisir un nom qui décrit raisonnablement le but, et de commenter sa déclaration plus précisément.</p>
+<p class="Pp">On ne devrait certainement pas utiliser de noms trompeurs ou ambigus.
+    <span class="Li">&quot;last_foo&quot;</span> pourrait signifier soit le dernier
+    <span class="Li">&quot;foo&quot;</span>, soit le précédent
+    <span class="Li">&quot;foo&quot;</span>, et pourrait donc être déroutant pour le lecteur,
+    ou même pour l'auteur qui revient au code après quelques mois de travail sur autre chose. Parfois, le programmeur a une ligne de pensée particulière à l'esprit, et ne réalise pas que l'ambiguïté est présente.</p>
+<p class="Pp">Il y a probablement encore de nombreux bugs d'off-by-one à cause du fait que le nom &quot;<span class="Li">&quot;av_len&quot;</span>&quot; dans perlapi
+    ne correspond pas à ce que signifient d'autres constructions <span class="Li">&quot;-len&quot;</span>, comme &quot;<span class="Li">&quot;sv_len&quot;</span>&quot; dans perlapi. Des synonymes maladroits
+    (et controversés) ont été créés à utiliser à la place pour transmettre son vrai sens (&quot;<span class="Li">&quot;av_top_index&quot;</span>&quot;
+    dans perlapi). Finalement, cependant, quelqu'un a eu la meilleure idée de créer un nouveau
+    nom pour signifier ce que la plupart des gens pensent que
+    <span class="Li">&quot;-len&quot;</span> signifie. Ainsi,
+    &quot;<span class="Li">&quot;av_count&quot;</span>&quot; dans perlapi est né.
+    Et nous souhaitons que cela ait été pensé beaucoup plus tôt.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Écrire_des_macros_plus_sûres'><a class='permalink' href='#Écrire_des_macros_plus_sûres'>Écrire des macros plus sûres</a></h2>
+<p class="Pp">Les macros sont largement utilisées dans le cœur de Perl pour des choses comme masquer les détails internes à l'appelant, de sorte qu'il n'ait pas à s'en préoccuper. Par exemple, la plupart des lignes de code n'ont pas besoin de savoir si elles s'exécutent sur une perl threadée ou non threadée. Ce détail est
+    automatiquement largement masqué.</p>
+<p class="Pp">Il est souvent préférable d'utiliser une fonction en ligne au lieu d'une macro.
+    Elles sont immunisées contre les collisions de noms avec l'appelant, et ne magnifient pas
+    les problèmes lorsqu'elles sont appelées avec des paramètres qui sont des expressions avec des effets secondaires.
+    Il fut un temps où l'on pouvait choisir une macro plutôt qu'une fonction en ligne car le support des compilateurs pour les fonctions en ligne était assez limité. Certains n'inlineraient réellement que les deux ou trois premières rencontrées dans une
+    compilation. Mais ces jours sont révolus depuis longtemps, et les fonctions en ligne sont entièrement prises en charge dans les compilateurs modernes.</p>
+<p class="Pp">Néanmoins, il existe des situations où une fonction ne suffit pas et
+    où une macro est requise. Un exemple est lorsqu'un paramètre peut être de plusieurs types. Une fonction doit être déclarée avec un seul type de paramètre explicite, une macro peut donc être appelée.</p>
+<p class="Pp">Ou peut-être que le code impliqué est si trivial qu'une fonction serait simplement une complication excessive, comme lorsque la macro crée simplement un nom mnémotechnique pour une valeur constante.</p>
+<p class="Pp">Si vous choisissez d'utiliser une macro non triviale, soyez conscient qu'il existe plusieurs pièges évitables qui peuvent survenir. Gardez à l'esprit qu'une macro est développée dans le contexte lexical de chaque endroit de la source où elle est appelée. Si vous avez un jeton <span class="Li">&quot;foo&quot;</span> dans la macro et que la source possède également
+    <span class="Li">&quot;foo&quot;</span>, la signification du <span class="Li">&quot;foo&quot;</span> de la macro deviendra celle de l'appelant.
+    Parfois, c'est exactement le comportement souhaité, mais soyez conscient que cela a tendance à être confus plus tard. Cela transforme effectivement
+    <span class="Li">&quot;foo&quot;</span> en un mot réservé pour tout code
+    qui appelle la macro, et ce fait n'est généralement pas documenté ni
+    pris en compte. Il est plus sûr de passer <span class="Li">&quot;foo&quot;</span> en tant que paramètre, de sorte que <span class="Li">&quot;
+;foo&quot;</span> reste librement
+    disponible pour l'appelant et l'interface de la macro est explicitement spécifiée.</p>
+<p class="Pp">Pire encore lorsque l'équivalence entre les deux
+    <span class="Li">&quot;foo&quot;</span> est fortuite. Supposons par
+    exemple que la macro déclare une variable</p>
+<pre>int foo</pre>
+<p class="Pp">Cela fonctionne bien tant que l'appelant ne définit pas la chaîne
+    <span class="Li">&quot;foo&quot;</span> d'une manière ou d'une autre. Et cela
+    pourrait ne pas être avant des années que quelqu'un ne rencontre un cas où
+    <span class="Li">&quot;foo&quot;</span> est utilisé. Par exemple, un futur appelant
+    pourrait faire ceci :</p>
+<pre>#define foo  bar</pre>
+<p class="Pp">Alors cette déclaration de <span class="Li">&quot;foo&quot;</span>
+    dans la macro devient soudainement</p>
+<pre>int bar</pre>
+<p class="Pp">Cela pourrait signifier que quelque chose de complètement différent
+    se produit que prévu. C'est difficile à déboguer ; la macro et l'appel peuvent
+    même ne pas être dans le même fichier, il faudrait donc creuser et grincer des
+    dents pour le découvrir.</p>
+<p class="Pp">Par conséquent, si une macro utilise des variables, leurs noms
+    devraient être tels qu'il est très peu probable qu'ils entrent en collision avec
+    un appelant, maintenant ou jamais. Une façon de faire cela, maintenant utilisée
+    dans la source de Perl, est d'inclure le nom de la macro elle-même dans le nom
+    de chaque variable de la macro. Supposons que la macro s'appelle
+    <span class="Li">&quot;SvPV&quot;</span>. Nous pourrions alors avoir</p>
+<pre>int foo_svpv_ = 0;</pre>
+<p class="Pp">C'est plus difficile à lire que le simple
+    <span class="Li">&quot;foo&quot;</span>, mais il est à peu près garanti qu'un
+    appelant n'utilisera jamais naïvement
+    <span class="Li">&quot;foo_svpv_&quot;</span> (et rencontrera des problèmes).
+    (La mise en minuscules le rend plus clair qu'il s'agit d'une variable, mais suppose
+    qu'il n'y aura pas deux éléments dont les noms diffèrent uniquement par la casse de leurs lettres.)
+    Le trait de soulignement final rend encore plus improbable un conflit, car ceux-ci,
+    par convention, signifient un nom de variable privé. (Voir &quot;Choix des noms de symboles légaux&quot;
+    pour les restrictions sur les noms que vous pouvez utiliser.)</p>
+<p class="Pp">Ce type de collision de noms ne se produit pas avec les paramètres
+    formels de la macro, ils n'ont donc pas besoin d'avoir des noms compliqués. Mais
+    il existe des pièges lorsqu'un paramètre est une expression, ou a une magie Perl
+    attachée. Lors de l'appel d'une fonction, C évaluera le paramètre une fois et
+    passera le résultat à la fonction. Mais lors de l'appel d'une macro, le paramètre
+    est copié tel quel par le préprocesseur C à chaque instance à l'intérieur de la
+    macro. Cela signifie que lors de l'évaluation d'un paramètre ayant des effets
+    secondaires, les résultats de la fonction et de la macro diffèrent. C'est
+    particulièrement risqué lorsqu'un paramètre a une magie de surcharge, disons que
+    c'est une variable liée qui lit la ligne suivante d'un fichier à chaque
+    évaluation. La faire lire plusieurs lignes par appel n'est probablement pas ce que
+    l'appelant avait l'intention. Si une macro fait référence à un paramètre potentiellement
+    surchargé plus d'une fois, elle devrait d'abord en faire une copie, puis utiliser
+    cette copie pour le reste du temps. Il existe des macros dans le noyau de Perl qui
+    violent cela, mais elles sont progressivement converties, généralement en utilisant
+    des fonctions en ligne à la place.</p>
+<p class="Pp">Ci-dessus, nous avons dit &quot;faire d'abord une copie&quot;. Dans une
+    macro, c'est plus facile à dire qu'à faire, car les macros sont normalement des
+    expressions, et les déclarations ne sont pas autorisées dans les expressions. Mais
+    la construction <span class="Li">&quot;STMT_START&quot;</span>&#x00A0;..&#x00A0;<span class="Li">&quot;STMT_END&quot;</span>,
+    décrite dans perlapi, vous permet d'avoir des déclarations dans la plupart des
+    contextes, tant que vous n'avez pas besoin d'une valeur de retour. Si vous avez
+    besoin d'une valeur de retour, vous pouvez rendre l'interface telle qu'un pointeur
+    soit passé à la construction, qui y stocke alors son résultat. (Ou vous pouvez
+    utiliser des groupes d'accolades GCC. Mais ceux-ci nécessitent une solution de
+    repli si le code doit un jour être exécuté sur une plateforme qui ne dispose pas
+    de cette extension non standard de C. Et cette solution de repli serait un autre
+    chemin de code, qui peut se désynchroniser avec celui des accolades, donc faire
+    cela n'est pas conseillé.) Dans les situations où il n'y a pas d'autre moyen,
+    Perl fournit &quot;<span class="Li">&quot;PL_Sv&quot;</span>&quot; dans
+    perlintern et &quot;<span class="Li">&quot;PL_na&quot;</span>&quot; dans
+    perlapi à utiliser (avec une légère pénalité de performance) pour certains de
+    ces cas courants. Mais attention, une chaîne d'appels impliquant plusieurs macros
+    qui les utilisent annulera l'utilisation des autres. Il a été très difficile de
+    déboguer.</p>
+<p class="Pp">Pour un exemple concret de ces pièges en action, voir
+    <a href='https://perlmonks.org/?node_id=11144355'>https://perlmonks.org/?node_id=11144355</a>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Problèmes_de_portabilité'><a class='permalink' href='#Problèmes_de_portabilité'>Problèmes de portabilité</a></h2>
+<p class="Pp">Les causes courantes de défaillances de compilation et/ou d'exécution,
+    non spécifiques à Perl en tant que tel, sont les suivantes. Le FAQ C est une bonne
+    lecture pour s'endormir. Veuillez tester vos modifications avec autant de compilateurs
+    C et de plateformes que possible ; nous le ferons de toute façon, et il est agréable
+    de s'éviter une gêne publique.</p>
+<p class="Pp">Étudiez également attentivement perlport pour éviter toute mauvaise
+    hypothèse concernant le système d'exploitation, les systèmes de fichiers, le jeu
+    de caractères, etc.</p>
+<p class="Pp">Ne présumez pas qu'un système d'exploitation indique un compilateur
+    particulier.</p>
+<ul class="Bl-bullet">
+  <li>Conversion de pointeurs en entiers ou d'entiers en pointeurs
+        <pre>void castaway(U8* p)
+{
+  IV i = p;
+</pre>
+    <p class="Pp">ou</p>
+        <pre>void castaway(U8* p)
+{
+  IV i = (IV)p;
+</pre>
+    <p class="Pp">Les deux sont mauvais, défectueux et non portables. Utilisez la
+        macro <b>PTR2IV()</b> qui fait cela correctement. (De même, il existe
+        <b>PTR2UV()</b>, <b>PTR2NV()</b>, <b>INT2PTR()</b> et
+        <b>NUM2PTR()</b>.)</p>
+  </li>
+  <li>Conversion entre pointeurs de fonction et pointeurs de données
+    <p class="Pp">Techniquement, la conversion entre pointeurs de fonction et pointeurs
+        de données n'est pas portable et est indéfinie, mais en pratique, cela semble
+        fonctionner, mais vous devriez utiliser les macros <b>FPTR2DPTR()</b> et
+        <b>DPTR2FPTR()</b>. Parfois, vous pouvez également jouer avec des unions.</p>
+  </li>
+  <li>Supposer <span class="Li">&quot;sizeof(int) == sizeof(long)&quot;</span>
+    <p class="Pp">Il existe des plateformes où les longs sont de 64 bits, et des
+        plateformes où les entiers sont de 64 bits, et pendant que nous vous choquons,
+        même des plateformes où les courts sont de 64 bits. Tout cela est légal selon
+        la norme C. (En d'autres termes, <span class="Li">&quot;long long&quot;</span>
+        n'est pas un moyen portable de spécifier 64 bits, et
+        <span class="Li">&quot;long long&quot;</span> n'est même pas garanti
+        d'être plus large que <span class="Li">&quot;long&quot;</span>.)</p>
+    <p class="Pp">Au lieu de cela, utilisez les définitions
+        <span class="Li">&quot;IV&quot;</span>,
+        <span class="Li">&quot;UV&quot;</span>,
+        <span class="Li">&quot;IVSIZE&quot;</span>,
+        <span class="Li">&quot;I32SIZE&quot;</span>, et ainsi de suite. Évitez les choses
+        comme <span class="Li">&quot;I32&quot;</span> car il n'est pas garanti qu'elles
+        soient *exactement* de 32 bits (elles sont *au moins* de 32 bits), ni qu'elles
+        soient <span class="Li">&quot;int&quot;</span> ou
+        <span class="Li">&quot;long&quot;</span>. Si vous avez explicitement besoin
+        de variables 64 bits, utilisez <span class="Li">&quot;I64&quot;</span> et
+        <span class="Li">&quot;U64&quot;</span>.</p>
+  </li>
+  <li>Supposer que l'on peut déréférencer n'importe quel type de pointeur pour n'importe
+      quel type de données
+        <pre>char *p = ...;
+long pony = *(long *)p;    /* MAUVAIS */
+</pre>
+    <p class="Pp">Beaucoup de plateformes, tout à fait justement, vous donneront un
+        dump mémoire au lieu d'un poney si p n'est pas correctement aligné.</p>
+  </li>
+  <li>Conversions d'expressions à valeur (lvalue casts)
+        <pre>(int)*p = ...;    /* MAUVAIS */
+</pre>
+    <p class="Pp">Simplement pas portable. Obtenez votre valeur à gauche (lvalue)
+        du bon type, ou utilisez peut-être des variables temporaires, ou des astuces
+        sales avec des unions.</p>
+  </li>
+  <li>Supposer <b>quoi que ce soit</b> à propos des structs (en particulier celles
+      que vous ne contrôlez pas, comme celles provenant des en-têtes système)</li>
+</ul>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Qu'un certain champ existe dans une struct</li>
+  <li>Qu'aucun autre champ n'existe en dehors de ceux que vous connaissez</li>
+  <li>Qu'un champ a une certaine signation, taille ou type</li>
+  <li>Que les champs sont dans un ordre particulier</li>
+</ul>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Bien que C garantisse l'ordre spécifié dans la définition de la struct,
+      entre différentes plateformes, les définitions peuvent différer</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Que le <span class="Li">sizeof(struct)</span> ou les alignements sont les
+      mêmes partout</dd>
+</dl>
+<div class="Bd-indent">
+<ul class="Bl-bullet">
+  <li>Il peut y avoir des octets de remplissage entre les champs pour aligner les
+      champs - les octets peuvent être n'importe quoi</li>
+  <li>Les structs sont requises d'être alignées sur l'alignement maximal requis par
+      les champs - ce qui pour les types natifs est généralement équivalent à
+      <span class="Li">sizeof(le_champ)</span>.</li>
+</ul>
+</div>
+</div>
+<ul class="Bl-bullet">
+  <li>Supposer que le jeu de caractères est similaire à l'ASCII
+    <p class="Pp">Perl peut être compilé et exécuté sous des plateformes EBCDIC. Voir
+        perlebcdic. C'est transparent dans la plupart des cas, mais parce que les
+        jeux de caractères diffèrent, vous ne devriez pas utiliser de constantes
+        numériques (décimales, octales, ni hexadécimales) pour faire référence à des
+        caractères. Vous pouvez dire sans risque
+        <span class="Li">'A'</span>, mais pas <span class="Li">0x41</span>. Vous
+        pouvez dire sans risque <span class="Li">'\n'</span>, mais pas
+        <span class="Li">&quot;\012&quot;</span>. Cependant, vous pouvez utiliser des
+        macros définies dans <i>utf8.h</i> pour spécifier n'importe quel point de
+        code de manière portable.
+        <span class="Li">LATIN1_TO_NATIVE(0xDF)</span> sera le point de code qui
+        signifie LETTRE LATINE PETITE eszett sur la plateforme sur laquelle vous
+        êtes en train de fonctionner (sur les plateformes ASCII, cela compile sans
+        ajouter de code supplémentaire, donc il n'y a aucun impact sur les performances
+        sur celles-ci). Les entrées acceptables pour
+        <span class="Li">&quot;LATIN1_TO_NATIVE&quot;</span> vont de
+        <span class="Li">0x00</span> à <span class="Li">0xFF</span>. Si votre
+        entrée n'est pas garantie dans cette plage, utilisez plutôt
+        <span class="Li">&quot;UNICODE_TO_NATIVE&quot;</span>.
+        <span class="Li">&quot;NATIVE_TO_LATIN1&quot;</span> et
+        <span class="Li">&quot;NATIVE_TO_UNICODE&quot;</span> traduisent dans
+        le sens inverse.</p>
+    <p class="Pp">Si vous avez besoin de la représentation sous forme de chaîne d'un
+        caractère qui n'a pas de nom mnémotechnique en C, vous devriez l'ajouter à la
+        liste dans <i>regen/unicode_constants.pl</i>, et laisser Perl créer des
+        <span class="Li">&quot;#define&quot;</span> pour vous, en fonction de la
+        plateforme actuelle.</p>
+    <p class="Pp">Notez que les macros
+        <span class="Li">&quot;is</span><span class="Li"><i>FOO</i></span><span class="Li">&quot;</span>
+        et
+        <span class="Li">&quot;to</span><span class="Li"><i>FOO</i></span><span class="Li">&quot;</span>
+        dans <i>handy.h</i> fonctionnent correctement sur les points de code et
+        chaînes natifs.</p>
+    <p class="Pp">De plus, la plage 'A' - 'Z' en ASCII est une séquence continue de
+        26 caractères alphabétiques majuscules. Ce n'est pas vrai en EBCDIC. Ni pour
+        'a' à 'z'. Mais '0' - '9' est une plage continue dans les deux systèmes. Ne
+        supposez rien sur d'autres plages. (Notez que la gestion spéciale des plages
+        dans les motifs d'expressions régulières et les translittérations donne
+        l'impression au code Perl que les plages susmentionnées sont toutes continues.)</p>
+    <p class="Pp">Beaucoup de commentaires dans le code existant ignorent la
+        possibilité d'EBCDIC, et</p>        peut être erroné, même si le code
+        fonctionne. Ceci est en fait un hommage à la réussite de l'insertion
+        transparente permettant de gérer EBCDIC sans avoir à modifier le code
+        préexistant.</p>
+    <p class="Pp">UTF-8 et UTF-EBCDIC sont deux encodages différents utilisés pour
+        représenter des points de code Unicode sous forme de séquences d'octets.
+        Des macros portant les mêmes noms (mais avec des définitions différentes)
+        dans <i>utf8.h</i> et <i>utfebcdic.h</i> sont utilisées pour permettre au
+        code appelant de croire qu'il n'existe qu'un seul encodage. Il est
+        presque toujours fait référence à &quot;utf8&quot;, mais cela inclut aussi
+        la version EBCDIC. Encore une fois, les commentaires dans le code peuvent
+        être erronés même si le code lui-même est correct. Par exemple, le concept
+        des caractères &quot;invariants&quot; UTF-8 diffère entre ASCII et EBCDIC.
+        Sur les plateformes ASCII, seuls les caractères qui n'ont pas le bit de
+        poids fort défini (c'est-à-dire dont les ordonnaux sont strictement ASCII,
+        0 - 127) sont invariants, et la documentation et les commentaires du code
+        peuvent supposer cela, faisant souvent référence à quelque chose comme, par
+        exemple, &quot;hibit&quot;. La situation diffère et n'est pas aussi simple
+        sur les machines EBCDIC, mais tant que le code utilise lui-même la macro
+        <span class="Li">NATIVE_IS_INVARIANT()</span> de manière appropriée, il
+        fonctionne, même si les commentaires sont erronés.</p>
+    <p class="Pp">Comme indiqué dans &quot;TESTING&quot; dans perlhack, lors de la
+        rédaction de scripts de test, le fichier <i>t/charset_tools.pl</i>
+        contient des fonctions utiles pour écrire des tests valides sur les
+        plateformes ASCII et EBCDIC. Parfois, cependant, un test ne peut pas
+        utiliser une fonction et il est gênant d'avoir différentes versions de test
+        selon la plateforme. Il existe 20 points de code qui sont identiques dans
+        les 4 jeux de caractères actuellement reconnus par Perl (les 3 pages de
+        codes EBCDIC plus ISO 8859-1 (ASCII/Latin1)). Ceux-ci peuvent être utilisés
+        dans de tels tests, bien qu'il y ait une faible possibilité que Perl devienne
+        disponible dans un autre jeu de caractères, ce qui pourrait casser votre
+        test. Tous ces points de code, sauf un, sont des caractères de contrôle C0.
+        Les contrôles les plus significatifs qui sont identiques sont
+        <span class="Li">&quot;\0&quot;</span>,
+        <span class="Li">&quot;\r&quot;</span>, et
+        <span class="Li">&quot;\N{VT}&quot;</span> (également spécifiable sous
+        forme de
+        <span class="Li">&quot;\cK&quot;</span>,
+        <span class="Li">&quot;\x0B&quot;</span>,
+        <span class="Li">&quot;\N{U+0B}&quot;</span>, ou
+        <span class="Li">&quot;\013&quot;</span>). Le seul non-contrôle est
+        U+00B6 PILCROW SIGN. Les contrôles qui sont identiques ont le même motif de
+        bits dans les 4 jeux de caractères, quelle que soit la nature UTF8 de la
+        chaîne qui les contient. Le motif de bits pour U+B6 est le même dans les 4
+        pour les chaînes non-UTF8, mais diffère dans chacune lorsque la chaîne
+        contenant est encodée en UTF-8. Les seuls autres points de code qui
+        présentent une sorte de similitude à travers les 4 jeux de caractères sont
+        la paire 0xDC et 0xFC. Ensemble, ils représentent la LETTRE LATINE U AVEC
+        DIACRITIQUE majuscule et minuscule, mais laquelle est majuscule et laquelle
+        est minuscule peut être inversée : 0xDC est la majuscule en Latin1 et 0xFC
+        est la minuscule, tandis que 0xFC est la majuscule en EBCDIC et 0xDC est la
+        minuscule. Ce fait peut être exploité pour écrire des tests insensibles à la
+        casse qui sont identiques sur les 4 jeux de caractères.</p>
+  </li>
+  <li>En supposant que le jeu de caractères est uniquement ASCII
+    <p class="Pp">ASCII est un encodage de 7 bits, mais les octets contiennent 8
+        bits. Les 128 caractères supplémentaires ont des significations différentes
+        selon la locale. En l'absence de locale, ces caractères supplémentaires sont
+        généralement considérés comme non assignés, ce qui a posé certains problèmes.
+        Cela a été modifié à partir de la version 5.12 afin que ces caractères puissent
+        être considérés comme Latin-1 (ISO-8859-1).</p>
+  </li>
+  <li>Mélange de #define et #ifdef
+        <pre>#define BURGLE(x) ... \
+#ifdef BURGLE_OLD_STYLE        /* MAUVAIS */
+... faire à l'ancienne ... \
+#else
+... faire à la nouvelle façon ... \
+#endif
+</pre>
+    <p class="Pp">Vous ne pouvez pas &quot;empiler&quot; les directives cpp de manière portable. Par
+        exemple, dans ce qui précède, vous avez besoin de deux #defines
+        <b>BURGLE()</b> distincts, un pour chaque branche #ifdef.</p>
+  </li>
+  <li>Ajout de contenu non-commentaire après #endif ou #else
+        <pre>#ifdef SNOSH
+...
+#else !SNOSH    /* MAUVAIS */
+...
+#endif SNOSH    /* MAUVAIS */
+</pre>
+    <p class="Pp">Les directives #endif et #else ne peuvent pas avoir de contenu non-commentaire
+        après elles de manière portable. Si vous souhaitez documenter ce qui se
+        passe (ce qui est une bonne idée surtout si les branches sont longues),
+        utilisez des commentaires (C) :</p>
+        <pre>#ifdef SNOSH
+...
+#else /* !SNOSH */
+...
+#endif /* SNOSH */
+</pre>
+    <p class="Pp">L'option gcc
+        <span class="Li">&quot;-Wendif-labels&quot;</span> avertit de la variante
+        mauvaise (par défaut à partir de Perl 5.9.4).</p>
+  </li>
+  <li>Avoir une virgule après le dernier élément d'une liste enum
+        <pre>enum color {
+  CERULEAN,
+  CHARTREUSE,
+  CINNABAR,     /* MAUVAIS */
+};
+</pre>
+    <p class="Pp">n'est pas portable. Laissez la dernière virgule.</p>
+    <p class="Pp">Notez également que la façon dont les enums sont implicitement
+        transformables en entiers varie selon les compilateurs, vous pourriez avoir
+        besoin de (int).</p>
+  </li>
+  <li>Mélange de pointeurs char signés avec des pointeurs unsigned char
+        <pre>int foo(char *s) { ... }
+...
+unsigned char *t = ...; /* Ou U8* t = ... */
+foo(t);   /* MAUVAIS */
+</pre>
+    <p class="Pp">Bien que ce soit une pratique légale, elle est certainement
+        douteuse, et carrément fatale sur au moins une plateforme : par exemple,
+        VMS cc considère cela comme une erreur fatale. L'une des raisons pour
+        lesquelles les gens font souvent cette erreur est qu'un &quot;char nu&quot;
+        et donc le déréférencement d'un &quot;pointeur char nu&quot; ont une
+        signification indéfinie : cela dépend du compilateur, des options du compilateur
+        et de la plateforme sous-jacente que le résultat soit signé ou non signé.
+        Pour cette même raison, utiliser un 'char' comme indice de tableau est
+        mauvais.</p>
+  </li>
+  <li>Macros qui contiennent des constantes de chaîne et leurs arguments comme sous-chaînes
+      des constantes de chaîne
+        <pre>#define FOO(n) printf(&quot;number = %d\n&quot;, n)    /* MAUVAIS */
+FOO(10);
+</pre>
+    <p class="Pp">La sémantique pré-ANSI pour cela était équivalente à</p>
+        <pre>printf(&quot;10umber = %d\10&quot;);
+</pre>
+    <p class="Pp">ce qui n'est probablement pas ce que vous attendiez. Malheureusement,
+        au moins un compilateur C raisonnablement courant et moderne fait une
+        &quot;vraie rétrocompatibilité&quot; ici, sur AIX c'est ce qui se passe
+        encore même si le reste du compilateur AIX est très heureux d'être C89.</p>
+  </li>
+  <li>Utilisation de formats printf pour des types C non basiques
+        <pre>IV i = ...;
+printf(&quot;i = %d\n&quot;, i);    /* MAUVAIS */
+</pre>
+    <p class="Pp">Bien que cela puisse fonctionner par accident sur certaines
+        plateformes (où IV est un &quot;int&quot;), en général cela ne peut pas.
+        IV peut être quelque chose de plus grand. La situation est encore pire avec
+        des types plus spécifiques (définis par l'étape de configuration de Perl dans
+        <i>config.h</i>) :</p>
+        <pre>Uid_t who = ...;
+printf(&quot;who = %d\n&quot;, who);    /* MAUVAIS */
+</pre>
+    <p class="Pp">Le problème ici est que Uid_t peut non seulement ne pas être de la
+        largeur d'un &quot;int&quot;, mais il peut aussi être non signé, auquel cas
+        de grands uid seraient affichés comme des valeurs négatives.</p>
+    <p class="Pp">Il n'y a pas de solution simple à cela en raison de
+        l'intelligence limitée de <b>printf()</b>, mais pour de nombreux types, le
+        bon format est disponible avec le suffixe 'f' ou '_f', par exemple :</p>
+        <pre>IVdf /* IV en décimal */
+UVxf /* UV en hexadécimal */
+U32of /* Un U32 en octal */
+printf(&quot;i = %&quot;IVdf&quot;\n&quot;, i); /* Le IVdf est une constante de chaîne. */
+Uid_t_f /* Uid_t en décimal */
+printf(&quot;who = %&quot;Uid_t_f&quot;\n&quot;, who);
+</pre>
+    <p class="Pp">Ou vous pouvez essayer de caster vers un type &quot;assez large&quot;
+        :</p>
+        <pre>printf(&quot;i = %&quot;IVdf&quot;\n&quot;, (IV)quelque_chose_de_très_petit_et_signé);
+</pre>
+    <p class="Pp">Voir &quot;Formatted Printing of Size_t and SSize_t&quot; dans
+        perlguts pour savoir comment les imprimer.</p>
+    <p class="Pp">N'oubliez pas non plus que le format <span class="Li">%p</span>
+        requiert réellement un pointeur void :</p>
+        <pre>U8* p = ...;
+printf(&quot;p = %p\n&quot;, (void*)p);
+</pre>
+    <p class="Pp">L'option gcc
+        <span class="Li">&quot;-Wformat&quot;</span> recherche de tels problèmes.</p>
+  </li>
+  <li>Passage aveugle de va_list
+    <p class="Pp">Toutes les plateformes ne prennent pas en charge le passage de
+        va_list à d'autres fonctions varargs (stdarg). La bonne chose à faire est de
+        copier la va_list en utilisant <b>Perl_va_copy()</b> si NEED_VA_COPY est
+        défini.</p>
+  </li>
+  <li>Utilisation d'expressions de déclaration gcc
+        <pre>val = ({...;...;...});    /* MAUVAIS */
+</pre>
+    <p class="Pp">Bien que ce soit une extension agréable, elle n'est pas portable.
+        Historiquement, Perl les utilisait dans des macros si disponibles pour
+        gagner en vitesse (essentiellement comme une forme étrange d'inlining), mais
+        nous prenons désormais en charge (ou émules) les fonctions C99
+        <span class="Li">&quot;static</span>
+        <span class="Li">inline&quot;</span>, utilisez-les donc à la place.
+        Déclarez les fonctions comme
+        <span class="Li">&quot;PERL_STATIC_INLINE&quot;</span> pour revenir
+        transparenment à l'émulation si nécessaire.</p>
+  </li>
+  <li>Relier plusieurs instructions dans une macro
+    <p class="Pp">Utilisez les macros <span class="Li">&quot;STMT_START&quot;</span>
+        et <span class="Li">&quot;STMT_END&quot;</span>.</p>
+        <pre>STMT_START {
+   ...
+} STMT_END
+</pre>
+    <p class="Pp">Mais des bugs subtils (mais évitables si vous le faites correctement)
+        peuvent être introduits avec ceux-ci ; voir
+        &quot;<span class="Li">&quot;STMT_START&quot;</span>&quot; dans perlapi
+        pour les meilleures pratiques d'utilisation.</p>
+  </li>
+  <li>Supposer que le contenu de la mémoire statique pointée par les valeurs de retour
+      des wrappers Perl pour C l
+library functions doesn't change. Many C library
+      functions return pointers to static storage that can be overwritten by
+      subsequent calls to the same or related functions. If you handle those
+      returns before one of those functions that share the storage gets called,
+      this is fine, but in embedded perls, or when using threads, such a
+      function may get called before you get a chance to handle it.
+    <p class="Pp">&quot;Dealing with embedded perls and threads&quot; in
+        perlclib contains a list of problematic functions with good advice as to
+        how to cope with them.</p>
+  </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Problematic_System_Interfaces'><a class='permalink' href='#Problematic_System_Interfaces'>Problematic   System Interfaces</a></h2>
+<p class="Pp">There are lots of issues with using various C library functions,
+    including security ones. You should read perlclib which covers things in
+    detail.</p>
+<p class="Pp">Remember that Perl strings are NOT the same as C strings: They may
+    contain <span class="Li">&quot;NUL&quot;</span> characters, whereas a C
+    string is terminated by the first <span class="Li">&quot;NUL&quot;</span>.
+    That is why Perl API functions that deal with strings generally take a
+    pointer to the first byte and either a length or a pointer to the byte just
+    beyond the final one.</p>
+<p class="Pp">And this is the reason that many of the C library string handling
+    functions should not be used. They don't cope with the full generality of
+    Perl strings. It may be that your test cases don't have embedded
+    <span class="Li">&quot;NUL&quot;</span>s, and so the tests pass, whereas
+    there may well eventually arise real-world cases where they fail. A lesson
+    here is to include <span class="Li">&quot;NUL&quot;</span>s in your tests.
+    Now it's fairly rare in most real world cases to get
+    <span class="Li">&quot;NUL&quot;</span>s, so your code may seem to work,
+    until one day a <span class="Li">&quot;NUL&quot;</span> comes along.</p>
+<p class="Pp">Here's an example. It used to be a common paradigm, for decades,
+    in the perl core to use
+    <span class="Li">&quot;strchr(&quot;list&quot;,&#x00A0;c)&quot;</span> to
+    see if the character <span class="Li">&quot;c&quot;</span> is any of the
+    ones given in <span class="Li">&quot;list&quot;</span>, a
+    double-quote-enclosed string of the set of characters that we are seeing if
+    <span class="Li">&quot;c&quot;</span> is one of. As long as
+    <span class="Li">&quot;c&quot;</span> isn't a
+    <span class="Li">&quot;NUL&quot;</span>, it works. But when
+    <span class="Li">&quot;c&quot;</span> is a
+    <span class="Li">&quot;NUL&quot;</span>,
+    <span class="Li">&quot;strchr&quot;</span> returns a pointer to the
+    terminating <span class="Li">&quot;NUL&quot;</span> in
+    <span class="Li">&quot;list&quot;</span>. This likely will result in a
+    segfault or a security issue when the caller uses that end pointer as the
+    starting point to read from.</p>
+<p class="Pp">A solution to this and many similar issues is to use the
+    <span class="Li">&quot;mem&quot;</span><i>-foo</i> C library functions
+    instead. In this case <span class="Li">&quot;memchr&quot;</span> can be used
+    to see if <span class="Li">&quot;c&quot;</span> is in
+    <span class="Li">&quot;list&quot;</span> and works even if
+    <span class="Li">&quot;c&quot;</span> is
+    <span class="Li">&quot;NUL&quot;</span>. These functions need an additional
+    parameter to give the string length. In the case of literal string
+    parameters, perl has defined macros that calculate the length for you. See
+    &quot;String Handling&quot; in perlapi.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEBUGGING'><a class='permalink' href='#DEBUGGING'>DEBUGGING</a></h1>
+<p class="Pp">You can compile a special debugging version of Perl, which allows
+    you to use the <span class="Li">&quot;-D&quot;</span> option of Perl to tell
+    more about what Perl is doing. But sometimes there is no alternative than to
+    dive in with a debugger, either to see the stack trace of a core dump (very
+    useful in a bug report), or trying to figure out what went wrong before the
+    core dump happened, or how did we end up having wrong or unexpected
+  results.</p>
+<section class="Ss">
+<h2 class="Ss" id='Poking_at_Perl'><a class='permalink' href='#Poking_at_Perl'>Poking   at Perl</a></h2>
+<p class="Pp">To really poke around with Perl, you'll probably want to build
+    Perl for debugging, like this:</p>
+<pre>./Configure -d -DDEBUGGING
+make</pre>
+<p class="Pp"><span class="Li">&quot;-DDEBUGGING&quot;</span> turns on the C
+    compiler's <span class="Li">&quot;-g&quot;</span> flag to have it produce
+    debugging information which will allow us to step through a running program,
+    and to see in which C function we are at (without the debugging information
+    we might see only the numerical addresses of the functions, which is not
+    very helpful). It will also turn on the
+    <span class="Li">&quot;DEBUGGING&quot;</span> compilation symbol which
+    enables all the internal debugging code in Perl. There are a whole bunch of
+    things you can debug with this: perlrun lists them all, and the best way to
+    find out about them is to play about with them. The most useful options are
+    probably</p>
+<pre>l  Context (loop) stack processing
+s  Stack snapshots (with v, displays all stacks)
+t  Trace execution
+o  Method and overloading resolution
+c  String/numeric conversions</pre>
+<p class="Pp">For example</p>
+<pre>$ perl -Dst -e '$x + 1'
+....
+(-e:1)      gvsv(main::x)
+    =&gt;  UNDEF
+(-e:1)      const(IV(1))
+    =&gt;  UNDEF  IV(1)
+(-e:1)      add
+    =&gt;  NV(1)</pre>
+<p class="Pp">Some of the functionality of the debugging code can be achieved
+    with a non-debugging perl by using XS modules:</p>
+<pre>-Dr =&gt; use re 'debug'
+-Dx =&gt; use O 'Debug'</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Using_a_source-level_debugger'><a class='permalink' href='#Using_a_source-level_debugger'>Using   a source-level debugger</a></h2>
+<p class="Pp">If the debugging output of <span class="Li">&quot;-D&quot;</span>
+    doesn't help you, it's time to step through perl's execution with a
+    source-level debugger.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>We'll use <span class="Li">&quot;gdb&quot;</span> for our examples here;
+      the principles will apply to any debugger (many vendors call their
+      debugger <span class="Li">&quot;dbx&quot;</span>), but check the manual of
+      the one you're using.</dd>
+</dl>
+<p class="Pp">To fire up the debugger, type</p>
+<pre>gdb ./perl</pre>
+<p class="Pp">Or if you have a core dump:</p>
+<pre>gdb ./perl core</pre>
+<p class="Pp">You'll want to do that in your Perl source tree so the debugger
+    can read the source code. You should see the copyright message, followed by
+    the prompt.</p>
+<pre>(gdb)</pre>
+<p class="Pp"><span class="Li">&quot;help&quot;</span> will get you into the
+    documentation, but here are the most useful commands:</p>
+<ul class="Bl-bullet">
+  <li>run [args]
+    <p class="Pp">Run the program with the given arguments.</p>
+  </li>
+  <li>break function_name</li>
+  <li>break source.c:xxx
+    <p class="Pp">Tells the debugger that we'll want to pause execution when we
+        reach either the named function (but see &quot;Internal Functions&quot;
+        in perlguts!) or the given line in the named source file.</p>
+  </li>
+  <li>step
+    <p class="Pp">Steps through the program a line at a time.</p>
+  </li>
+  <li>next
+    <p class="Pp">Steps through the program a line at a time, without descending
+        into functions.</p>
+  </li>
+  <li>continue
+    <p class="Pp">Run until the next breakpoint.</p>
+  </li>
+  <li>finish
+    <p class="Pp">Run until the end of the current function, then stop
+      again.</p>
+  </li>
+  <li>'enter'
+    <p class="Pp">Just pressing Enter will do the most recent operation again -
+        it's a blessing when stepping through miles of source code.</p>
+  </li>
+  <li>ptype
+    <p class="Pp">Prints the C definition of the argument given.</p>
+        <pre>(gdb) ptype PL_op
+type = struct op {
+    OP *op_next;
+    OP *op_sibparent;
+    OP *(*op_ppaddr)(void);
+    PADOFFSET op_targ;
+    unsigned int op_type : 9;
+    unsigned int op_opt : 1;
+    unsigned int op_slabbed : 1;
+    unsigned int op_savefree : 1;
+    unsigned int op_static : 1;
+    unsigned int op_folded : 1;
+    unsigned int op_spare : 2;
+    U8 op_flags;
+    U8 op_private;
+} *
+</pre>
+  </li>
+  <li>print
+    <p class="Pp">Execute the given C code and print its results.
+        <b>WARNING</b>: Perl makes heavy use of macros, and <i>gdb</i> does not
+        necessarily support macros (see later &quot;gdb macro support&quot;).
+        You'll have to substitute them yourself, or to invoke cpp on the source
+        code files (see &quot;The .i Targets&quot;) So, for instance, you can't
+        say</p>
+        <pre>print SvPV_nolen(sv)
+</pre>
+    <p class="Pp">but you have to say</p>
+        <pre>print Perl_sv_2pv_nolen(sv)
+</pre>
+  </li>
+</ul>
+<p class="Pp">You may find it helpful to have a &quot;macro dictionary&quot;,
+    which you can produce by saying <span class="Li">&quot;cpp -dM perl.c |
+    sort&quot;</span>. Even then, <i>cpp</i> won't recursively apply those
+    macros for you.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='gdb_macro_support'><a class='permalink' href='#gdb_macro_support'>gdb   macro support</a></h2>
+<p class="Pp">Recent versions of <i>gdb</i> have fairly good macro support, but
+    in order to use it you'll need to compile perl with macro definitions
+    included in the debugging information. Using <i>gcc</i> version 3.1, this
+    means configuring with <span class="Li">&quot;-Doptimize=-g3&quot;</span>.
+    Other compilers might use a different switch (if they support debugging
+    macros at all).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Dumping_Perl_Data_Structures'><a class='permalink' href='#Dumping_Perl_Data_Structures'>Dumping   Perl Data Structures</a></h2>
+<p class="Pp">One way to get around this macro hell is to use the dumping
+    functions in <i>dump.c</i>; these work a little like an internal
+    Devel::Peek, but they also cover OPs and other structures that you can't get
+    at from Perl. Let's take an example. We'll use the <span class="Li">&quot;$x
+    = $y + $z&quot;</span> we used before, but give it a bit of context:
+    <span class="Li">&quot;$y = &quot;6XXXX&quot;; $z = 2.3;&quot;</span>.
+    Where's a good place to stop and poke around?</p>
+<p class="Pp">What about <span class="Li">&quot;pp_add&quot;</span>, the
+    function we examined earlier to implement the
+    <span class="Li">&quot;+&quot;</span> operator:</p>
+<pre>(gdb) break Perl_pp_add
+Breakpoint 1 at 0x46249f: file pp_hot.c, line 309.</pre>
+<p class="Pp">Notice we use <span class="Li">&quot;Perl_pp_add&quot;</span> and
+    not <span class="Li">&quot;pp_add&quot;</span> - see &quot;Internal
+    Functions&quot; in perlguts. With the breakpoint in place, we can run our
+    program:</p>
+<pre>(gdb) run -e '$y = &quot;6XXXX&quot;; $z = 2.3; $x = $y + $z'</pre>
+<p class="Pp">Lots of junk will go past as gdb reads in the relevant source
+    files and libraries, and then:</p>
+<pre>Breakpoint 1, Perl_pp_add () at pp_hot.c:309
+1396    dSP; dATARGET; bool useleft; SV *svl, *svr;
+(gdb) step
+311           dPOPTOPnnrl_ul;
+(gdb)</pre>
+<p class="Pp">We looked at this bit of code before, and we said that
+    <span class="Li">&quot;dPOPTOPnnrl_ul&quot;</span> arranges for two
+    <span class="Li">&quot;NV&quot;</span>s to be placed into
+    <span class="Li">&quot;left&quot;</span> and
+    <span class="Li">&quot;right&quot;</span> - let's slightly expand it:</p>
+<pre>#define dPOPTOPnnrl_ul  NV right = POPn; \
+                        SV *leftsv = TOPs; \
+                        NV left = USE_LEFT(leftsv) ? SvNV(leftsv) : 0.0</pre>
+<p class="Pp"><span class="Li"
+```
+
+```french
+ry functions ne changent pas. De nombreuses fonctions de la bibliothèque C
+      renvoient des pointeurs vers un stockage statique qui peuvent être écrasés par
+      des appels ultérieurs aux mêmes fonctions ou à des fonctions connexes. Si vous
+      traitez ces retours avant qu'une de ces fonctions qui partagent le stockage ne soit appelée,
+      c'est bon, mais dans les perls intégrés, ou lors de l'utilisation de threads, une telle
+      fonction peut être appelée avant que vous n'ayez la chance de la traiter.
+    <p class="Pp">&quot;Dealing with embedded perls and threads&quot; dans
+        perlclib contient une liste de fonctions problématiques avec de bons conseils sur la manière
+        de les gérer.</p>
+  </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Problematic_System_Interfaces'><a class='permalink' href='#Problematic_System_Interfaces'>Interfaces système problématiques</a></h2>
+<p class="Pp">Il y a beaucoup de problèmes avec l'utilisation de diverses fonctions de la bibliothèque C,
+    y compris celles relatives à la sécurité. Vous devriez lire perlclib qui couvre ces aspects en détail.</p>
+<p class="Pp">Rappelez-vous que les chaînes Perl ne sont PAS identiques aux chaînes C : elles peuvent contenir des caractères <span class="Li">&quot;NUL&quot;</span>, alors qu'une chaîne C est terminée par le premier caractère <span class="Li">&quot;NUL&quot;</span>.
+    C'est pourquoi les fonctions de l'API Perl qui traitent des chaînes prennent généralement un pointeur vers le premier octet et soit une longueur, soit un pointeur vers l'octet juste après le dernier.</p>
+<p class="Pp">Et c'est la raison pour laquelle de nombreuses fonctions de manipulation de chaînes de la bibliothèque C ne devraient pas être utilisées. Elles ne gèrent pas toute la généralité des chaînes Perl. Il se peut que vos cas de test n'aient pas de caractères <span class="Li">&quot;NUL&quot;</span> intégrés, et donc que les tests réussissent, alors qu'il peut très bien y avoir à terme des cas réels où ils échouent. Une leçon à retenir est d'inclure des caractères <span class="Li">&quot;NUL&quot;</span> dans vos tests.
+    Il est assez rare dans la plupart des cas réels d'obtenir des caractères <span class="Li">&quot;NUL&quot;</span>, donc votre code peut sembler fonctionner, jusqu'au jour où un caractère <span class="Li">&quot;NUL&quot;</span> apparaît.</p>
+<p class="Pp">Voici un exemple. C'était autrefois un paradigme courant, pendant des décennies, dans le cœur de Perl d'utiliser
+    <span class="Li">&quot;strchr(&quot;list&quot;,&#x00A0;c)&quot;</span> pour
+    voir si le caractère <span class="Li">&quot;c&quot;</span> fait partie de ceux donnés dans
+    <span class="Li">&quot;list&quot;</span>, une chaîne délimitée par des guillemets doubles contenant l'ensemble des caractères que nous vérifions si
+    <span class="Li">&quot;c&quot;</span> en fait partie. Tant que
+    <span class="Li">&quot;c&quot;</span> n'est pas un caractère
+    <span class="Li">&quot;NUL&quot;</span>, cela fonctionne. Mais quand
+    <span class="Li">&quot;c&quot;</span> est un caractère
+    <span class="Li">&quot;NUL&quot;</span>,
+    <span class="Li">&quot;strchr&quot;</span> renvoie un pointeur vers le caractère
+    <span class="Li">&quot;NUL&quot;</span> de terminaison dans
+    <span class="Li">&quot;list&quot;</span>. Cela entraînera probablement un segfault ou un problème de sécurité lorsque l'appelant utilisera ce pointeur de fin comme point de départ pour lire.</p>
+<p class="Pp">Une solution à ce problème et à de nombreux problèmes similaires est d'utiliser plutôt les fonctions de bibliothèque C de type
+    <span class="Li">&quot;mem&quot;</span><i>-foo</i>. Dans ce cas,
+    <span class="Li">&quot;memchr&quot;</span> peut être utilisé pour vérifier si
+    <span class="Li">&quot;c&quot;</span> se trouve dans
+    <span class="Li">&quot;list&quot;</span> et fonctionne même si
+    <span class="Li">&quot;c&quot;</span> est un caractère
+    <span class="Li">&quot;NUL&quot;</span>. Ces fonctions nécessitent un paramètre supplémentaire pour spécifier la longueur de la chaîne. Dans le cas de paramètres de chaînes littérales, Perl a défini des macros qui calculent la longueur pour vous. Voir &quot;String Handling&quot; dans perlapi.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEBUGGING'><a class='permalink' href='#DEBUGGING'>DÉBOGAGE</a></h1>
+<p class="Pp">Vous pouvez compiler une version spéciale de débogage de Perl, qui vous permet d'utiliser l'option
+    <span class="Li">&quot;-D&quot;</span> de Perl pour en savoir plus sur ce que Perl fait. Mais parfois, il n'y a pas d'autre alternative que de plonger dans un débogueur, soit pour voir la trace de la pile d'un core dump (très utile dans un rapport de bug), soit pour essayer de comprendre ce qui s'est mal passé avant que le core dump ne se produise, ou comment nous avons fini par obtenir des résultats erronés ou inattendus.</p>
+<section class="Ss">
+<h2 class="Ss" id='Poking_at_Perl'><a class='permalink' href='#Poking_at_Perl'>Explorer Perl</a></h2>
+<p class="Pp">Pour vraiment explorer Perl, vous voudrez probablement construire
+    Perl pour le débogage, comme ceci :</p>
+<pre>./Configure -d -DDEBUGGING
+make</pre>
+<p class="Pp"><span class="Li">&quot;-DDEBUGGING&quot;</span> active le flag
+    <span class="Li">&quot;-g&quot;</span> du compilateur C pour qu'il produise des informations de débogage qui nous permettront de suivre un programme en cours d'exécution, et de voir dans quelle fonction C nous nous trouvons (sans les informations de débogage, nous ne verrions que les adresses numériques des fonctions, ce qui n'est pas très utile). Il activera également le symbole de compilation
+    <span class="Li">&quot;DEBUGGING&quot;</span> qui active tout le code de débogage interne de Perl. Il y a un tas de choses que vous pouvez déboguer avec cela : perlrun les liste toutes, et la meilleure façon de les connaître est de jouer avec elles. Les options les plus utiles sont probablement</p>
+<pre>l  Traitement de la pile de contexte (boucle)
+s  Instantanés de la pile (avec v, affiche toutes les piles)
+t  Trace d'exécution
+o  Résolution de méthodes et de surcharge
+c  Conversions chaîne/numérique</pre>
+<p class="Pp">Par exemple</p>
+<pre>$ perl -Dst -e '$x + 1'
+....
+(-e:1)      gvsv(main::x)
+    =&gt;  UNDEF
+(-e:1)      const(IV(1))
+    =&gt;  UNDEF  IV(1)
+(-e:1)      add
+    =&gt;  NV(1)</pre>
+<p class="Pp">Certaines fonctionnalités du code de débogage peuvent être obtenues avec un Perl non débogué en utilisant des modules XS :</p>
+<pre>-Dr =&gt; use re 'debug'
+-Dx =&gt; use O 'Debug'</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Using_a_source-level_debugger'><a class='permalink' href='#Using_a_source-level_debugger'>Utilisation d'un débogueur de niveau source</a></h2>
+<p class="Pp">Si la sortie de débogage de <span class="Li">&quot;-D&quot;</span> ne vous aide pas, il est temps de parcourir l'exécution de Perl avec un débogueur de niveau source.</p>
+<dl class="Bl-tag">
+  <dt>&#x2022;</dt>
+  <dd>Nous utiliserons <span class="Li">&quot;gdb&quot;</span> pour nos exemples ici ;
+      les principes s'appliqueront à n'importe quel débogueur (de nombreux fournisseurs appellent leur
+      débogueur <span class="Li">&quot;dbx&quot;</span>), mais consultez le manuel de
+      celui que vous utilisez.</dd>
+</dl>
+<p class="Pp">Pour lancer le débogueur, tapez</p>
+<pre>gdb ./perl</pre>
+<p class="Pp">Ou si vous avez un core dump :</p>
+<pre>gdb ./perl core</pre>
+<p class="Pp">Vous voudrez faire cela dans votre arborescence source Perl afin que le débogueur puisse lire le code source. Vous devriez voir le message de copyright, suivi de l'invite.</p>
+<pre>(gdb)</pre>
+<p class="Pp"><span class="Li">&quot;help&quot;</span> vous mènera à la documentation, mais voici les commandes les plus utiles :</p>
+<ul class="Bl-bullet">
+  <li>run [args]
+    <p class="Pp">Exécute le programme avec les arguments donnés.</p>
+  </li>
+  <li>break nom_de_fonction</li>
+  <li>break source.c:xxx
+    <p class="Pp">Indique au débogueur que nous voulons arrêter l'exécution lorsque nous atteignons soit la fonction nommée (mais voir &quot;Internal Functions&quot; dans perlguts !), soit la ligne donnée dans le fichier source nommé.</p>
+  </li>
+  <li>step
+    <p class="Pp">Parcourt le programme ligne par ligne.</p>
+  </li>
+  <li>next
+    <p class="Pp">Parcourt le programme ligne par ligne, sans descendre dans les fonctions.</p>
+  </li>
+  <li>continue
+    <p class="Pp">Exécute jusqu'au prochain point d'arrêt.</p>
+  </li>
+  <li>finish
+    <p class="Pp">Exécute jusqu'à la fin de la fonction actuelle, puis s'arrête
+      à nouveau.</p>
+  </li>
+  <li>'enter'
+    <p class="Pp">Appuyer simplement sur Entrée répétera la dernière opération effectuée -
+        c'est une bénédiction lorsqu'on parcourt des kilomètres de code source.</p>
+  </li>
+  <li>ptype
+    <p class="Pp">Affiche la définition C de l'argument donné.</p>
+        <pre>(gdb) ptype PL_op
+type = struct op {
+    OP *op_next;
+    OP *op_sibparent;
+    OP *(*op_ppaddr)(void);
+    PADOFFSET op_targ;
+    unsigned int op_type : 9;
+    unsigned int op_opt : 1;
+    unsigned int op_slabbed : 1;
+    unsigned int op_savefree : 1;
+    unsigned int op_static : 1;
+    unsigned int op_folded : 1;
+    unsigned int op_spare : 2;
+    U8 op_flags;
+    U8 op_private;
+} *
+</pre>
+  </li>
+  <li>print
+    <p class="Pp">Exécute le code C donné et imprime ses résultats.
+        <b>ATTENTION</b> : Perl utilise beaucoup de macros, et <i>gdb</i> ne prend pas
+        nécessairement en charge les macros (voir plus loin &quot;gdb macro support&quot;).
+        Vous devrez les substituer vous-même, ou invoquer cpp sur les fichiers de code source
+        (voir &quot;The .i Targets&quot;). Ainsi, par exemple, vous ne pouvez pas dire</p>
+        <pre>print SvPV_nolen(sv)
+</pre>
+    <p class="Pp">mais vous devez dire</p>
+        <pre>print Perl_sv_2pv_nolen(sv)
+</pre>
+  </li>
+</ul>
+<p class="Pp">Il peut être utile d'avoir un &quot;dictionnaire de macros&quot;,
+    que vous pouvez produire en tapant <span class="Li">&quot;cpp -dM perl.c |
+    sort&quot;</span>. Même dans ce cas, <i>cpp</i> n'appliquera pas récursivement ces
+    macros pour vous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='gdb_macro_support'><a class='permalink' href='#gdb_macro_support'>Support des macros gdb</a></h2>
+<p class="Pp">Les versions récentes de <i>gdb</i> ont un support assez bon des macros, mais
+    pour l'utiliser, vous devrez compiler Perl avec les définitions de macros
+    incluses dans les informations de débogage. En utilisant <i>gcc</i> version 3.1, cela
+    signifie configurer avec <span class="Li">&quot;-Doptimize=-g3&quot;</span>.
+    D'autres compilateurs pourraient utiliser un commutateur différent (s'ils prennent en charge les macros de débogage
+    du tout).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Dumping_Perl_Data_Structures'><a class='permalink' href='#Dumping_Perl_Data_Structures'>Exportation des structures de données Perl</a></h2>
+<p class="Pp">Une façon de contourner cet enfer de macros est d'utiliser les fonctions d'exportation
+    dans <i>dump.c</i> ; elles fonctionnent un peu comme un Devel::Peek interne,
+    mais elles couvrent également les OPs et d'autres structures auxquelles vous ne pouvez pas accéder depuis Perl. Prenons un exemple. Nous utiliserons le code <span class="Li">&quot;$x
+    = $y + $z&quot;</span> que nous avons utilisé précédemment, mais nous lui donnerons un peu de contexte :
+    <span class="Li">&quot;$y = &quot;6XXXX&quot;; $z = 2.3;&quot;</span>.
+    Où est un bon endroit pour s'arrêter et examiner ?</p>
+<p class="Pp">Que diriez-vous de <span class="Li">&quot;pp_add&quot;</span>, la
+    fonction que nous avons examinée précédemment pour implémenter l'opérateur
+    <span class="Li">&quot;+&quot;</span> :</p>
+<pre>(gdb) break Perl_pp_add
+Breakpoint 1 at 0x46249f: file pp_hot.c, line 309.</pre>
+<p class="Pp">Notez que nous utilisons <span class="Li">&quot;Perl_pp_add&quot;</span> et
+    pas <span class="Li">&quot;pp_add&quot;</span> - voir &quot;Internal
+    Functions&quot; dans perlguts. Avec le point d'arrêt en place, nous pouvons exécuter notre
+    programme :</p>
+<pre>(gdb) run -e '$y = &quot;6XXXX&quot;; $z = 2.3; $x = $y + $z'</pre>
+<p class="Pp">Beaucoup d'informations passeront pendant que gdb lit les fichiers source
+    et les bibliothèques pertinents, puis :</p>
+<pre>Breakpoint 1, Perl_pp_add () at pp_hot.c:309
+1396    dSP; dATARGET; bool useleft; SV *svl, *svr;
+(gdb) step
+311           dPOPTOPnnrl_ul;
+(gdb)</pre>
+<p class="Pp">Nous avons examiné ce bout de code précédemment, et nous avons dit que
+    <span class="Li">&quot;dPOPTOPnnrl_ul&quot;</span> arrange pour que deux
+    caractères <span class="Li">&quot;NV&quot;</span> soient placés dans
+    <span class="Li">&quot;left&quot;</span> et
+    <span class="Li">&quot;right&quot;</span> - élargissons-le légèrement :</p>
+<pre>#define dPOPTOPnnrl_ul  NV right = POPn; \
+                        SV *leftsv = TOPs; \
+                        NV left = USE_LEFT(leftsv) ? SvNV(leftsv) : 0.0</pre>
+<p class="Pp"><span class="Li"
+>&quot;POPn&quot;</span> prend le SV du sommet de la pile et obtient son NV soit directement (si
+    <span class="Li">&quot;SvNOK&quot;</span> est défini) soit en appelant la
+    fonction <span class="Li">&quot;sv_2nv&quot;</span>.
+    <span class="Li">&quot;TOPs&quot;</span> prend le prochain SV du sommet de la
+    pile - oui, <span class="Li">&quot;POPn&quot;</span> utilise
+    <span class="Li">&quot;TOPs&quot;</span> - mais ne le retire pas. Nous utilisons ensuite
+    <span class="Li">&quot;SvNV&quot;</span> pour obtenir le NV de
+    <span class="Li">&quot;leftsv&quot;</span> de la même manière qu'auparavant - oui,
+    <span class="Li">&quot;POPn&quot;</span> utilise
+    <span class="Li">&quot;SvNV&quot;</span>.</p>
+<p class="Pp">Comme nous n'avons pas de NV pour <span class="Li">$y</span>, nous devons utiliser
+    <span class="Li">&quot;sv_2nv&quot;</span> pour le convertir. Si nous continuons l'exécution pas à pas, nous nous retrouverons là :</p>
+<pre>(gdb) step
+Perl_sv_2nv (sv=0xa0675d0) at sv.c:1669
+1669        if (!sv)</pre>
+<p class="Pp">Nous pouvons maintenant utiliser <span class="Li">&quot;Perl_sv_dump&quot;</span> pour
+    examiner le SV :</p>
+<pre>(gdb) print Perl_sv_dump(sv)
+SV = PV(0xa057cc0) at 0xa0675d0
+REFCNT = 1
+FLAGS = (POK,pPOK)
+PV = 0xa06a510 &quot;6XXXX&quot;\0
+CUR = 5
+LEN = 6
+$1 = void</pre>
+<p class="Pp">Nous savons que nous allons obtenir <span class="Li">6</span> de cela, alors terminons la sous-routine :</p>
+<pre>(gdb) finish
+Run till exit from #0  Perl_sv_2nv (sv=0xa0675d0) at sv.c:1671
+0x462669 in Perl_pp_add () at pp_hot.c:311
+311           dPOPTOPnnrl_ul;</pre>
+<p class="Pp">Nous pouvons également examiner cet op : l'op actuel est toujours stocké dans
+    <span class="Li">&quot;PL_op&quot;</span>, et nous pouvons l'examiner avec
+    <span class="Li">&quot;Perl_op_dump&quot;</span>. Cela nous donnera un résultat similaire au module CPAN B::Debug.</p>
+<pre>(gdb) print Perl_op_dump(PL_op)
+{
+13  TYPE = add  ===&gt; 14
+    TARG = 1
+    FLAGS = (SCALAR,KIDS)
+    {
+        TYPE = null  ===&gt; (12)
+          (was rv2sv)
+        FLAGS = (SCALAR,KIDS)
+        {
+11          TYPE = gvsv  ===&gt; 12
+            FLAGS = (SCALAR)
+            GV = main::b
+        }
+    }</pre>
+<p class="Pp"># terminer ceci plus tard #</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_gdb_pour_examiner_des_parties_spécifiques_d\'un_programme'><a class='permalink' href='#Utilisation_de_gdb_pour_examiner_des_parties_spécifiques_d\'un_programme'>Utilisation   de gdb pour examiner des parties spécifiques d'un programme</a></h2>
+<p class="Pp">Avec l'exemple ci-dessus, vous saviez chercher
+    <span class="Li">&quot;Perl_pp_add&quot;</span>, mais s'il y avait plusieurs appels à celui-ci partout, ou si vous ne saviez pas quel op vous cherchiez ?</p>
+<p class="Pp">Une façon de faire cela est d'injecter un appel rare quelque part près de ce que vous cherchez. Par exemple, vous pourriez ajouter
+    <span class="Li">&quot;study&quot;</span> avant votre méthode :</p>
+<pre>study;</pre>
+<p class="Pp">Et dans gdb, faire :</p>
+<pre>(gdb) break Perl_pp_study</pre>
+<p class="Pp">Puis continuer pas à pas jusqu'à ce que vous trouviez ce que vous cherchez. Cela fonctionne bien dans une boucle si vous ne voulez vous arrêter qu'à certaines itérations :</p>
+<pre>for my $i (1..100) {
+    study if $i == 50;
+}</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Utilisation_de_gdb_pour_examiner_ce_que_font_le_parseur/lexeur'><a class='permalink' href='#Utilisation_de_gdb_pour_examiner_ce_que_font_le_parseur/lexeur'>Utilisation   de gdb pour examiner ce que font le parseur/lexeur</a></h2>
+<p class="Pp">Si vous voulez voir ce que fait perl lors de l'analyse syntaxique/lexicale de votre code, vous pouvez utiliser
+    <span class="Li">&quot;BEGIN {}&quot;</span> :</p>
+<pre>print &quot;Avant\n&quot;;
+BEGIN { study; }
+print &quot;Après\n&quot;;</pre>
+<p class="Pp">Et dans gdb :</p>
+<pre>(gdb) break Perl_pp_study</pre>
+<p class="Pp">Si vous voulez voir ce que le parseur/lexeur fait à l'intérieur des blocs
+    <span class="Li">&quot;if&quot;</span> et autres, vous devez être un peu plus astucieux :</p>
+<pre>if ($x &amp;&amp; $y &amp;&amp; do { BEGIN { study } 1 } &amp;&amp; $z) { ... }</pre>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ANALYSE_STATIQUE_DU_CODE_SOURCE'><a class='permalink' href='#ANALYSE_STATIQUE_DU_CODE_SOURCE'>ANALYSE   STATIQUE DU CODE SOURCE</a></h1>
+<p class="Pp">Divers outils existent pour analyser le code source C **statiquement**,
+    par opposition à **dynamiquement**, c'est-à-dire sans exécuter le code. Il est
+    possible de détecter les fuites de ressources, les comportements indéfinis, les
+    incompatibilités de types, les problèmes de portabilité, les chemins de code qui
+    causeraient des accès mémoire illégaux, et d'autres problèmes similaires en
+    analysant simplement le code C et en examinant le graphe résultant, ce qu'il dit
+    sur l'exécution et les flux de données. En fait, c'est ainsi que les compilateurs C
+    savent donner des avertissements sur du code douteux.</p>
+<section class="Ss">
+<h2 class="Ss" id='lint'><a class='permalink' href='#lint'>lint</a></h2>
+<p class="Pp">Le bon vieil inspecteur de qualité du code C,
+    <span class="Li">&quot;lint&quot;</span>, est disponible sur plusieurs plateformes,
+    mais veuillez noter qu'il existe plusieurs implémentations différentes par
+    différents fournisseurs, ce qui signifie que les options ne sont pas identiques
+    d'une plateforme à l'autre.</p>
+<p class="Pp">Il y a une cible
+    <span class="Li">&quot;lint&quot;</span> dans le Makefile, mais vous devrez peut-être ajuster les options (voir ci-dessus).</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Coverity'><a class='permalink' href='#Coverity'>Coverity</a></h2>
+<p class="Pp">Coverity (<a href='https://www.coverity.com/'>https://www.coverity.com/</a>) est un produit similaire à lint et, comme banc d'essai pour leur produit, ils vérifient périodiquement plusieurs projets open source, et ils accordent des comptes aux développeurs open source pour accéder aux bases de données de défauts.</p>
+<p class="Pp">Il existe une configuration Coverity pour le projet perl5 :
+    <a href='https://scan.coverity.com/projects/perl5'>https://scan.coverity.com/projects/perl5</a></p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='HP-UX_cadvise_(Code_Advisor)'><a class='permalink' href='#HP-UX_cadvise_(Code_Advisor)'>HP-UX   cadvise (Code Advisor)</a></h2>
+<p class="Pp">HP a un produit d'analyse statique C/C++ pour HP-UX appelé Code Advisor. (Lien non donné ici car l'URL est horriblement longue et semble horriblement instable ; utilisez votre moteur de recherche préféré pour le trouver.) L'utilisation de la recette
+    <span class="Li">&quot;cadvise_cc&quot;</span> avec
+    <span class="Li">&quot;Configure ...</span>
+    <span class="Li">-Dcc=./cadvise_cc&quot;</span> (voir le guide de l'utilisateur de cadvise) est recommandée ; tout comme l'utilisation de
+    <span class="Li">&quot;+wall&quot;</span>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='cpd_(détecteur_de_copier-coller)'><a class='permalink' href='#cpd_(détecteur_de_copier-coller)'>cpd   (détecteur de copier-coller)</a></h2>
+<p class="Pp">L'outil cpd détecte le code copié-collé. Si une instance du code copié-collé change, tous les autres endroits devraient probablement être modifiés aussi. Par conséquent, un tel code devrait probablement être transformé en sous-routine ou en macro.</p>
+<p class="Pp">cpd
+    (<a href='https://docs.pmd-code.org/latest/pmd_userdocs_cpd.html'>https://docs.pmd-code.org/latest/pmd_userdocs_cpd.html</a>) fait partie
+    du projet pmd (<a href='https://pmd.github.io/'>https://pmd.github.io/</a>). pmd a été écrit à l'origine pour l'analyse statique du code Java, mais plus tard, la partie cpd a été étendue pour analyser également le C et le C++.</p>
+<p class="Pp">Téléchargez le fichier pmd-bin-X.Y.zip () depuis le site SourceForge, extrayez le fichier pmd-X.Y.jar, puis exécutez-le sur le code source ainsi :</p>
+<pre>java -cp pmd-X.Y.jar net.sourceforge.pmd.cpd.CPD \
+ --minimum-tokens 100 --files /some/where/src --language c &gt; cpd.txt</pre>
+<p class="Pp">Vous pourriez rencontrer des limites de mémoire, auquel cas vous devriez utiliser l'option -Xmx :</p>
+<pre>java -Xmx512M ...</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='avertissements_gcc'><a class='permalink' href='#avertissements_gcc'>avertissements   gcc</a></h2>
+<p class="Pp">Bien que l'on puisse beaucoup écrire sur l'incohérence et les problèmes de couverture des avertissements gcc (comme "-Wall" ne signifiant pas "tous les avertissements", ou certains problèmes de portabilité courants n'étant pas couverts par "-Wall", ou "-ansi" et "-pedantic" étant tous deux une collection mal définie d'avertissements, etc.), gcc reste un outil utile pour garder notre code propre.</p>
+<p class="Pp">L'option "-Wall" est activée par défaut.</p>
+<p class="Pp">Il serait souhaitable que "-pedantic" soit toujours activé, mais malheureusement, il n'est pas sûr sur toutes les plateformes - par exemple, il entre en conflit fatal avec les en-têtes système (Solaris en étant un exemple primordial). Si Configure est exécuté avec "-Dgccansipedantic", le frontend "cflags" sélectionne "-pedantic" pour les plateformes où il est connu pour être sûr.</p>
+<p class="Pp">Les options supplémentaires suivantes sont ajoutées :</p>
+<ul class="Bl-bullet">
+  <li><span class="Li">&quot;-Wendif-labels&quot;</span></li>
+  <li><span class="Li">&quot;-Wextra&quot;</span></li>
+  <li><span class="Li">&quot;-Wc++-compat&quot;</span></li>
+  <li><span class="Li">&quot;-Wwrite-strings&quot;</span></li>
+  <li><span class="Li">&quot;-Werror=pointer-arith&quot;</span></li>
+  <li><span class="Li">&quot;-Werror=vla&quot;</span></li>
+</ul>
+<p class="Pp">Les options suivantes seraient souhaitables mais nécessiteraient d'abord leur propre Augean stablemaster :</p>
+<ul class="Bl-bullet">
+  <li><span class="Li">&quot;-Wshadow&quot;</span></li>
+  <li><span class="Li">&quot;-Wstrict-prototypes&quot;</span></li>
+</ul>
+<p class="Pp">L'option "-Wtraditional" est un autre exemple de la tendance agaçante de gcc à regrouper de nombreux avertissements sous un seul commutateur (il serait impossible de le déployer en pratique car il se plaindrait beaucoup) mais elle contient certains avertissements qui seraient bénéfiques d'avoir disponibles séparément, tels que l'avertissement concernant les constantes de chaîne à l'intérieur des macros contenant les arguments de la macro : cela se comportait différemment avant l'ANSI de ce qu'il fait en ANSI, et certains compilateurs C sont encore en transition, AIX en étant un exemple.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Avertissements_d\'autres_compilateurs_C'><a class='permalink' href='#Avertissements_d\'autres_compilateurs_C'>Avertissements   d'autres compilateurs C</a></h2>
+<p class="Pp">D'autres compilateurs C (oui, il **existe** d'autres compilateurs C que gcc) ont souvent leurs modes "strict ANSI" ou "strict ANSI avec quelques extensions de portabilité" activés, comme par exemple le Sun Workshop qui a son mode "-Xa" activé (bien qu'implicitement), ou DEC (aujourd'hui HP...) qui a son mode "-std1" activé.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DÉBOGAGEURS_DE_MÉMOIRE'><a class='permalink' href='#DÉBOGAGEURS_DE_MÉMOIRE'>DÉBOGAGEURS   DE MÉMOIRE</a></h1>
+<p class="Pp">**NOTE 1** : L'exécution sous d'anciens débogueurs de mémoire tels que
+    Purify, valgrind ou Third Degree ralentit considérablement l'exécution : les
+    secondes deviennent des minutes, les minutes deviennent des heures. Par exemple, à partir de Perl 5.8.1, le test
+    <i>ext/Encode/t/Unicode.t</i> prend extraordinairement longtemps à s'exécuter
+    sous par exemple Purify, Third Degree et valgrind. Sous valgrind, cela prend plus
+    de six heures, même sur un ordinateur performant. Ce test doit faire quelque chose
+    qui est assez peu vriend envers les débogueurs de mémoire. Si vous n'avez pas envie
+    d'attendre, vous pouvez simplement tuer le processus perl. Valgrind ralentit
+    l'exécution d'un facteur 10 environ, AddressSanitizer d'un facteur 2.</p>
+<p class="Pp">**NOTE 2** : Pour minimiser le nombre de fausses alarmes de fuite de mémoire
+    (voir "PERL_DESTRUCT_LEVEL" pour plus d'informations), vous devez définir la variable d'environnement
+    <span class="Li">&quot;PERL_DESTRUCT_LEVEL&quot;</span></p><span>&quot;</span> pour 2. Par exemple,
+    comme ceci :</p>
+<pre>env PERL_DESTRUCT_LEVEL=2 valgrind ./perl -Ilib ...</pre>
+<p class="Pp"><b>NOTE 3</b> : Il y a des fuites de mémoire connues lorsqu'il y a
+    des erreurs de compilation dans <span class="Li">&quot;eval&quot;</span> ou
+    <span class="Li">&quot;require&quot;</span> ; voir
+    <span class="Li">&quot;S_doeval&quot;</span> dans la pile d'appels est un bon
+    indicateur de ces problèmes. Corriger ces fuites n'est malheureusement pas trivial, mais elles devront être corrigées un jour.</p>
+<p class="Pp"><b>NOTE 4</b> : DynaLoader ne fera pas un nettoyage complet après
+    lui-même à moins que Perl ne soit compilé avec l'option Configure
+    <span class="Li">&quot;-Accflags=-DDL_UNLOAD_ALL_AT_EXIT&quot;</span>.</p>
+<section class="Ss">
+<h2 class="Ss" id='valgrind'><a class='permalink' href='#valgrind'>valgrind</a></h2>
+<p class="Pp">L'outil valgrind peut être utilisé pour identifier les fuites de
+    mémoire et les accès illégaux à la mémoire du tas. Depuis la version 3.3.0,
+    Valgrind ne prend en charge que Linux sur x86, x86-64 et PowerPC, ainsi que
+    Darwin (OS X) sur x86 et x86-64. La cible spéciale &quot;test.valgrind&quot;
+    peut être utilisée pour exécuter les tests sous valgrind. Les erreurs trouvées
+    et les fuites de mémoire sont enregistrées dans des fichiers nommés
+    <i>testfile.valgrind</i> et, par défaut, la sortie est affichée en ligne.</p>
+<p class="Pp">Exemple d'utilisation :</p>
+<pre>make test.valgrind</pre>
+<p class="Pp">Comme valgrind ajoute une surcharge significative, les tests prendront
+    beaucoup plus de temps à s'exécuter. Les tests valgrind prennent en charge
+    l'exécution en parallèle pour aider à cela :</p>
+<pre>TEST_JOBS=9 make test.valgrind</pre>
+<p class="Pp">Notez que les deux invocations ci-dessus seront très verbeuses car la
+    mémoire accessible et la vérification des fuites sont activées par défaut.
+    Si vous souhaitez uniquement voir les erreurs pures, essayez :</p>
+<pre>VG_OPTS='-q --leak-check=no --show-reachable=no' TEST_JOBS=9 \
+    make test.valgrind</pre>
+<p class="Pp">Valgrind fournit également un outil cachegrind, invoqué sur perl
+    comme suit :</p>
+<pre>VG_OPTS=--tool=cachegrind make test.valgrind</pre>
+<p class="Pp">Étant donné que les bibliothèques système (notamment glibc) déclenchent
+    également des erreurs, valgrind permet de supprimer ces erreurs à l'aide de
+    fichiers de suppression. Le fichier de suppression par défaut qui accompagne
+    valgrind en attrape déjà un grand nombre. Certaines suppressions
+    supplémentaires sont définies dans <i>t/perl.supp</i>.</p>
+<p class="Pp">Pour obtenir valgrind et plus d'informations, voir
+    <a href='https://valgrind.org/'>https://valgrind.org/</a>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='AddressSanitizer'><a class='permalink' href='#AddressSanitizer'>AddressSanitizer</a></h2>
+<p class="Pp">AddressSanitizer (&quot;ASan&quot;) se compose d'un module
+    d'instrumentation de compilateur et d'une bibliothèque d'exécution
+    <span class="Li">&quot;malloc&quot;</span>. ASan est disponible pour une variété
+    d'architectures, de systèmes d'exploitation et de compilateurs (voir le lien
+    du projet ci-dessous). Il vérifie l'utilisation non sécurisée de la mémoire,
+    telle que l'utilisation après libération et les dépassements de tampon, et est
+    assez rapide pour que vous puissiez facilement compiler votre perl de débogage
+    ou optimisé avec lui. Les versions modernes d'ASan vérifient les fuites de
+    mémoire par défaut sur la plupart des plateformes, sinon (par exemple, x86_64
+    OS X), cette fonctionnalité peut être activée via
+    <span class="Li">&quot;ASAN_OPTIONS=detect_leaks=1&quot;</span>.</p>
+<p class="Pp">Pour compiler perl avec AddressSanitizer, votre invocation Configure
+    devrait ressembler à ceci :</p>
+<pre>sh Configure -des -Dcc=clang \
+   -Accflags=-fsanitize=address -Aldflags=-fsanitize=address \
+   -Alddlflags=-shared\ -fsanitize=address \
+   -fsanitize-blacklist=`pwd`/asan_ignore</pre>
+<p class="Pp">où ces arguments signifient :</p>
+<ul class="Bl-bullet">
+  <li>-Dcc=clang
+    <p class="Pp">Ceci doit être remplacé par le chemin complet vers votre
+        exécutable clang s'il n'est pas dans votre chemin.</p>
+  </li>
+  <li>-Accflags=-fsanitize=address
+    <p class="Pp">Compiler les sources de perl et des extensions avec
+        AddressSanitizer.</p>
+  </li>
+  <li>-Aldflags=-fsanitize=address
+    <p class="Pp">Lier l'exécutable perl avec AddressSanitizer.</p>
+  </li>
+  <li>-Alddlflags=-shared\ -fsanitize=address
+    <p class="Pp">Lier les extensions dynamiques avec AddressSanitizer. Vous
+        devez spécifier manuellement <span class="Li">&quot;-shared&quot;</span>
+        car l'utilisation de <span class="Li">&quot;-Alddlflags=-shared&quot;</span>
+        empêchera Configure de définir une valeur par défaut pour
+        <span class="Li">&quot;lddlflags&quot;</span>, qui contient généralement
+        <span class="Li">&quot;-shared&quot;</span> (au moins sous Linux).</p>
+  </li>
+  <li>-fsanitize-blacklist=`pwd`/asan_ignore
+    <p class="Pp">AddressSanitizer ignorera les fonctions listées dans le
+        fichier <span class="Li">&quot;asan_ignore&quot;</span>. (Ce fichier
+        devrait contenir une brève explication de la raison pour laquelle chaque
+        fonction est listée.)</p>
+  </li>
+</ul>
+<p class="Pp">Voir aussi
+    <a href='https://github.com/google/sanitizers/wiki/AddressSanitizer'>https://github.com/google/sanitizers/wiki/AddressSanitizer</a>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Dr_Memory'><a class='permalink' href='#Dr_Memory'>Dr   Memory</a></h2>
+<p class="Pp">Dr. Memory est un outil similaire à valgrind qui est utilisable
+    sous Windows et Linux.</p>
+<p class="Pp">Il prend en charge la vérification du tas comme
+    <span class="Li">&quot;memcheck&quot;</span> de valgrind. Il existe également
+    d'autres outils inclus.</p>
+<p class="Pp">Voir <a href='https://drmemory.org/'>https://drmemory.org/</a>.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PROFILING'><a class='permalink' href='#PROFILING'>PROFILAGE</a></h1>
+<p class="Pp">Selon votre plateforme, il existe diverses façons de profiler
+    Perl.</p>
+<p class="Pp">Il existe deux techniques couramment utilisées pour profiler les
+    exécutables : l'<i>échantillonnage temporel statistique</i> et le
+    <i>comptage de blocs de base</i>.</p>
+<p class="Pp">La première méthode prend périodiquement des échantillons du compteur
+    de programme du CPU, et comme le compteur de programme peut être corrélé avec
+    le code généré pour les fonctions, nous obtenons une vue statistique des
+    fonctions dans lesquelles le programme passe son temps. Les mises en garde sont
+    que les fonctions très petites/rapides ont une probabilité plus faible d'apparaître
+    dans le profil, et que l'interruption périodique du programme (cela est
+    généralement fait assez fréquemment, à l'échelle de la milliseconde) impose une
+    surcharge supplémentaire qui peut fausser les résultats. Le premier problème
+    peut être atténué en exécutant le code plus longtemps (en général, c'est une
+    bonne idée pour le profilage), le second problème est généralement contrôlé
+    par les outils de profilage eux-mêmes.</p>
+<p class="Pp">La seconde méthode divise le code généré en <i>blocs de base</i>.
+    Les blocs de base sont des sections de code qui ne sont entrées qu'au début et
+    ne sont sorties qu'à la fin. Par exemple, un saut conditionnel commence un bloc
+    de base. Le profilage de blocs de base fonctionne généralement en
+    <i>instrumentant</i> le code en ajoutant du code de comptabilité
+    <i>entrer bloc de base #nnnn</i> au code généré. Pendant l'exécution du code,
+    les compteurs de blocs de base sont alors mis à jour de manière appropriée. La
+    mise en garde est que le code supplémentaire ajouté peut fausser les résultats :
+    là encore, les outils de profilage essaient généralement de supprimer leurs
+    propres effets des résultats.</p>
+<section class="Ss">
+<h2 class="Ss" id='Gprof_Profiling'><a class='permalink' href='#Gprof_Profiling'>Profilage avec Gprof</a></h2>
+<p class="Pp"><i>gprof</i> est un outil de profilage disponible sur de nombreuses
+    plateformes Unix qui utilise l'<i>échantillonnage temporel statistique</i>. Vous
+    pouvez créer une version profilée de <i>perl</i> en compilant avec gcc et
+    l'indicateur <span class="Li">&quot;-pg&quot;</span>. Modifiez
+    <i>config.sh</i> ou réexécutez <i>Configure</i>. L'exécution de la version
+    profilée de Perl créera un fichier de sortie appelé <i>gmon.out</i> qui
+    contient les données de profilage collectées pendant l'exécution.</p>
+<p class="Pp">Indice rapide :</p>
+<pre>$ sh Configure -des -Dusedevel -Accflags='-pg' \
+    -Aldflags='-pg' -Alddlflags='-pg -shared' \
+    &amp;&amp; make perl
+$ ./perl ... # crée gmon.out dans le répertoire courant
+$ gprof ./perl &gt; out
+$ less out</pre>
+<p class="Pp">(vous devrez probablement ajouter
+    <span class="Li">&quot;-shared&quot;</span> à la ligne &lt;-Alddlflags&gt;
+    jusqu'à ce que RT #118199 soit résolu)</p>
+<p class="Pp">L'outil <i>gprof</i> peut ensuite afficher les données collectées
+    de diverses manières. Généralement, <i>gprof</i> comprend les options
+    suivantes :</p>
+<ul class="Bl-bullet">
+  <li>-a
+    <p class="Pp">Supprimer les fonctions définies statiquement du profil.</p>
+  </li>
+  <li>-b
+    <p class="Pp">Supprimer les descriptions détaillées du profil.</p>
+  </li>
+  <li>-e routine
+    <p class="Pp">Exclure la routine donnée et ses descendants du profil.</p>
+  </li>
+  <li>-f routine
+    <p class="Pp">Afficher uniquement la routine donnée et ses descendants dans
+        le profil.</p>
+  </li>
+  <li>-s
+    <p class="Pp">Générer un fichier récapitulatif appelé <i>gmon.sum</i> qui
+        peut ensuite être donné à des exécutions gprof ultérieures pour accumuler
+        des données sur plusieurs exécutions.</p>
+  </li>
+  <li>-z
+    <p class="Pp">Afficher les routines qui n'ont pas été utilisées.</p>
+  </li>
+</ul>
+<p class="Pp">Pour une explication plus détaillée des commandes disponibles et des
+    formats de sortie, consultez votre propre documentation locale de
+    <i>gprof</i>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='GCC_gcov_Profiling'><a class='permalink' href='#GCC_gcov_Profiling'>Profilage avec GCC gcov</a></h2>
+<p class="Pp">Le <i>profilage de blocs de base</i> est officiellement disponible
+    dans gcc 3.0 et versions ultérieures. Vous pouvez créer une version profilée de
+    <i>perl</i> en compilant avec gcc et les indicateurs
+    <span class="Li">&quot;-fprofile-arcs -ftest-coverage&quot;</span>. Modifiez
+    <i>config.sh</i> ou réexécutez <i>Configure</i>.</p>
+<p class="Pp">Indice rapide :</p>
+<pre>$ sh Configure -des -Dusedevel -Doptimize='-g' \
+    -Accflags='-fprofile-arcs -ftest-coverage' \
+    -Aldflags='-fprofile-arcs -ftest-coverage' \
+    -Alddlflags='-fprofile-arcs -ftest-coverage -shared' \
+    &amp;&amp; make perl
+$ rm -f regexec.c.gcov regexec.gcda
+$ ./perl ...
+$ gcov regexec.c
+$ less regexec.c.gcov</pre>
+<p class="Pp">(vous devrez probablement ajouter
+    <span class="Li">&quot;-shared&quot;</span> à la ligne &lt;-Alddlflags&gt;
+    jusqu'à ce que RT #118199 soit résolu)</p>
+<p class="Pp">L'exécution de la version profilée de Perl générera une sortie de
+    profil. Pour chaque fichier source, un fichier <i>.gcda</i> correspondant sera
+    créé.</p>
+<p class="Pp">Pour afficher les résultats, vous utilisez l'utilitaire
+    <i>gcov</i> (qui devrait être installé si vous avez gcc 3.0 ou plus récent
+    installé). <i>gcov</i> est exécuté sur des fichiers de code source, comme ceci :</p>
+<pre>gcov sv.c</pre>
+<p class="Pp">ce qui créera <i>sv.c.gcov</i>. Les fichiers <i>.gcov</i> contiennent
+    le code source annoté avec des fréquences d'exécution relatives indiquées par
+    des marqueurs &quot;#&quot;. Si vous souhaitez générer des fichiers
+    <i>.gcov</i> pour tous les fichiers objet profilés, vous pouvez exécuter quelque
+    chose comme ceci :</p>
+<pre>for file in `find . -name \*.gcno`
+do sh -c &quot;cd `dirname $file` &amp;&amp; gcov `basename $file .gcno`&quot;
+done</pre>
+<p class="Pp">Les options utiles de <i>gcov</i> incluent
+    <span class="Li">&quot;-b&quot;</span> qui résumera la couverture des blocs de
+    base, des branchements et des appels de fonction, et
+    <span class="Li">&quot;-c&quot;</span> qui utilisera les décomptes réels au
+    lieu des fréquences relatives. Pour plus d'informations sur l'utilisation de
+    <i>gcov</i> et le profilage de blocs de base avec gcc, consultez le dernier
+    manuel de GNU CC. À partir de gcc 4.8, il se trouve à
+    <a href='https://gcc.gnu.org/onlinedocs/gcc/Gcov-Intro.html#Gcov-Intro'>https://gcc.gnu.org/onlinedocs/gcc/Gcov-Intro.html#Gcov-Intro</a>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='callgrind_profiling'><a class='permalink' href='#callgrind_profiling'>Profilage avec callgrind</a></h2>
+<p class="Pp">callgrind est un outil valgrind pour le profilage du code source.
+    Associé à kcachegrind (une interface utilisateur basée sur Qt), il vous donne un
+    aperçu des endroits où le code prend du temps, ainsi que la possibilité d'examiner les
+    appelants, l'arbre des appels</p>
+s, et
+    plus. L'un de ses avantages est que vous pouvez l'utiliser sur des modules perl et XS qui n'ont pas
+    été compilés avec des symboles de débogage.</p>
+<p class="Pp">Si perl est compilé avec des symboles de débogage
+    (<span class="Li">&quot;-g&quot;</span>), vous pouvez afficher le code source annoté
+    et naviguer, un peu comme la sortie HTML de Devel::NYTProf.</p>
+<p class="Pp">Pour une utilisation de base :</p>
+<pre>valgrind --tool=callgrind ./perl ...</pre>
+<p class="Pp">Par défaut, il écrira la sortie dans <i>callgrind.out.PID</i>, mais
+    vous pouvez la modifier avec
+    <span class="Li">&quot;--callgrind-out-file=...&quot;</span></p>
+<p class="Pp">Pour afficher les données, faites :</p>
+<pre>kcachegrind callgrind.out.PID</pre>
+<p class="Pp">Si vous préférez afficher les données dans un terminal, vous pouvez utiliser
+    <i>callgrind_annotate</i>. Dans sa forme de base :</p>
+<pre>callgrind_annotate callgrind.out.PID | less</pre>
+<p class="Pp">Quelques options utiles :</p>
+<ul class="Bl-bullet">
+  <li>--threshold
+    <p class="Pp">Pourcentage de décomptes (de l'événement de tri principal) qui nous intéressent. La valeur par défaut est 99%. 100% peut afficher des éléments qui semblent manquants.</p>
+  </li>
+  <li>--auto
+    <p class="Pp">Annoter tous les fichiers source contenant des fonctions qui ont contribué à atteindre le seuil de décompte de l'événement.</p>
+  </li>
+</ul>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='&amp;quot;profiler&amp;quot;_profiling_(Cygwin)'><a class='permalink' href='#&amp;quot;profiler&amp;quot;_profiling_(Cygwin)'>Profilage « profiler » (Cygwin)</a></h2>
+<p class="Pp">Cygwin permet le profilage <span class="Li">&quot;gprof&quot;</span>
+    et les tests de couverture <span class="Li">&quot;gcov&quot;</span>, mais
+    cela ne profile que l'exécutable principal.</p>
+<p class="Pp">Vous pouvez utiliser l'outil <span class="Li">&quot;profiler&quot;</span>
+    pour effectuer un profilage basé sur des échantillons. Il ne nécessite aucune préparation spéciale des exécutables au-delà des symboles de débogage.</p>
+<p class="Pp">Cela produit des données d'échantillonnage qui peuvent être traitées avec
+    <span class="Li">&quot;gprof&quot;</span>.</p>
+<p class="Pp">Il y a une documentation limitée
+    <a href='https://www.cygwin.com/cygwin-ug-net/profiler.html'>https://www.cygwin.com/cygwin-ug-net/profiler.html</a> sur le site Web de Cygwin.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Visual_Studio_Profiling'><a class='permalink' href='#Visual_Studio_Profiling'>Profilage Visual Studio</a></h2>
+<p class="Pp">Vous pouvez utiliser le profiler Visual Studio pour profiler perl si vous avez
+    compilé perl avec MSVC, même si nous compilons perl en ligne de commande. Vous
+    devrez compiler perl avec <span class="Li">&quot;CFG=Debug&quot;</span>
+    ou <span class="Li">&quot;CFG=DebugSymbols&quot;</span>.</p>
+<p class="Pp">Le profiler Visual Studio est un profiler d'échantillonnage.</p>
+<p class="Pp">Consultez la documentation de Visual Studio
+    <a href='https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/profiling/beginners-guide-to-performance-profiling.md'>https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/profiling/beginners-guide-to-performance-profiling.md</a>
+    pour commencer.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ASTUCES_DIVERSES'><a class='permalink' href='#MISCELLANEOUS_TRICKS'>ASTUCES DIVERSES</a></h1>
+<section class="Ss">
+<h2 class="Ss" id='PERL_DESTRUCT_LEVEL'><a class='permalink' href='#PERL_DESTRUCT_LEVEL'>PERL_DESTRUCT_LEVEL</a></h2>
+<p class="Pp">Si vous souhaitez exécuter vous-même certains des tests manuellement en utilisant, par exemple, valgrind, veuillez noter que par défaut, perl ne nettoie **pas** explicitement toute la mémoire qu'il a allouée (telles que les arènes de mémoire globales) mais laisse plutôt le <span class="Li">exit()</span> du programme entier « s'occuper » de ces allocations, également connu sous le nom de « destruction globale des objets ».</p>
+<p class="Pp">Il existe un moyen de dire à perl d'effectuer un nettoyage complet : définissez la variable d'environnement <span class="Li">&quot;PERL_DESTRUCT_LEVEL&quot;</span>
+    à une valeur non nulle. Le wrapper <i>t/TEST</i> la définit à 2, et c'est ce que vous devez faire aussi, si vous ne voulez pas voir les « fuites globales » : Par exemple, pour exécuter sous valgrind</p>
+<pre>env PERL_DESTRUCT_LEVEL=2 valgrind ./perl -Ilib t/foo/bar.t</pre>
+<p class="Pp">(Note : le module mod_perl Apache utilise cette variable d'environnement à ses propres fins et étend sa sémantique. Référez-vous à la documentation mod_perl
+    <a href='https://perl.apache.org/docs/'>https://perl.apache.org/docs/</a> pour plus d'informations.
+    De plus, les threads lancés effectuent l'équivalent de la définition de cette variable à la valeur 1.)</p>
+<p class="Pp">Si, à la fin d'une exécution, vous obtenez le message <i>N scalaires ont fui</i>, vous pouvez recompiler avec
+    <span class="Li">&quot;-DDEBUG_LEAKING_SCALARS&quot;</span>
+    (<span class="Li">&quot;Configure</span>
+    <span class="Li">-Accflags=-DDEBUG_LEAKING_SCALARS&quot;</span>), ce qui fera afficher les adresses de tous ces SV qui ont fui ainsi que des détails sur l'endroit où chaque SV a été alloué à l'origine. Ces informations sont également affichées par Devel::Peek. Notez que les détails supplémentaires enregistrés avec chaque SV augmentent l'utilisation de la mémoire, il ne faut donc pas l'utiliser dans les environnements de production.
+    Cela convertit également <span class="Li">new_SV()</span> d'une macro en une vraie fonction, vous pouvez donc utiliser votre débogueur préféré pour découvrir où ces SV récalcitrants ont été alloués.</p>
+<p class="Pp">Si vous constatez des fuites de mémoire pendant l'exécution, mais que ni valgrind ni
+    <span class="Li">&quot;-DDEBUG_LEAKING_SCALARS&quot;</span>
+    ne trouvent quoi que ce soit, vous fuyez probablement des SV qui sont toujours accessibles et
+    qui seront correctement nettoyés lors de la destruction de l'interpréteur. Dans de tels cas, l'utilisation du commutateur
+    <span class="Li">&quot;-Dm&quot;</span> peut vous indiquer la source de la fuite. Si l'exécutable a été compilé avec
+    <span class="Li">&quot;-DDEBUG_LEAKING_SCALARS&quot;</span>,
+    <span class="Li">&quot;-Dm&quot;</span> affichera les allocations de SV en plus des allocations de mémoire. Chaque allocation de SV a un numéro de série distinct qui sera écrit lors de la création et de la destruction du SV. Donc, si vous exécutez le code qui fuit dans une boucle, vous devez rechercher les SV qui sont créés mais jamais détruits entre chaque cycle. Si un tel SV est trouvé, définissez un point d'arrêt conditionnel dans <span class="Li">new_SV()</span> et faites-le s'arrêter uniquement lorsque <span class="Li">&quot;PL_sv_serial&quot;</span> est égal au numéro de série du SV qui fuit. Vous attraperez alors l'interpréteur dans l'état exact où le SV qui fuit est alloué, ce qui est suffisant dans de nombreux cas pour trouver la source de la fuite.</p>
+<p class="Pp">Comme <span class="Li">&quot;-Dm&quot;</span> utilise la couche PerlIO pour la sortie, il allouera lui-même un grand nombre de SV, qui sont cachés pour éviter la récursion. Vous pouvez contourner la couche PerlIO si vous utilisez plutôt la journalisation des SV fournie par <span class="Li">&quot;-DPERL_MEM_LOG&quot;</span>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Leaked_SV_spotting:_&lt;b&gt;sv_mark_arenas()&lt;/b&gt;_and_&lt;b&gt;sv_sweep_arenas()&lt;/b&gt;'><a class='permalink' href='#Leaked_SV_spotting:_&lt;b&gt;sv_mark_arenas()&lt;/b&gt;_and_&lt;b&gt;sv_sweep_arenas()&lt;/b&gt;'>Repérage des SV qui ont fui : <b>sv_mark_arenas()</b> et <b>sv_sweep_arenas()</b></a></h2>
+<p class="Pp">Ces fonctions n'existent que dans les compilations
+    <span class="Li">&quot;DEBUGGING&quot;</span>. La première marque tous les SV actifs qui peuvent être trouvés dans les arènes de SV avec le drapeau
+    <span class="Li">&quot;SVf_BREAK&quot;</span>. La seconde liste tous les SV qui n'ont pas le drapeau défini, et réinitialise le drapeau sur les autres. Elles sont destinées à identifier les SV qui sont créés mais pas libérés entre deux points du code. Elles peuvent être utilisées soit en ajoutant temporairement des appels dans les endroits pertinents du code, soit en les appelant directement à partir d'un débogueur.</p>
+<p class="Pp">Par exemple, supposons que le code suivant ait été trouvé comme fuyant :</p>
+<pre>while (1) { eval '\(1..3)' }</pre>
+<p class="Pp">Une session <i>gdb</i> sur un perl threadé pourrait ressembler à ceci :</p>
+<pre>$ gdb ./perl
+(gdb) break Perl_pp_entereval
+(gdb) run -e'while (1) { eval q{\(1..3)} }'
+...
+Breakpoint 1, Perl_pp_entereval ....
+(gdb) call Perl_sv_mark_arenas(my_perl)
+(gdb) continue
+...
+Breakpoint 1, Perl_pp_entereval ....`
+(gdb) call Perl_sv_sweep_arenas(my_perl)
+Unmarked SV: 0xaf23a8: AV()
+Unmarked SV: 0xaf2408: IV(1)
+Unmarked SV: 0xaf2468: IV(2)
+Unmarked SV: 0xaf24c8: IV(3)
+Unmarked SV: 0xace6c8: PV(&quot;AV()&quot;\0)
+Unmarked SV: 0xace848: PV(&quot;IV(1)&quot;\0)
+(gdb)</pre>
+<p class="Pp">Ici, au début du premier appel à <b>pp_entereval()</b>, tous les SV existants sont marqués. Ensuite, au début du second appel, nous listons tous les SV qui ont été créés entre-temps mais pas encore libérés. Il est rapidement clair qu'un tableau et ses trois éléments ne sont probablement pas libérés, peut-être en raison d'un bug lors du repliement des constantes. Les deux derniers SV ne sont que des temporaires créés lors de la sortie de débogage et peuvent être ignorés.</p>
+<p class="Pp">Cette astuce repose sur le fait que le drapeau
+    <span class="Li">&quot;SVf_BREAK&quot;</span> n'est pas utilisé autrement.
+    Ce drapeau est généralement utilisé uniquement lors de la destruction globale, mais aussi parfois pour une opération de marquage et de balayage lors de la recherche d'éléments communs des deux côtés d'une affectation de liste. La présence du drapeau peut également modifier le comportement de certaines actions spécifiques du noyau, comme choisir de copier ou d'utiliser le COW (copy-on-write) pour un SV de chaîne. L'activer peut donc occasionnellement modifier légèrement le comportement du code.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='PERL_MEM_LOG'><a class='permalink' href='#PERL_MEM_LOG'>PERL_MEM_LOG</a></h2>
+<p class="Pp">Si compilé avec
+    <span class="Li">&quot;-DPERL_MEM_LOG&quot;</span>
+    (<span class="Li">&quot;-Accflags=-DPERL_MEM_LOG&quot;</span>), les allocations de mémoire et de SV passent par des fonctions de journalisation, ce qui est pratique pour définir des points d'arrêt.</p>
+<p class="Pp">Sauf si <span class="Li">&quot;-DPERL_MEM_LOG_NOIMPL&quot;</span>
+    (<span class="Li">&quot;-Accflags=-DPERL_MEM_LOG_NOIMPL&quot;</span>) est également compilé, les fonctions de journalisation lisent
+    <span class="Li">$ENV</span>{PERL_MEM_LOG} pour déterminer si elles doivent journaliser l'événement, et si oui, comment :</p>
+<pre>$ENV{PERL_MEM_LOG} =~ /m/           Journaliser toutes les opérations mémoire
+$ENV{PERL_MEM_LOG} =~ /s/           Journaliser toutes les opérations SV
+$ENV{PERL_MEM_LOG} =~ /c/           Journaliser en plus la trace C pour
+                                    les événements new_SV
+$ENV{PERL_MEM_LOG} =~ /t/           Inclure un horodatage dans le journal
+$ENV{PERL_MEM_LOG} =~ /^(\d+)/      Écrire sur le descripteur de fichier donné (par défaut 2)</pre>
+<p class="Pp">La journalisation de la mémoire est quelque peu similaire à
+    <span class="Li">&quot;-Dm&quot;</span> mais est indépendante de
+    <span class="Li">&quot;-DDEBUGGING&quot;</span>, et à un niveau supérieur ; toutes les utilisations de <b>Newx()</b>, <b>Renew()</b>, et <b>Safefree()</b> sont journalisées avec le fichier source et le numéro de ligne de l'appelant (et le nom de la fonction C, si supporté par le compilateur C). En revanche,
+    <span class="Li">&quot;-Dm&quot;</span> est directement au point de
+    <span class="Li">malloc()</span>. La journalisation des SV est similaire.</p>
+<p class="Pp">Étant donné que la journalisation n'utilise pas PerlIO, toutes les allocations de SV sont journalisées et aucune allocation de SV supplémentaire n'est introduite en activant la journalisation.
+    Si compilé avec
+    <span class="Li">&quot;-DDEBUG_LEAKING_SCALARS&quot;</span>, le numéro de série de chaque allocation de SV est également journalisé.</p>
+<p class="Pp">L'option <span class="Li">&quot;c&quot;</span> utilise la facilité
+    <span class="Li">&quot;Perl_c_backtrace&quot;</span>, et nécessite donc en plus le drapeau de compilation Configure
+    <span class="Li">&quot;-Dusecbacktrace&quot;</span> pour y accéder.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='DDD_over_gdb'><a class='permalink' href='#DDD_over_gdb'>DDD sur gdb</a></h2>
+<p class="Pp">Ceux qui déboguent Perl avec le frontend DDD sur gdb pourraient trouver
+    ce qui suit utile :</p>
+<p class="Pp">Vous pouvez étendre le menu des raccourcis de conversion de données,
+    de sorte que, par exemple, vous puissiez afficher la valeur IV d'un SV d'un
+    simple clic, sans avoir à taper quoi que ce soit. Pour ce faire, modifiez
+    simplement le fichier ~/.ddd/init et ajoutez après :</p>
+<pre>! Display shortcuts.
+Ddd*gdbDisplayShortcuts: \
+/t ()   // Convert to Bin\n\
+/d ()   // Convert to Dec\n\
+/x ()   // Convert to Hex\n\
+/o ()   // Convert to Oct(\n\</pre>
+<p class="Pp">les deux lignes suivantes :</p>
+<pre>((XPV*) (())-&gt;sv_any )-&gt;xpv_pv  // 2pvx\n\
+((XPVIV*) (())-&gt;sv_any )-&gt;xiv_iv // 2ivx</pre>
+<p class="Pp">ainsi, vous pouvez maintenant effectuer des recherches ivx et pvx, ou
+    vous pouvez y insérer la conversion « sv_peek » :</p>
+<pre>Perl_sv_peek(my_perl, (SV*)()) // sv_peek</pre>
+<p class="Pp">(Le my_perl est pour les compilations multi-thread.) N'oubliez pas que
+    chaque ligne, sauf la dernière, doit se terminer par \n\</p>
+<p class="Pp">Alternativement, modifiez le fichier init de manière interactive via :
+    bouton de la souris 3e -> Nouveau affichage -> Modifier le menu</p>
+<p class="Pp">Note : vous pouvez définir jusqu'à 20 raccourcis de conversion dans
+    la section gdb.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='C_backtrace'><a class='permalink' href='#C_backtrace'>C   backtrace</a></h2>
+<p class="Pp">Sur certaines plateformes, Perl prend en charge la récupération de la
+    traçabilité de pile de niveau C (similaire à ce que font les débogueurs
+    symboliques comme gdb).</p>
+<p class="Pp">La traçabilité de pile retourne la trace de la pile des cadres d'appel
+    C, avec les noms symboliques (noms de fonctions), les noms d'objets (comme
+    « perl »), et si possible, également les emplacements du code source
+    (fichier:ligne).</p>
+<p class="Pp">Les plateformes prises en charge sont Linux et OS X (certains *BSD
+    pourraient fonctionner au moins partiellement, mais ils n'ont pas encore été
+    testés).</p>
+<p class="Pp">Cette fonctionnalité n'a pas été testée avec plusieurs threads, mais
+    elle n'affichera que la traçabilité de pile du thread qui effectue la
+    traçabilité.</p>
+<p class="Pp">La fonctionnalité doit être activée avec
+    <span class="Li">&quot;Configure -Dusecbacktrace&quot;</span>.</p>
+<p class="Pp">Le <span class="Li">&quot;-Dusecbacktrace&quot;</span> active également
+    la conservation des informations de débogage lors de la compilation/édition
+    des liens (souvent : <span class="Li">&quot;-g&quot;</span>). De nombreux
+    compilateurs/éditeurs de liens prennent en charge à la fois l'optimisation
+    et la conservation des informations de débogage. Les informations de
+    débogage sont nécessaires pour les noms symboliques et les emplacements des
+    sources.</p>
+<p class="Pp">Les fonctions statiques pourraient ne pas être visibles pour la
+    traçabilité de pile.</p>
+<p class="Pp">Les emplacements du code source, même s'ils sont disponibles, peuvent
+    souvent manquer ou être trompeurs si le compilateur a, par exemple, intégré
+    du code. L'optimiseur peut rendre la mise en correspondance du code source et
+    du code objet assez difficile.</p>
+<dl class="Bl-tag">
+  <dt id="Linux"><a class="permalink" href="#Linux">Linux</a></dt>
+  <dd>Vous <b>devez</b> avoir la bibliothèque BFD (-lbfd) installée, sinon
+      <span class="Li">&quot;perl&quot;</span> échouera à lier. BFD est
+      généralement distribué dans le cadre des binutils GNU.
+    <p class="Pp">Résumé : <span class="Li">&quot;Configure ...
+        -Dusecbacktrace&quot;</span> et vous avez besoin de
+        <span class="Li">&quot;-lbfd&quot;</span>.</p>
+  </dd>
+  <dt id="OS"><a class="permalink" href="#OS">OS X</a></dt>
+  <dd>Les emplacements du code source sont pris en charge <b>uniquement</b> si
+      vous avez installé les Outils de Développement. (BFD n'est <b>pas</b>
+      nécessaire.)
+    <p class="Pp">Résumé : <span class="Li">&quot;Configure ...
+        -Dusecbacktrace&quot;</span> et l'installation des Outils de
+        Développement serait une bonne chose.</p>
+  </dd>
+</dl>
+<p class="Pp">Facultativement, pour essayer la fonctionnalité, vous pourriez vouloir
+    activer le vidage automatique de la traçabilité de pile juste avant qu'un
+    message d'avertissement ou de croak (die) ne soit émis, en ajoutant
+    <span class="Li">&quot;-Accflags=-DUSE_C_BACKTRACE_ON_ERROR&quot;</span> pour
+    Configure.</p>
+<p class="Pp">Sauf si la fonctionnalité supplémentaire ci-dessus est activée, rien
+    concernant la fonctionnalité de traçabilité de pile n'est visible, à part au
+    niveau Perl/XS.</p>
+<p class="Pp">De plus, même si vous avez activé cette fonctionnalité pour être
+    compilée, vous devez l'activer à l'exécution avec une variable d'environnement :
+    <span class="Li">&quot;PERL_C_BACKTRACE_ON_ERROR=10&quot;</span>. Elle doit être
+    un entier supérieur à zéro, indiquant le nombre d'images souhaité.</p>
+<p class="Pp">La récupération de la traçabilité de pile depuis le niveau Perl
+    (en utilisant par exemple une extension XS) serait beaucoup moins
+    excitante que ce que l'on pourrait espérer : normalement, vous verriez
+    <span class="Li">&quot;runops&quot;</span>,
+    <span class="Li">&quot;entersub&quot;</span>, et pas grand-chose d'autre. Cette
+    API est destinée à être appelée <b>depuis l'intérieur</b> de l'implémentation
+    de Perl, pas depuis l'exécution au niveau Perl.</p>
+<p class="Pp">L'API C pour la traçabilité de pile est la suivante :</p>
+<dl class="Bl-tag">
+  <dt id="get_c_backtrace"><a class="permalink" href="#get_c_backtrace">get_c_backtrace</a></dt>
+  <dd></dd>
+  <dt id="free_c_backtrace"><a class="permalink" href="#free_c_backtrace">free_c_backtrace</a></dt>
+  <dd></dd>
+  <dt id="get_c_backtrace_dump"><a class="permalink" href="#get_c_backtrace_dump">get_c_backtrace_dump</a></dt>
+  <dd></dd>
+  <dt id="dump_c_backtrace"><a class="permalink" href="#dump_c_backtrace">dump_c_backtrace</a></dt>
+  <dd></dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Poison'><a class='permalink' href='#Poison'>Poison</a></h2>
+<p class="Pp">Si vous voyez dans un débogueur une zone mémoire mystérieusement remplie
+    de 0xABABABAB ou 0xEFEFEFEF, vous pourriez voir l'effet des macros
+    <b>Poison()</b>, voir perlclib.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Read-only_optrees'><a class='permalink' href='#Read-only_optrees'>Read-only   optrees</a></h2>
+<p class="Pp">Sous ithreads, l'arbre d'options (optree) est en lecture seule. Si vous
+    souhaitez appliquer cela, pour vérifier les écritures provenant de code
+    défectueux, compilez avec
+    <span class="Li">&quot;-Accflags=-DPERL_DEBUG_READONLY_OPS&quot;</span> pour
+    activer le code qui alloue la mémoire des ops via
+    <span class="Li">&quot;mmap&quot;</span>, et la définit en lecture seule lorsqu'elle
+    est attachée à une sous-routine. Toute écriture sur une op entraînera un
+    <span class="Li">&quot;SIGBUS&quot;</span> et un arrêt.</p>
+<p class="Pp">Ce code est destiné au développement uniquement, et peut ne pas être
+    portable même sur toutes les variantes Unix. De plus, c'est une solution à 80%,
+    en ce sens qu'elle n'est pas capable de rendre toutes les ops en lecture seule.
+    Plus spécifiquement, elle ne s'applique pas aux blocs d'ops appartenant aux
+    blocs <span class="Li">&quot;BEGIN&quot;</span>.</p>
+<p class="Pp">Cependant, en tant que solution à 80%, elle est toujours efficace,
+    car elle a détecté des bogues par le passé.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='When_is_a_bool_not_a_bool?'><a class='permalink' href='#When_is_a_bool_not_a_bool?'>When   is a bool not a bool?</a></h2>
+<p class="Pp">Il n'y avait pas nécessairement de type
+    <span class="Li">&quot;bool&quot;</span> standard sur les compilateurs avant
+    C99, et donc certaines solutions de contournement ont été créées. Les macros
+    <span class="Li">&quot;TRUE&quot;</span> et
+    <span class="Li">&quot;FALSE&quot;</span> sont toujours disponibles comme
+    alternatives à <span class="Li">&quot;true&quot;</span> et
+    <span class="Li">&quot;false&quot;</span>. Et la macro
+    <span class="Li">&quot;cBOOL&quot;</span> a été créée pour caster correctement
+    vers une valeur vraie/fausse dans toutes les circonstances, mais elle ne devrait
+    plus être nécessaire. L'utilisation de
+    <span class="Li">&quot;(bool)&quot;</span>&#x00A0;<i>expr</i> devrait
+    maintenant toujours fonctionner.</p>
+<p class="Pp">Il n'est pas prévu de supprimer <span class="Li">&quot;TRUE&quot;</span>,
+    <span class="Li">&quot;FALSE&quot;</span>, ni
+    <span class="Li">&quot;cBOOL&quot;</span>.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Finding_unsafe_truncations'><a class='permalink' href='#Finding_unsafe_truncations'>Finding   unsafe truncations</a></h2>
+<p class="Pp">Vous pourriez souhaiter exécuter <span class="Li">&quot;Configure&quot;</span>
+    avec quelque chose comme</p>
+<pre>-Accflags='-Wconversion -Wno-sign-conversion -Wno-shorten-64-to-32'</pre>
+<p class="Pp">ou l'équivalent de votre compilateur pour faciliter la détection de
+    toute troncature non sécurisée qui apparaîtrait.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='The_.i_Targets'><a class='permalink' href='#The_.i_Targets'>The   .i Targets</a></h2>
+<p class="Pp">Vous pouvez développer les macros dans un fichier <i>foo.c</i> en
+    disant</p>
+<pre>make foo.i</pre>
+<p class="Pp">ce qui développera les macros en utilisant cpp. Ne vous laissez pas
+    effrayer par les résultats.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHOR'><a class='permalink' href='#AUTHOR'>AUTHOR</a></h1>
+<p class="Pp">Ce document a été initialement écrit par Nathan Torkington, et est
+    maintenu par la liste de diffusion perl5-porters.</p>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-07-13</td>
+    <td class="foot-os">perl v5.42.0</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/core/x86_64/perl/">core/perl</a></dd>
+        <dt>Version :</dt>
+        <dd>5.42.0-1</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://www.perl.org">https://www.perl.org</a></dd>
+        <dt>Licences :</dt>
+        <dd>Artistic-1.0-Perl OR GPL-1.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/core/perl/">/listing/core/perl/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#COMMON_PROBLEMS">PROBLÈMES COURANTS</a></li>
+        
+            <li><a href="#DEBUGGING">DÉBOGAGE</a></li>
+        
+            <li><a href="#SOURCE_CODE_STATIC_ANALYSIS">ANALYSE STATIQUE DU CODE SOURCE</a></li>
+        
+            <li><a href="#MEMORY_DEBUGGERS">DÉBOGUEURS MÉMOIRE</a></li>
+        
+            <li><a href="#PROFILING">PROFILAGE</a></li>
+        
+            <li><a href="#MISCELLANEOUS_TRICKS">ASTUCES DIVERSES</a></li>
+        
+            <li><a href="#AUTHOR">AUTEUR</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/perlhacktips.1perl.fr.txt">txt</a>, 
+        
+            <a href="/man/perlhacktips.1perl.fr.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site Web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               sauf pour le contenu des pages de manuel, qui ont leur propre licence spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

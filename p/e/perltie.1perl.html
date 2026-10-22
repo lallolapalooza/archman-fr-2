@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>perltie(1perl) — Pages man Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">perltie.1perl</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PERLTIE(1perl)</td>
+    <td class="head-vol">Guide du programmeur Perl</td>
+    <td class="head-rtitle">PERLTIE(1perl)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NAME'><a class='permalink' href='#NAME'>NOM</a></h1>
+<p class="Pp">perltie — comment masquer une classe d'objet dans une variable simple</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='SYNOPSIS'><a class='permalink' href='#SYNOPSIS'>SYNOPSIS</a></h1>
+<pre>tie VARIABLE, CLASSE, LISTE
+$objet = tied VARIABLE
+untie VARIABLE</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">Avant la sortie 5.0 de Perl, un programmeur pouvait utiliser
+    <b>dbmopen()</b> pour connecter une base de données sur disque au format
+    standard Unix <a href='/man/dbm.3x.en'>dbm(3x)</a> à une <span class="Li">%HASH</span>
+    dans son programme. Cependant, son Perl était soit construit avec une
+    bibliothèque dbm particulière, soit une autre, et vous ne pouviez pas étendre
+    ce mécanisme à d'autres packages ou types de variables.</p>
+<p class="Pp">Maintenant, vous pouvez.</p>
+<p class="Pp">La fonction <b>tie()</b> lie une variable à une classe (package)
+    qui fournira l'implémentation des méthodes d'accès pour cette variable. Une fois
+    cette magie effectuée, l'accès à une variable liée déclenche automatiquement
+    des appels de méthodes dans la classe appropriée. La complexité de la classe
+    est masquée derrière des appels de méthodes magiques. Les noms des méthodes
+    sont en MAJUSCULES, ce qui est une convention utilisée par Perl pour indiquer
+    qu'elles sont appelées implicitement plutôt qu'explicitement — tout comme
+    les fonctions <b>BEGIN()</b> et <b>END()</b>.</p>
+<p class="Pp">Dans l'appel <b>tie()</b>,
+    <span class="Li">&quot;VARIABLE&quot;</span> est le nom de la variable à
+    enchanter. <span class="Li">&quot;CLASSE&quot;</span> est le nom d'une
+    classe implémentant des objets du type correct. Tous les arguments supplémentaires
+    dans la <span class="Li">&quot;LISTE&quot;</span> sont passés à la méthode
+    constructeur appropriée pour cette classe — c'est-à-dire <b>TIESCALAR()</b>,
+    <b>TIEARRAY()</b>, <b>TIEHASH()</b>, ou <b>TIEHANDLE()</b>. (Typiquement,
+    ce sont des arguments qui pourraient être passés à la fonction
+    <b>dbminit()</b> en C.) L'objet retourné par la méthode « new » est
+    également retourné par la fonction <b>tie()</b>, ce qui serait utile si vous
+    vouliez accéder à d'autres méthodes dans <span class="Li">&quot;CLASSE&quot;</span>.
+    (Vous n'avez pas réellement à retourner une référence vers le bon « type »
+    (par exemple, HASH ou <span class="Li">&quot;CLASSE&quot;</span>) tant que c'est
+    un objet correctement béni.) Vous pouvez également récupérer une référence
+    vers l'objet sous-jacent en utilisant la fonction <b>tied()</b>.</p>
+<p class="Pp">Contrairement à <b>dbmopen()</b>, la fonction <b>tie()</b> ne
+    <span class="Li">&quot;utilise&quot;</span> ni ne
+    <span class="Li">&quot;requiert&quot;</span> un module pour vous — vous devez
+    le faire vous-même explicitement.</p>
+<section class="Ss">
+<h2 class="Ss" id='Liaison_des_Scalaires'><a class='permalink' href='#Liaison_des_Scalaires'>Liaison des Scalaires</a></h2>
+<p class="Pp">Une classe implémentant un scalaire lié doit définir les méthodes
+    suivantes : TIESCALAR, FETCH, STORE, et éventuellement UNTIE et/ou
+    DESTROY.</p>
+<p class="Pp">Examinons chacune à tour de rôle, en utilisant comme exemple une
+    classe de liaison pour scalaires qui permet à l'utilisateur de faire quelque
+    chose comme :</p>
+<pre>tie $his_speed, 'Nice', getppid();
+tie $my_speed,  'Nice', $$;</pre>
+<p class="Pp">Et maintenant, chaque fois que ces variables sont accédées, leur
+    priorité système actuelle est récupérée et retournée. Si ces variables sont
+    définies, alors la priorité du processus est modifiée !</p>
+<p class="Pp">Nous utiliserons la classe BSD::Resource de Jarkko Hietaniemi
+    &lt;<i>jhi@iki.fi</i>&gt; (non incluse) pour accéder aux constantes
+    PRIO_PROCESS, PRIO_MIN et PRIO_MAX de votre système, ainsi qu'aux appels système
+    <b>getpriority()</b> et <b>setpriority()</b>. Voici le préambule de la
+    classe.</p>
+<pre>package Nice;
+use Carp;
+use BSD::Resource;
+use strict;
+$Nice::DEBUG = 0 unless defined $Nice::DEBUG;</pre>
+<dl class="Bl-tag">
+  <dt id="TIESCALAR"><a class="permalink" href="#TIESCALAR">TIESCALAR classe,
+    LISTE</a></dt>
+  <dd>C'est le constructeur de la classe. Cela signifie qu'il est censé retourner
+      une référence bénie vers un nouveau scalaire (probablement anonyme) qu'il
+      crée. Par exemple :
+        <pre>sub TIESCALAR {
+    my $class = shift;
+    my $pid = shift || $$; # 0 signifie moi
+    if ($pid !~ /^\d+$/) {
+        carp &quot;Nice::Tie::Scalar got non-numeric pid $pid&quot; if $^W;
+        return undef;
+    }
+    unless (kill 0, $pid) { # EPERM ou ERSCH, sans doute
+        carp &quot;Nice::Tie::Scalar got bad pid $pid: $!&quot; if $^W;
+        return undef;
+    }
+    return bless \$pid, $class;
+}
+</pre>
+    <p class="Pp">Cette classe de liaison a choisi de retourner une erreur plutôt
+        que de lever une exception si son constructeur échoue. Bien que ce soit
+        ainsi que fonctionne <b>dbmopen()</b>, d'autres classes pourraient ne
+        pas vouloir être aussi indulgentes. Elle vérifie la variable globale
+        <span class="Li">$^W</span> pour voir si elle doit émettre un peu de bruit
+        quand même.</p>
+  </dd>
+  <dt id="FETCH"><a class="permalink" href="#FETCH">FETCH $self</a></dt>
+  <dd>Cette méthode sera déclenchée à chaque fois que la variable liée est
+      accédée (lue). Elle ne prend aucun argument au-delà de sa propre référence,
+      qui est l'objet représentant le scalaire que nous traitons. Comme dans cet
+      exemple, nous utilisons juste une référence SCALAR pour l'objet scalaire
+      lié, un simple $$self permet à la méthode d'accéder à la valeur réelle
+      stockée. Dans notre exemple ci-dessous, cette valeur réelle est l'identifiant
+      du processus auquel nous avons lié notre variable.
+        <pre>sub FETCH {
+    my $self = shift;
+    confess &quot;wrong type&quot; unless ref $self;
+    croak &quot;usage error&quot; if @_;
+    my $nicety;
+    local($!) = 0;
+    $nicety = getpriority(PRIO_PROCESS, $$self);
+    if ($!) { croak &quot;getpriority failed: $!&quot; }
+    return $nicety;
+}
+</pre>
+    <p class="Pp">Cette fois, nous avons décidé d'exploser (lever une exception)
+        si le renice échoue — il n'y a pas d'autre endroit où nous pourrions
+        retourner une erreur, et c'est probablement la bonne chose à faire.</p>
+  </dd>
+  <dt id="STORE"><a class="permalink" href="#STORE">STORE $self, valeur</a></dt>
+  <dd>Cette méthode sera déclenchée chaque fois que la variable liée est définie
+      (affectée). Au-delà de sa propre référence, elle attend également un (et un seul)
+      argument : la nouvelle valeur que l'utilisateur essaie d'affecter. Ne vous
+      souciez pas de retourner une valeur de STORE ; la sémantique d'une affectation
+      retournant la valeur affectée est implémentée avec FETCH.
+        <pre>sub STORE {
+    my $self = shift;
+    confess &quot;wrong type&quot; unless ref $self;
+    my $new_nicety = shift;
+    croak &quot;usage error&quot; if @_;
+    if ($new_nicety &lt; PRIO_MIN) {
+        carp sprintf
+          &quot;WARNING: priority %d less than minimum system priority %d&quot;,
+              $new_nicety, PRIO_MIN if $^W;
+        $new_nicety = PRIO_MIN;
+    }
+    if ($new_nicety &gt; PRIO_MAX) {
+        carp sprintf
+          &quot;WARNING: priority %d greater than maximum system priority %d&quot;,
+              $new_nicety, PRIO_MAX if $^W;
+        $new_nicety = PRIO_MAX;
+    }
+    unless (defined setpriority(PRIO_PROCESS,
+                                $$self,
+                                $new_nicety))
+    {
+        confess &quot;setpriority failed: $!&quot;;
+    }
+}
+</pre>
+  </dd>
+  <dt id="UNTIE"><a class="permalink" href="#UNTIE">UNTIE $self</a></dt>
+  <dd>Cette méthode sera déclenchée lorsque le
+      <span class="Li">&quot;untie&quot;</span> se produira. Cela peut être utile si
+      la classe doit savoir quand plus aucun appel ne sera effectué. (Sauf
+      DESTROY bien sûr.) Voir « Le piège de
+      <span class="Li">&quot;untie&quot;</span> » ci-dessous pour plus de
+      détails.</dd>
+  <dt id="DESTROY"><a class="permalink" href="#DESTROY">DESTROY $self</a></dt>
+  <dd>Cette méthode sera déclenchée lorsque la variable liée devra être
+      détruite. Comme pour les autres classes d'objets, une telle méthode est rarement
+      nécessaire, car Perl désalloue automatiquement la mémoire de son objet
+      moribond — ce n'est pas C++, vous savez. Nous utiliserons une méthode
+      DESTROY ici à des fins de débogage uniquement.
+        <pre>sub DESTROY {
+    my $self = shift;
+    confess &quot;wrong type&quot; unless ref $self;
+    carp &quot;[ Nice::DESTROY pid $$self ]&quot; if $Nice::DEBUG;
+}
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Voilà à peu près tout. En fait, c'est plus que tout, car nous avons
+    fait quelques choses bien pour des raisons de complétude, de robustesse et
+    d'esthétique générale. Des classes TIESCALAR plus simples sont certainement
+    possibles.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Liaison_des_Tableaux'><a class='permalink' href='#Liaison_des_Tableaux'>Liaison des Tableaux</a></h2>
+<p class="Pp">Une classe implémentant un tableau ordinaire lié doit définir les
+    méthodes suivantes : TIEARRAY, FETCH, STORE, FETCHSIZE, STORESIZE, CLEAR et
+    peut-être UNTIE et/ou DESTROY.</p>
+<p class="Pp">FETCHSIZE et STORESIZE sont utilisés pour fournir un accès
+    <span class="Li">$#tableau</span> et un équivalent scalaire
+    <span class="Li">scalar(@tableau)</span>.</p>
+<p class="Pp">Les méthodes POP, PUSH, SHIFT, UNSHIFT, SPLICE, DELETE, et EXISTS
+    sont requises si l'opérateur perl avec le nom correspondant (mais en minuscules)
+    doit opérer sur le tableau lié. La classe <b>Tie::Array</b> peut être utilisée
+    comme classe de base pour implémenter les cinq premières en termes des méthodes
+    de base ci-dessus. Les implémentations par défaut de DELETE et EXISTS dans
+    <b>Tie::Array</b> font simplement un
+    <span class="Li">&quot;croak&quot;</span>.</p>
+<p class="Pp">En outre, EXTEND sera appelé lorsque perl aurait pré-étendu
+    l'allocation dans un tableau réel.</p>
+<p class="Pp">Pour cette discussion, nous allons implémenter un tableau dont les
+    éléments sont d'une taille fixe a</p>
+</section>
+
+</div>
+</section>
+
+            </article>
+            
+        </main>
+        <footer>
+            
+        </footer>
+    </body>
+</html>
+t creation. Si vous essayez de créer un élément plus grand que la
+    taille fixe, vous obtiendrez une exception. Par exemple :</p>
+<pre>use FixedElem_Array;
+tie @array, 'FixedElem_Array', 3;
+$array[0] = 'chat';  # ok.
+$array[1] = 'chiens'; # exception, longueur('chiens') &gt; 3.</pre>
+<p class="Pp">Le code de préambule de la classe est le suivant :</p>
+<pre>package FixedElem_Array;
+use Carp;
+use strict;</pre>
+<dl class="Bl-tag">
+  <dt id="TIEARRAY"><a class="permalink" href="#TIEARRAY">TIEARRAY classname,
+    LIST</a></dt>
+  <dd>C'est le constructeur de la classe. Cela signifie qu'il est censé retourner
+      une référence bénie à travers laquelle le nouveau tableau (probablement une
+      référence de tableau anonyme) sera accédé.
+    <p class="Pp">Dans notre exemple, juste pour vous montrer que vous n'avez
+        pas *vraiment* à retourner une référence de tableau, nous choisirons une
+        référence de hachage pour représenter notre objet. Un hachage fonctionne
+        bien comme type d'enregistrement générique : le champ
+        <span class="Li">&quot;{ELEMSIZE}&quot;</span> stockera la taille maximale
+        des éléments autorisée, et le champ <span class="Li">&quot;{ARRAY}&quot;</span>
+        conservera la vraie référence de tableau. Si quelqu'un en dehors de la
+        classe essaie de déréférencer l'objet retourné (pensant sans doute que
+        c'est une référence de tableau), il explosera. Cela suffit à montrer que
+        vous devriez respecter la vie privée d'un objet.</p>
+        <pre>sub TIEARRAY {
+  my $class    = shift;
+  my $elemsize = shift;
+  if ( @_ || $elemsize =~ /\D/ ) {
+    croak &quot;usage: tie ARRAY, '&quot; . __PACKAGE__ . &quot;', elem_size&quot;;
+  }
+  return bless {
+    ELEMSIZE =&gt; $elemsize,
+    ARRAY    =&gt; [],
+  }, $class;
+}
+</pre>
+  </dd>
+  <dt id="FETCH~2"><a class="permalink" href="#FETCH~2">FETCH this,
+    index</a></dt>
+  <dd>Cette méthode sera déclenchée chaque fois qu'un élément individuel du
+      tableau lié est accédé (lu). Elle prend un argument au-delà de sa référence
+      à elle-même : l'index dont nous essayons de récupérer la valeur.
+        <pre>sub FETCH {
+  my $self  = shift;
+  my $index = shift;
+  return $self-&gt;{ARRAY}-&gt;[$index];
+}
+</pre>
+    <p class="Pp">Si un index de tableau négatif est utilisé pour lire depuis un
+        tableau, l'index sera traduit en un index positif en interne en appelant
+        FETCHSIZE avant d'être passé à FETCH. Vous pouvez désactiver cette
+        fonctionnalité en assignant une valeur vraie à la variable
+        <span class="Li">$NEGATIVE_INDICES</span> dans la classe de tableau lié.</p>
+    <p class="Pp">Comme vous l'avez peut-être remarqué, le nom de la méthode
+        FETCH (et al.) est le même pour tous les accès, même si les constructeurs
+        diffèrent dans leurs noms (TIESCALAR vs TIEARRAY). Bien qu'en théorie, vous
+        puissiez avoir la même classe servant plusieurs types liés, en pratique,
+        cela devient gênant, et il est plus simple de s'en tenir à un seul type
+        de lien par classe.</p>
+  </dd>
+  <dt id="STORE~2"><a class="permalink" href="#STORE~2">STORE this, index,
+    value</a></dt>
+  <dd>Cette méthode sera déclenchée chaque fois qu'un élément du tableau lié est
+      défini (écrit). Elle prend deux arguments au-delà de sa référence à elle-même
+      : l'index auquel nous essayons de stocker quelque chose et la valeur que nous
+      essayons d'y mettre.
+    <p class="Pp">Dans notre exemple, <span class="Li">&quot;undef&quot;</span>
+        est en réalité <span class="Li">&quot;$self-&gt;{ELEMSIZE}&quot;</span>
+        espaces, nous avons donc un peu plus de travail à faire ici :</p>
+        <pre>sub STORE {
+  my $self = shift;
+  my( $index, $value ) = @_;
+  if ( length $value &gt; $self-&gt;{ELEMSIZE} ) {
+    croak &quot;length of $value is greater than $self-&gt;{ELEMSIZE}&quot;;
+  }
+  # remplir les blancs
+  $self-&gt;STORESIZE( $index ) if $index &gt; $self-&gt;FETCHSIZE();
+  # justifier à droite pour conserver la taille de l'élément pour les éléments plus petits
+  $self-&gt;{ARRAY}-&gt;[$index] = sprintf &quot;%$self-&gt;{ELEMSIZE}s&quot;, $value;
+}
+</pre>
+    <p class="Pp">Les index négatifs sont traités de la même manière qu'avec
+        FETCH.</p>
+  </dd>
+  <dt id="FETCHSIZE"><a class="permalink" href="#FETCHSIZE">FETCHSIZE
+    this</a></dt>
+  <dd>Retourne le nombre total d'éléments dans le tableau lié associé à l'objet
+      *this*. (Équivalent à <span class="Li">scalar(@array)</span>). Par exemple
+      :
+        <pre>sub FETCHSIZE {
+  my $self = shift;
+  return scalar $self-&gt;{ARRAY}-&gt;@*;
+}
+</pre>
+  </dd>
+  <dt id="STORESIZE"><a class="permalink" href="#STORESIZE">STORESIZE this,
+    count</a></dt>
+  <dd>Définit le nombre total d'éléments dans le tableau lié associé à l'objet
+      *this* à *count*. Si cela rend le tableau plus grand, la représentation de
+      la classe de <span class="Li">&quot;undef&quot;</span> doit être retournée
+      pour les nouvelles positions. Si le tableau devient plus petit, les entrées
+      au-delà de count doivent être supprimées.
+    <p class="Pp">Dans notre exemple, 'undef' est en réalité un élément contenant
+        <span class="Li">&quot;$self-&gt;{ELEMSIZE}&quot;</span> espaces. Observez
+        :</p>
+        <pre>sub STORESIZE {
+  my $self  = shift;
+  my $count = shift;
+  if ( $count &gt; $self-&gt;FETCHSIZE() ) {
+    foreach ( $count - $self-&gt;FETCHSIZE() .. $count ) {
+      $self-&gt;STORE( $_, '' );
+    }
+  } elsif ( $count &lt; $self-&gt;FETCHSIZE() ) {
+    foreach ( 0 .. $self-&gt;FETCHSIZE() - $count - 2 ) {
+      $self-&gt;POP();
+    }
+  }
+}
+</pre>
+  </dd>
+  <dt id="EXTEND"><a class="permalink" href="#EXTEND">EXTEND this,
+    count</a></dt>
+  <dd>Appel informatif indiquant que le tableau est susceptible de croître pour
+      avoir *count* entrées. Peut être utilisé pour optimiser l'allocation. Cette
+      méthode n'a rien à faire.
+    <p class="Pp">Dans notre exemple, il n'y a aucune raison d'implémenter cette
+        méthode, nous la laissons donc comme un no-op. Cette méthode n'est
+        pertinente que pour les implémentations de tableaux liés où il est possible
+        que la taille allouée du tableau soit plus grande que ce qui est visible
+        par un programmeur Perl inspectant la taille du tableau. De nombreuses
+        implémentations de tableaux liés n'auront aucune raison de l'implémenter.</p>
+        <pre>sub EXTEND {   
+  my $self  = shift;
+  my $count = shift;
+  # rien à voir ici, circulez.
+}
+</pre>
+    <p class="Pp"><b>NOTE :</b> Il est généralement une erreur de rendre cette
+        méthode équivalente à STORESIZE. Perl peut appeler EXTEND de temps en
+        temps sans vouloir réellement modifier la taille du tableau directement.
+        Tout tableau lié devrait fonctionner correctement si cette méthode est un
+        no-op, même s'il pourrait ne pas être aussi efficace que s'il
+        l'implémentait.</p>
+  </dd>
+  <dt id="EXISTS"><a class="permalink" href="#EXISTS">EXISTS this, key</a></dt>
+  <dd>Vérifie si l'élément à l'index *key* existe dans le tableau lié
+      *this*.
+    <p class="Pp">Dans notre exemple, nous déterminerons que si un élément ne
+        consiste qu'en <span class="Li">&quot;$self-&gt;{ELEMSIZE}&quot;</span>
+        espaces, il n'existe pas :</p>
+        <pre>sub EXISTS {
+  my $self  = shift;
+  my $index = shift;
+  return 0 if ! defined $self-&gt;{ARRAY}-&gt;[$index] ||
+              $self-&gt;{ARRAY}-&gt;[$index] eq ' ' x $self-&gt;{ELEMSIZE};
+  return 1;
+}
+</pre>
+  </dd>
+  <dt id="DELETE"><a class="permalink" href="#DELETE">DELETE this, key</a></dt>
+  <dd>Supprime l'élément à l'index *key* du tableau lié *this*.
+    <p class="Pp">Dans notre exemple, un élément supprimé est constitué de
+        <span class="Li">&quot;$self-&gt;{ELEMSIZE}&quot;</span> espaces :</p>
+        <pre>sub DELETE {
+  my $self  = shift;
+  my $index = shift;
+  return $self-&gt;STORE( $index, '' );
+}
+</pre>
+  </dd>
+  <dt id="CLEAR"><a class="permalink" href="#CLEAR">CLEAR this</a></dt>
+  <dd>Vide (supprime, efface, ...) toutes les valeurs du tableau lié associé à
+      l'objet *this*. Par exemple :
+        <pre>sub CLEAR {
+  my $self = shift;
+  return $self-&gt;{ARRAY} = [];
+}
+</pre>
+  </dd>
+  <dt id="PUSH"><a class="permalink" href="#PUSH">PUSH this, LIST</a></dt>
+  <dd>Ajoute les éléments de *LIST* à la fin du tableau. Par exemple :
+        <pre>sub PUSH {  
+  my $self = shift;
+  my @list = @_;
+  my $last = $self-&gt;FETCHSIZE();
+  $self-&gt;STORE( $last + $_, $list[$_] ) foreach 0 .. $#list;
+  return $self-&gt;FETCHSIZE();
+}
+</pre>
+  </dd>
+  <dt id="POP"><a class="permalink" href="#POP">POP this</a></dt>
+  <dd>Supprime le dernier élément du tableau et le retourne. Par exemple :
+        <pre>sub POP {
+  my $self = shift;
+  return pop $self-&gt;{ARRAY}-&gt;@*;
+}
+</pre>
+  </dd>
+  <dt id="SHIFT"><a class="permalink" href="#SHIFT">SHIFT this</a></dt>
+  <dd>Supprime le premier élément du tableau (décalant les autres éléments vers
+      le bas) et le retourne. Par exemple :
+        <pre>sub SHIFT {
+  my $self = shift;
+  return shift $self-&gt;{ARRAY}-&gt;@*;
+}
+</pre>
+  </dd>
+  <dt id="UNSHIFT"><a class="permalink" href="#UNSHIFT">UNSHIFT this,
+    LIST</a></dt>
+  <dd>Insère les éléments de LIST au début du tableau, déplaçant les éléments
+      existants vers le haut pour faire de la place. Par exemple :
+        <pre>sub UNSHIFT {
+  my $self = shift;
+  my @list = @_;
+  my $size = scalar( @list );
+  # faire de la place pour notre liste
+  $self-&gt;{ARRAY}[ $size .. $self-&gt;{ARRAY}-&gt;$#* + $size ]-&gt;@*
+   = $self-&gt;{ARRAY}-&gt;@*
+  $self-&gt;STORE( $_, $list[$_] ) foreach 0 .. $#list;
+}
+</pre>
+  </dd>
+  <dt id="SPLICE"><a class="permalink" href="#SPLICE">SPLICE this, offset,
+    length, LIST</a></dt>
+  <dd>Exécute l'équivalent de <span class="Li">&quot;splice&quot;</span> sur le
+      tableau.
+    <p class="Pp"><em>offset</em> est optionnel et vaut zéro par défaut, les
+        valeurs négatives comptent à partir de la fin du tableau.</p>
+    <p class="Pp"><em>length</em> est optionnel et vaut le reste du tableau par
+        défaut.</p>
+    <p class="Pp"><em>LIST</em> peut être vide.</p>
+    <p class="Pp">Retourne une liste des éléments d'origine de *length* à
+        *offset*.</p>
+    <p class="Pp">Dans notre exemple, nous utiliserons un petit raccourci s'il y a
+        une *LIST* :</p>
+        <pre>sub SPLICE {
+  my $self   = shift;
+  my $offset = shift || 0;
+  my $length = shift || $self-&gt;FETCHSIZE() - $offset;
+  my @list   = (); 
+  if ( @_ ) {
+    tie @list, __PACKAGE__, $self-&gt;{ELEMSIZE};
+    @list   = @_;
+  }
+  return splice $self-&gt;{ARRAY}-&gt;@*, $offset, $length, @list;
+}
+</pre>
+  </dd>
+  <dt id="UNTIE~2"><a class="permalink" href="#UNTIE~2">UNTIE this</a></dt>
+  <dd>Sera appelé lorsque <span class="Li">&quot;untie&quot;</span> se produit.
+      (Voir &quot;Le piège de <span class="Li">&quot;untie&quot;</span>&quot;
+      ci-dessous.)</dd>
+  <dt id="DESTROY~2"><a class="permalink" href="#DESTROY~2">DESTROY
+    this</a></dt>
+  <dd>Cette méthode sera déclenchée lorsque la variable liée doit être
+      détruite. Comme avec la classe de lien scalaire, cela n'est presque jamais
+      nécessaire dans un langage qui gère lui-même la collecte de mémoire, donc
+      cette fois, nous allons simplement l'omettre.</dd>
+</dl>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Tying_Hashes'><a class='permalink' href='#Tying_Hashes'>Liaison de Hachages</a></h2>
+<p class="Pp">Les hachages ont été le premier type de données Perl à être lié (voir
+    <b>dbmopen()</b>). Une classe implémentant un hachage lié doit définir les
+    méthodes suivantes : TIEHASH est le constructeur. FETCH et STORE accèdent aux
+    paires clé et valeur. EXISTS indique si une clé est présente dans le hachage,
+    et DELETE en supprime une. CLEAR vide le hachage en supprimant toutes les
+    paires clé et valeur. FIRSTKEY et NEXTKEY implémentent les fonctions
+    <b>keys()</b> et <b>each()</b> pour itérer sur toutes les clés. SCALAR est
+    déclenché lorsque le hachage lié est évalué dans un contexte scalaire, et à
+    partir de la version 5.28, par <span class="Li">&quot;keys&quot;</span> dans un
+    contexte booléen. UNTIE est appelé lorsque <span class="Li">&quot;untie&quot;</span>
+    se produit, et DESTROY est appelé lorsque la variable liée est collectée par
+    le ramasse-miettes.</p>
+<p class="Pp">Si cela semble beaucoup, n'hésitez pas à hériter de la simple
+    classe standard Tie::StdHash pour la plupart de vos méthodes, en redéfinissant
+    seulement celles qui vous intéressent. Voir Tie::Hash pour plus de détails.</p>
+<p class="Pp">Rappelez-vous que Perl fait la distinction entre une clé qui n'existe
+    pas dans le hachage, et la</p>
+clés présentes dans la table de hachage mais ayant une valeur correspondante de
+    <span class="Li">&quot;undef&quot;</span>. Les deux possibilités peuvent être
+    testées avec les fonctions <span class="Li">exists()</span> et
+    <span class="Li">defined()</span>.</p>
+<p class="Pp">Voici un exemple d'une classe de table de hachage liée intéressante : elle
+    vous donne une table de hachage représentant les fichiers dot d'un utilisateur particulier. Vous indexez
+    dans la table de hachage avec le nom du fichier (moins le point) et vous obtenez le contenu de ce fichier dot. Par exemple :</p>
+<pre>use DotFiles;
+tie %dot, 'DotFiles';
+if ( $dot{profile} =~ /MANPATH/ ||
+     $dot{login}   =~ /MANPATH/ ||
+     $dot{cshrc}   =~ /MANPATH/    )
+{
+    print &quot;you seem to set your MANPATH\n&quot;;
+}</pre>
+<p class="Pp">Ou voici un autre exemple d'utilisation de notre classe liée :</p>
+<pre>tie %him, 'DotFiles', 'daemon';
+foreach $f ( keys %him ) {
+    printf &quot;daemon dot file %s is size %d\n&quot;,
+        $f, length $him{$f};
+}</pre>
+<p class="Pp">Dans notre exemple de table de hachage liée DotFiles, nous utilisons une table de hachage régulière pour l'objet contenant plusieurs champs importants, dont seul le champ
+    <span class="Li">&quot;{LIST}&quot;</span> sera ce que l'utilisateur considère comme la vraie table de hachage.</p>
+<dl class="Bl-tag">
+  <dt id="USER"><a class="permalink" href="#USER">USER</a></dt>
+  <dd>dont les fichiers dot cet objet représente</dd>
+  <dt id="HOME"><a class="permalink" href="#HOME">HOME</a></dt>
+  <dd>où ces fichiers dot résident</dd>
+  <dt id="CLOBBER"><a class="permalink" href="#CLOBBER">CLOBBER</a></dt>
+  <dd>si nous devons essayer de modifier ou de supprimer ces fichiers dot</dd>
+  <dt id="LIST"><a class="permalink" href="#LIST">LIST</a></dt>
+  <dd>la table de hachage des noms de fichiers dot et des mappings de contenu</dd>
+</dl>
+<p class="Pp">Voici le début de <i>Dotfiles.pm</i> :</p>
+<pre>package DotFiles;
+use Carp;
+sub whowasi { (caller(1))[3] . '()' }
+my $DEBUG = 0;
+sub debug { $DEBUG = @_ ? shift : 1 }</pre>
+<p class="Pp">Pour notre exemple, nous voulons pouvoir émettre des informations de débogage pour aider au traçage pendant le développement. Nous conservons également une fonction utilitaire interne pour aider à afficher des avertissements ; <b>whowasi()</b> renvoie le nom de la fonction qui l'appelle.</p>
+<p class="Pp">Voici les méthodes pour la table de hachage liée DotFiles.</p>
+<dl class="Bl-tag">
+  <dt id="TIEHASH"><a class="permalink" href="#TIEHASH">TIEHASH classname,
+    LIST</a></dt>
+  <dd>Ceci est le constructeur de la classe. Cela signifie qu'il est censé renvoyer une référence bénie à travers laquelle le nouvel objet (probablement, mais pas nécessairement, une table de hachage anonyme) sera accédé.
+    <p class="Pp">Voici le constructeur :</p>
+        <pre>sub TIEHASH {
+    my $class = shift;
+    my $user = shift || $&gt;;
+    my $dotdir = shift || '';
+    croak &quot;usage: @{[&amp;whowasi]} [USER [DOTDIR]]&quot; if @_;
+    $user = getpwuid($user) if $user =~ /^\d+$/;
+    my $dir = (getpwnam($user))[7]
+            || croak &quot;@{[&amp;whowasi]}: no user $user&quot;;
+    $dir .= &quot;/$dotdir&quot; if $dotdir;
+    my $node = {
+        USER    =&gt; $user,
+        HOME    =&gt; $dir,
+        LIST    =&gt; {},
+        CLOBBER =&gt; 0,
+    };
+    opendir(DIR, $dir)
+            || croak &quot;@{[&amp;whowasi]}: can't opendir $dir: $!&quot;;
+    foreach $dot ( grep /^\./ &amp;&amp; -f &quot;$dir/$_&quot;, readdir(DIR)) {
+        $dot =~ s/^\.//;
+        $node-&gt;{LIST}{$dot} = undef;
+    }
+    closedir DIR;
+    return bless $node, $class;
+}
+</pre>
+    <p class="Pp">Il est probablement utile de mentionner que si vous allez tester les valeurs de retour de readdir avec des tests de fichier, vous feriez mieux de préfixer le répertoire en question. Sinon, parce que nous ne nous sommes pas <b>chdir()</b> là-bas, cela aurait testé le mauvais fichier.</p>
+  </dd>
+  <dt id="FETCH~3"><a class="permalink" href="#FETCH~3">FETCH this, key</a></dt>
+  <dd>Cette méthode sera déclenchée chaque fois qu'un élément de la table de hachage liée est accédé (lu). Elle prend un argument au-delà de sa référence de soi : la clé dont nous essayons de récupérer la valeur.
+    <p class="Pp">Voici la récupération pour notre exemple DotFiles.</p>
+        <pre>sub FETCH {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    my $dot = shift;
+    my $dir = $self-&gt;{HOME};
+    my $file = &quot;$dir/.$dot&quot;;
+    unless (exists $self-&gt;{LIST}-&gt;{$dot} || -f $file) {
+        carp &quot;@{[&amp;whowasi]}: no $dot file&quot; if $DEBUG;
+        return undef;
+    }
+    if (defined $self-&gt;{LIST}-&gt;{$dot}) {
+        return $self-&gt;{LIST}-&gt;{$dot};
+    } else {
+        return $self-&gt;{LIST}-&gt;{$dot} = `cat $dir/.$dot`;
+    }
+}
+</pre>
+    <p class="Pp">Il était facile de l'écrire en appelant la commande Unix <a href='/man/cat.1.en'>cat(1)</a>, mais il serait probablement plus portable d'ouvrir le fichier
+        manuellement (et un peu plus efficace). Bien sûr, comme les fichiers dot sont un concept Unix, nous ne sommes pas si préoccupés.</p>
+  </dd>
+  <dt id="STORE~3"><a class="permalink" href="#STORE~3">STORE this, key,
+    value</a></dt>
+  <dd>Cette méthode sera déclenchée chaque fois qu'un élément de la table de hachage liée est défini (écrit). Elle prend deux arguments au-delà de sa référence de soi : l'index auquel nous essayons de stocker quelque chose et la valeur que nous essayons d'y mettre.
+    <p class="Pp">Ici, dans notre exemple DotFiles, nous ferons attention à ne pas les laisser essayer de réécrire le fichier à moins qu'ils n'aient appelé la méthode
+        <b>clobber()</b> sur la référence d'objet d'origine renvoyée par <b>tie()</b>.</p>
+        <pre>sub STORE {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    my $dot = shift;
+    my $value = shift;
+    my $file = $self-&gt;{HOME} . &quot;/.$dot&quot;;
+    my $user = $self-&gt;{USER};
+    croak &quot;@{[&amp;whowasi]}: $file not clobberable&quot;
+        unless $self-&gt;{CLOBBER};
+    open(my $f, '&gt;', $file) || croak &quot;can't open $file: $!&quot;;
+    print $f $value;
+    close($f);
+}
+</pre>
+    <p class="Pp">S'ils voulaient écraser quelque chose, ils pourraient dire :</p>
+        <pre>$ob = tie %daemon_dots, 'daemon';
+$ob-&gt;clobber(1);
+$daemon_dots{signature} = &quot;A true daemon\n&quot;;
+</pre>
+    <p class="Pp">Une autre façon de mettre la main sur une référence à l'objet sous-jacent est d'utiliser la fonction <b>tied()</b>, donc ils pourraient alternativement avoir défini clobber en utilisant :</p>
+        <pre>tie %daemon_dots, 'daemon';
+tied(%daemon_dots)-&gt;clobber(1);
+</pre>
+    <p class="Pp">La méthode clobber est simplement :</p>
+        <pre>sub clobber {
+    my $self = shift;
+    $self-&gt;{CLOBBER} = @_ ? shift : 1;
+}
+</pre>
+  </dd>
+  <dt id="DELETE~2"><a class="permalink" href="#DELETE~2">DELETE this,
+    key</a></dt>
+  <dd>Cette méthode est déclenchée lorsque nous supprimons un élément de la table de hachage, généralement à l'aide de la fonction <b>delete()</b>. Encore une fois, nous ferons attention à vérifier si elles veulent vraiment écraser des fichiers.
+        <pre>sub DELETE   {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    my $dot = shift;
+    my $file = $self-&gt;{HOME} . &quot;/.$dot&quot;;
+    croak &quot;@{[&amp;whowasi]}: won't remove file $file&quot;
+        unless $self-&gt;{CLOBBER};
+    delete $self-&gt;{LIST}-&gt;{$dot};
+    my $success = unlink($file);
+    carp &quot;@{[&amp;whowasi]}: can't unlink $file: $!&quot; unless $success;
+    $success;
+}
+</pre>
+    <p class="Pp">La valeur renvoyée par DELETE devient la valeur de retour de l'appel à <b>delete()</b>. Si vous souhaitez émuler le comportement normal de <b>delete()</b>, vous devez renvoyer ce que FETCH aurait renvoyé pour cette clé. Dans cet exemple, nous avons plutôt choisi de renvoyer une valeur qui indique à l'appelant si le fichier a été supprimé avec succès.</p>
+  </dd>
+  <dt id="CLEAR~2"><a class="permalink" href="#CLEAR~2">CLEAR this</a></dt>
+  <dd>Cette méthode est déclenchée lorsque toute la table de hachage doit être effacée, généralement en lui assignant la liste vide.
+    <p class="Pp">Dans notre exemple, cela supprimerait tous les fichiers dot de l'utilisateur ! C'est une chose tellement dangereuse qu'ils devront définir CLOBBER à quelque chose de plus élevé que 1 pour que cela se produise.</p>
+        <pre>sub CLEAR    {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    croak &quot;@{[&amp;whowasi]}: won't remove all dot files for $self-&gt;{USER}&quot;
+        unless $self-&gt;{CLOBBER} &gt; 1;
+    my $dot;
+    foreach $dot ( keys $self-&gt;{LIST}-&gt;%* ) {
+        $self-&gt;DELETE($dot);
+    }
+}
+</pre>
+  </dd>
+  <dt id="EXISTS~2"><a class="permalink" href="#EXISTS~2">EXISTS this,
+    key</a></dt>
+  <dd>Cette méthode est déclenchée lorsque l'utilisateur utilise la fonction <b>exists()</b> sur une table de hachage particulière. Dans notre exemple, nous examinerons l'élément de table de hachage
+      <span class="Li">&quot;{LIST}&quot;</span> pour cela :
+        <pre>sub EXISTS   {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    my $dot = shift;
+    return exists $self-&gt;{LIST}-&gt;{$dot};
+}
+</pre>
+  </dd>
+  <dt id="FIRSTKEY"><a class="permalink" href="#FIRSTKEY">FIRSTKEY this</a></dt>
+  <dd>Cette méthode sera déclenchée lorsque l'utilisateur va itérer sur la table de hachage, par exemple via un appel <b>keys()</b>, <b>values()</b> ou <b>each()</b>.
+        <pre>sub FIRSTKEY {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    my $x = keys $self-&gt;{LIST}-&gt;%*;  # reset each() iterator
+    each $self-&gt;{LIST}-&gt;%*
+}
+</pre>
+    <p class="Pp">FIRSTKEY est toujours appelé dans un contexte scalaire et il doit simplement renvoyer la première clé. <b>values()</b>, et <b>each()</b> dans un contexte de liste, appelleront FETCH pour les clés renvoyées.</p>
+  </dd>
+  <dt id="NEXTKEY"><a class="permalink" href="#NEXTKEY">NEXTKEY this,
+    lastkey</a></dt>
+  <dd>Cette méthode est déclenchée lors d'une itération <b>keys()</b>, <b>values()</b> ou <b>each()</b>. Elle a un deuxième argument qui est la dernière clé qui a été accédée. Ceci est utile si vous vous souciez de l'ordre ou si vous appelez l'itérateur à partir de plus d'une séquence, ou si vous ne stockez pas vraiment les choses dans une table de hachage quelque part.
+    <p class="Pp">NEXTKEY est toujours appelé dans un contexte scalaire et il doit simplement renvoyer la clé suivante. <b>values()</b>, et <b>each()</b> dans un contexte de liste, appelleront FETCH pour les clés renvoyées.</p>
+    <p class="Pp">Pour notre exemple, nous utilisons une vraie table de hachage donc nous ferons juste la chose simple, mais nous devrons passer par le champ LIST
+      indirectement.</p>
+        <pre>sub NEXTKEY  {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    return each $self-&gt;{LIST}-&gt;%*
+}
+</pre>
+    <p class="Pp">Si l'objet sous-jacent de votre table de hachage liée n'est pas une vraie table de hachage et que vous n'avez pas <span class="Li">&quot;each&quot;</span> disponible, alors vous devriez renvoyer <span class="Li">&quot;undef&quot;</span> ou la liste vide une fois que vous avez atteint la fin de votre liste de clés. Voir
+        <span class="Li">&quot;la documentation propre à each&quot;</span> pour plus de détails.</p>
+  </dd>
+  <dt id="SCALAR"><a class="permalink" href="#SCALAR">SCALAR this</a></dt>
+  <dd>Ceci est appelé lorsque la table de hachage est évaluée dans un contexte scalaire, et à partir de la version 5.28, par <span class="Li">&quot;keys&quot;</span> dans un contexte booléen. Pour imiter le comportement des tables de hachage non liées, cette méthode doit renvoyer une valeur qui, lorsqu'elle est utilisée comme booléen, indique si la table de hachage liée est considérée comme vide. Si cette méthode n'existe pas, perl fera quelques suppositions éclairées et renverra vrai lorsque la table de hachage se trouve dans une itération. Si ce n'est pas le cas, FIRSTKEY est appelé, et le résultat sera une valeur fausse si FIRSTKEY renvoie la liste vide, vrai sinon.
+    <p class="Pp">Cependant, vous ne devriez **pas** vous fier aveuglément au fait que perl fasse toujours la bonne chose. En particulier, perl renverra à tort vrai lorsque vous effacez la table de hachage en appelant DELETE de manière répétée jusqu'à ce qu'elle soit vide. Il est donc conseillé de fournir votre propre méthode SCALAR lorsque vous voulez être absolument sûr que votre table de hachage se comporte correctement dans un contexte scalaire.</p>
+    <p class="Pp">="Pp">Dans notre exemple, nous pouvons simplement appeler
+        <span class="Li">&quot;scalar&quot;</span> sur le hachage sous-jacent
+        référencé par <span class="Li">&quot;$self-&gt;{LIST}&quot;</span> :</p>
+        <pre>sub SCALAR {
+    carp &amp;whowasi if $DEBUG;
+    my $self = shift;
+    return scalar $self-&gt;{LIST}-&gt;%*
+}
+</pre>
+    <p class="Pp">NOTE : Dans perl 5.25, le comportement de <span class="Li">scalar</span>
+        <span class="Li">%hash</span> sur un hachage non lié a changé pour retourner le
+        nombre de clés. Avant cela, il retournait une chaîne contenant des informations
+        sur la configuration des buckets du hachage. Voir &quot;bucket_ratio&quot; dans
+        Hash::Util pour une voie de compatibilité ascendante.</p>
+  </dd>
+  <dt id="UNTIE~3"><a class="permalink" href="#UNTIE~3">UNTIE ce</a></dt>
+  <dd>Ceci est appelé lorsque <span class="Li">&quot;untie&quot;</span> se produit. Voir
+      &quot;Le piège <span class="Li">&quot;untie&quot;</span>&quot;
+    ci-dessous.</dd>
+  <dt id="DESTROY~3"><a class="permalink" href="#DESTROY~3">DESTROY
+    ce</a></dt>
+  <dd>Cette méthode est déclenchée lorsqu'un hachage lié est sur le point de sortir de portée. Vous
+      n'en avez pas vraiment besoin à moins d'essayer d'ajouter du débogage ou d'avoir
+      un état auxiliaire à nettoyer. Voici une fonction très simple :
+        <pre>sub DESTROY  {
+    carp &amp;whowasi if $DEBUG;
+}
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Notez que les fonctions telles que <b>keys()</b> et <b>values()</b> peuvent
+    retourner des listes énormes lorsqu'elles sont utilisées sur de grands objets, comme les fichiers DBM. Vous préférerez peut-être utiliser la fonction <b>each()</b> pour itérer dessus. Exemple :</p>
+<pre># imprimer les décalages du fichier d'historique
+use NDBM_File;
+tie(%HIST, 'NDBM_File', '/usr/lib/news/history', 1, 0);
+while (($key,$val) = each %HIST) {
+    print $key, ' = ', unpack('L',$val), &quot;\n&quot;;
+}
+untie(%HIST);</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Lier_des_handles_de_fichiers'><a class='permalink' href='#Lier_des_handles_de_fichiers'>Lier
+des handles de fichiers</a></h2>
+<p class="Pp">Ceci est partiellement implémenté maintenant.</p>
+<p class="Pp">Une classe implémentant un handle de fichier lié doit définir les méthodes suivantes : TIEHANDLE, au moins une parmi PRINT, PRINTF, WRITE, READLINE, GETC, READ, et éventuellement CLOSE, UNTIE et DESTROY. La classe peut également fournir :
+    BINMODE, OPEN, EOF, FILENO, SEEK, TELL - si les opérateurs perl correspondants
+    sont utilisés sur le handle.</p>
+<p class="Pp">Lorsque STDERR est lié, sa méthode PRINT sera appelée pour émettre des avertissements et des messages d'erreur. Cette fonctionnalité est temporairement désactivée pendant l'appel, ce qui signifie que vous pouvez utiliser <span class="Li">warn()</span> dans PRINT sans démarrer une boucle récursive. Et tout comme les gestionnaires
+    <span class="Li">&quot;__WARN__&quot;</span> et
+    <span class="Li">&quot;__DIE__&quot;</span>, la méthode PRINT de STDERR peut être appelée pour signaler des erreurs de parseur, donc les mises en garde mentionnées sous &quot;%SIG&quot; dans perlvar s'appliquent.</p>
+<p class="Pp">Tout cela est particulièrement utile lorsque perl est intégré dans un autre programme, où la sortie vers STDOUT et STDERR peut devoir être redirigée d'une manière spéciale. Voir nvi et le module Apache pour des exemples.</p>
+<p class="Pp">Lors de la liaison d'un handle, le premier argument de
+    <span class="Li">&quot;tie&quot;</span> doit commencer par un astérisque. Ainsi,
+    si vous liez STDOUT, utilisez <span class="Li">*STDOUT</span>. Si vous l'avez assigné à une variable scalaire, disons <span class="Li">$handle</span>, utilisez
+    <span class="Li">*$handle</span>. <span class="Li">&quot;tie
+    $handle&quot;</span> lie la variable scalaire
+    <span class="Li">$handle</span>, pas le handle qu'elle contient.</p>
+<p class="Pp">Dans notre exemple, nous allons créer un handle qui crie.</p>
+<pre>package Shout;</pre>
+<dl class="Bl-tag">
+  <dt id="TIEHANDLE"><a class="permalink" href="#TIEHANDLE">TIEHANDLE nom_classe,
+    LISTE</a></dt>
+  <dd>C'est le constructeur de la classe. Cela signifie qu'il est censé retourner une référence bénie d'une sorte. La référence peut être utilisée pour conserver des informations internes.
+        <pre>sub TIEHANDLE { print &quot;&lt;shout&gt;\n&quot;; my $i; bless \$i, shift }
+</pre>
+  </dd>
+  <dt id="WRITE"><a class="permalink" href="#WRITE">WRITE ce, LISTE</a></dt>
+  <dd>Cette méthode sera appelée lorsque le handle est écrit via la
+      fonction <span class="Li">&quot;syswrite&quot;</span>.
+        <pre>sub WRITE {
+    $r = shift;
+    my($buf,$len,$offset) = @_;
+    print &quot;WRITE appelé, \$buf=$buf, \$len=$len, \$offset=$offset&quot;;
+}
+</pre>
+  </dd>
+  <dt id="PRINT"><a class="permalink" href="#PRINT">PRINT ce, LISTE</a></dt>
+  <dd>Cette méthode sera déclenchée à chaque fois que le handle lié est imprimé avec les
+      fonctions <span class="Li">print()</span> ou <span class="Li">say()</span>. Au-delà de sa référence propre, elle attend également la liste qui a été passée à la fonction print.
+        <pre>sub PRINT { $r = shift; $$r++; print join($,,map(uc($_),@_)),$\ }
+</pre>
+    <p class="Pp"><span class="Li">say()</span> fonctionne comme
+        <span class="Li">print()</span> sauf que $\ sera localisé à
+        <span class="Li">&quot;\n&quot;</span>, vous n'avez donc rien de spécial à faire pour gérer
+        <span class="Li">say()</span> dans
+      <span class="Li">PRINT()</span>.</p>
+  </dd>
+  <dt id="PRINTF"><a class="permalink" href="#PRINTF">PRINTF ce, LISTE</a></dt>
+  <dd>Cette méthode sera déclenchée à chaque fois que le handle lié est imprimé avec la
+      fonction <span class="Li">printf()</span>. Au-delà de sa référence propre, elle attend également le format et la liste qui ont été passés à la fonction printf.
+        <pre>sub PRINTF {
+    shift;
+    my $fmt = shift;
+    print sprintf($fmt, @_);
+}
+</pre>
+  </dd>
+  <dt id="READ"><a class="permalink" href="#READ">READ ce, LISTE</a></dt>
+  <dd>Cette méthode sera appelée lorsque le handle est lu via les
+      fonctions <span class="Li">&quot;read&quot;</span> ou
+      <span class="Li">&quot;sysread&quot;</span>.
+        <pre>sub READ {
+  my $self = shift;
+  my $bufref = \$_[0];
+  my(undef,$len,$offset) = @_;
+  print &quot;READ appelé, \$buf=$bufref, \$len=$len, \$offset=$offset&quot;;
+  # ajouter à $$bufref, définir $len au nombre de caractères lus
+  $len;
+}
+</pre>
+  </dd>
+  <dt id="READLINE"><a class="permalink" href="#READLINE">READLINE ce</a></dt>
+  <dd>Cette méthode est appelée lorsque le handle est lu via
+      <span class="Li">&quot;&lt;HANDLE&gt;&quot;</span> ou
+      <span class="Li">&quot;readline HANDLE&quot;</span>.
+    <p class="Pp">Conformément à <span class="Li">&quot;readline&quot;</span>, en contexte scalaire, elle doit retourner la ligne suivante, ou
+        <span class="Li">&quot;undef&quot;</span> s'il n'y a plus de données. En contexte de liste, elle doit retourner toutes les lignes restantes, ou une liste vide s'il n'y a plus de données. Les chaînes retournées doivent inclure le séparateur d'enregistrement d'entrée
+        <span class="Li">$/</span> (voir perlvar), sauf s'il est
+        <span class="Li">&quot;undef&quot;</span> (ce qui signifie mode &quot;slurp&quot;).</p>
+        <pre>sub READLINE {
+  my $r = shift;
+  if (wantarray) {
+    return (&quot;toutes les lignes restantes\n&quot;,
+            &quot;jusqu'à la fin\n&quot;);
+  } else {
+    return &quot;READLINE appelé &quot; . ++$$r . &quot; fois\n&quot;;
+  }
+}
+</pre>
+  </dd>
+  <dt id="GETC"><a class="permalink" href="#GETC">GETC ce</a></dt>
+  <dd>Cette méthode sera appelée lorsque la fonction
+      <span class="Li">&quot;getc&quot;</span> est appelée.
+        <pre>sub GETC { print &quot;N'utilisez pas GETC, utilisez Perl&quot;; return &quot;a&quot;; }
+</pre>
+  </dd>
+  <dt id="EOF"><a class="permalink" href="#EOF">EOF ce</a></dt>
+  <dd>Cette méthode sera appelée lorsque la fonction
+      <span class="Li">&quot;eof&quot;</span> est appelée.
+    <p class="Pp">À partir de Perl 5.12, un paramètre entier supplémentaire sera passé. Il sera zéro si
+        <span class="Li">&quot;eof&quot;</span> est appelé sans paramètre ;
+        <span class="Li">1</span> si
+        <span class="Li">&quot;eof&quot;</span> reçoit un handle de fichier en paramètre, par exemple <span class="Li">eof(FH)</span> ; et
+        <span class="Li">2</span> dans le cas très spécial où le handle lié est
+        <span class="Li">&quot;ARGV&quot;</span> et
+        <span class="Li">&quot;eof&quot;</span> est appelé avec une liste de paramètres vide, par exemple <span class="Li">eof()</span>.</p>
+        <pre>sub EOF { not length $stringbuf }
+</pre>
+  </dd>
+  <dt id="CLOSE"><a class="permalink" href="#CLOSE">CLOSE ce</a></dt>
+  <dd>Cette méthode sera appelée lorsque le handle est fermé via la
+      fonction <span class="Li">&quot;close&quot;</span>.
+        <pre>sub CLOSE { print &quot;CLOSE appelé.\n&quot; }
+</pre>
+  </dd>
+  <dt id="UNTIE~4"><a class="permalink" href="#UNTIE~4">UNTIE ce</a></dt>
+  <dd>Comme pour les autres types de liaisons, cette méthode sera appelée lors de
+      l'<span class="Li">&quot;untie&quot;</span>. Il peut être approprié de &quot;fermer automatiquement&quot; lorsque cela se produit. Voir &quot;Le piège
+      <span class="Li">&quot;untie&quot;</span>&quot; ci-dessous.</dd>
+  <dt id="DESTROY~4"><a class="permalink" href="#DESTROY~4">DESTROY
+    ce</a></dt>
+  <dd>Comme pour les autres types de liaisons, cette méthode sera appelée lorsque le handle lié
+      est sur le point d'être détruit. Ceci est utile pour le débogage et éventuellement le nettoyage.
+        <pre>sub DESTROY { print &quot;&lt;/shout&gt;\n&quot; }
+</pre>
+  </dd>
+</dl>
+<p class="Pp">Voici comment utiliser notre petit exemple :</p>
+<pre>tie(*FOO,'Shout');
+print FOO &quot;bonjour\n&quot;;
+$x = 4; $y = 6;
+print FOO $x, &quot; plus &quot;, $y, &quot; égal &quot;, $x + $y, &quot;\n&quot;;
+print &lt;FOO&gt;;</pre>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='UNTIE_ce'><a class='permalink' href='#UNTIE_ce'>UNTIE
+ce</a></h2>
+<p class="Pp">Vous pouvez définir pour tous les types de liaisons une méthode UNTIE qui sera appelée lors de <b>untie()</b>. Voir &quot;Le piège
+    <span class="Li">&quot;untie&quot;</span>&quot; ci-dessous.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id='Le_piège_&amp;quot;untie&amp;quot;'><a class='permalink' href='#Le_piège_&amp;quot;untie&amp;quot;'>Le
+piège &quot;untie&quot;</a></h2>
+<p class="Pp">Si vous avez l'intention d'utiliser l'objet retourné par <b>tie()</b> ou
+    <b>tied()</b>, et si la classe de liaison cible définit un destructeur, il y a un piège subtil que vous *devez* éviter.</p>
+<p class="Pp">Comme configuration, considérons cet exemple (certes assez artificiel) d'une liaison ; tout ce qu'il fait est d'utiliser un fichier pour conserver un journal des valeurs assignées à un scalaire.</p>
+<pre>package Remember;
+use v5.36;
+use IO::File;
+sub TIESCALAR {
+    my $class = shift;
+    my $filename = shift;
+    my $handle = IO::File-&gt;new( &quot;&gt; $filename&quot; )
+                     or die &quot;Impossible d'ouvrir $filename : $!\n&quot;;
+    print $handle &quot;Le début\n&quot;;
+    bless {FH =&gt; $handle, Value =&gt; 0}, $class;
+}
+sub FETCH {
+    my $self = shift;
+    return $self-&gt;{Value};
+}
+sub STORE {
+    my $self = shift;
+    my $value = shift;
+    my $handle = $self-&gt;{FH};
+    print $handle &quot;$value\n&quot;;
+    $self-&gt;{Value} = $value;
+}
+sub DESTROY {
+    my $self = shift;
+    my $handle = $self-&gt;{FH};
+    print $handle &quot;La fin\n&quot;;
+    close $handle;
+}
+1;</pre>
+<p class="Pp">Voici un exemple qui utilise cette liaison :</p>
+<pre>use strict;
+use Remember;
+my $fred;
+tie $fred, 'Remember', 'myfile.txt';
+$fred = 1;
+$fred = 4;
+$fred = 5;
+untie $fred;
+system &quot;cat myfile.txt&quot;;</pre>
+<p class="Pp">Ceci est la sortie lorsqu'il est exécuté :</p>
+<pre>Le début
+1
+4
+5
+La fin</pre>
+<p class="Pp">Jusqu'ici tout va bien. Ceux qui ont prêté attention auront remarqué que l'objet lié n'a pas encore été utilisé. Ajoutons donc une méthode supplémentaire à la classe Remember pour permettre l'inclusion de commentaires dans le fichier ; disons, quelque chose comme ceci :</p>
+<pre>sub comment {
+    my $self = shift;
+    my $text = shift;
+    my $handle = $self-&gt;{FH};
+    print $handle $text, &quot;\n&quot;;
+}</pre>
+<p class="Pp">Et voici l'exemple précédent modifié</p>
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>perltie(1) - Perl Tie</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="generator" content="mandoc 1.30.0" />
+        <meta name="robots" content="noindex" />
+        <link rel="stylesheet" type="text/css" href="/style.css" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+    </head>
+    <body>
+        
+
+
+        <main>
+            
+<article>
+    <section class="Sh">
+        <h1 class="Sh" id="NAME"><a class="permalink" href="#NAME">NAME</a></h1>
+        <p class="Nd">perltie - Perl tie - interface à Perl pour lier des objets à des types de données Perl</p>
+    </section>
+    <section class="Sh">
+        <h1 class="Sh" id="SYNOPSIS"><a class="permalink" href="#SYNOPSIS">SYNOPSIS</a></h1>
+        <pre>
+use Tie::Hash;
+tie %hash, 'MyTieHash', @args;
+tie @array, 'MyTieArray', @args;
+tie $scalar, 'MyTieScalar', @args;
+tie $fh, 'MyTieHandle', @args;
+untie %hash;
+untie @array;
+untie $scalar;
+untie $fh;</pre>
+    </section>
+    <section class="Sh">
+        <h1 class="Sh" id="DESCRIPTION"><a class="permalink" href="#DESCRIPTION">DESCRIPTION</a></h1>
+        <p class="Pp">La fonction <code class="Li">tie</code> vous permet de lier un scalaire, un tableau ou une table de hachage existante à un objet de votre propre classe. Cet objet se substitue au comportement normal de Perl pour ce type de données. La classe doit implémenter une ou plusieurs des méthodes TIESCALAR, TIEARRAY, ou TIEHASH, et les méthodes spécifiques au type de données lié (par exemple, FETCH pour TIEHASH, STORE pour TIEHASH, etc.). La fonction <code class="Li">untie</code> détache l'objet lié du scalaire, du tableau ou de la table de hachage.</p>
+        <p class="Pp">Voici un exemple simple d'un tableau lié à un fichier qui enregistre ses modifications :</p>
+        <pre>
+package FileArray;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(Exporter);
+my %files;
+sub TIEARRAY {
+    my ($class, $filename) = @_;
+    my $self = bless { filename =&gt; $filename }, $class;
+    files{$filename} = $self;
+    open FH, "&lt;$filename" or die "can't open $filename: $!";
+    while (&lt;FH&gt;) {
+        push @$self, $_;
+    }
+    close FH;
+    return $self;
+}
+sub STORE {
+    my ($self, $index, $value) = @_;
+    $self-&gt;{'_array'}[$index] = $value;
+    $self-&gt;write_file;
+}
+sub PUSH {
+    my ($self, $value) = @_;
+    push @{$self-&gt;{'_array'}}, $value;
+    $self-&gt;write_file;
+}
+sub write_file {
+    my $self = shift;
+    open FH, "&gt;$self-&gt;{filename}" or die "can't open $self-&gt;{filename}: $!";
+    print FH @{$self-&gt;{'_array'}};
+    close FH;
+}
+sub DESTROY {
+    my $self = shift;
+    # A l'aide de DESTROY, on garantit que le fichier est fermé.
+    # Si le programme se termine sans appeler untie, le fichier sera toujours fermé.
+    unlink $self-&gt;{filename};
+}
+sub CLEAR {
+    my $self = shift;
+    @{$self-&gt;{'_array'}} = ();
+    $self-&gt;write_file;
+}
+sub STORE {
+    my ($self, $index, $value) = @_;
+    $self-&gt;{'_array'}[$index] = $value;
+    $self-&gt;write_file;
+}
+sub PUSH {
+    my ($self, $value) = @_;
+    push @{$self-&gt;{'_array'}}, $value;
+    $self-&gt;write_file;
+}
+# ... et ainsi de suite pour les autres méthodes d'accès aux tableaux ...
+1;
+</pre>
+        <p class="Pp">Un script d'utilisation typique pourrait ressembler à ceci :</p>
+        <pre>
+use FileArray;
+my @lines;
+my $fa = tie @lines, 'FileArray', 'lines.txt';
+@lines = ( "première ligne\n", "seconde ligne\n");
+push @lines, "troisième ligne\n";
+untie @lines;
+system "cat lines.txt";</pre>
+        <p class="Pp">L'utilisation de <code class="Li">untie</code> désassocie le tableau lié et appelle la méthode DESTROY de l'objet lié, qui dans ce cas supprime le fichier <code class="Li">lines.txt</code>. La sortie de <code class="Li">cat lines.txt</code> sera vide.</p>
+        <p class="Pp">Il est également possible d'utiliser la méthode <code class="Li">"comment"</code> (qui nécessite l'objet lié) :</p>
+        <pre>
+use strict;
+use Remember;
+my ($fred, $x);
+$x = tie $fred, 'Remember', 'myfile.txt';
+$fred = 1;
+$fred = 4;
+comment $x "changing...";
+$fred = 5;
+untie $fred;
+system "cat myfile.txt";</pre>
+        <p class="Pp">Lorsque ce code est exécuté, il n'y a pas de sortie. Voici pourquoi :</p>
+        <p class="Pp">Lorsqu'une variable est liée, elle est associée à l'objet qui est la valeur de retour de la fonction TIESCALAR, TIEARRAY ou TIEHASH. Cet objet ne possède normalement qu'une seule référence, à savoir la référence implicite de la variable liée. Lorsque <code class="Li">untie()</code> est appelée, cette référence est détruite. Ensuite, comme dans le premier exemple ci-dessus, le destructeur de l'objet (DESTROY) est appelé, ce qui est normal pour les objets qui n'ont plus de références valides ; et ainsi le fichier est fermé.</p>
+        <p class="Pp">Dans le second exemple, cependant, nous avons stocké une autre référence à l'objet lié dans <code class="Li">$x</code>. Cela signifie que lorsque <code class="Li">untie()</code> sera appelée, il y aura toujours une référence valide à l'objet en existence, donc le destructeur ne sera pas appelé à ce moment-là, et ainsi le fichier ne sera pas fermé. La raison pour laquelle il n'y a pas de sortie est que les tampons du fichier n'ont pas été vidés sur le disque.</p>
+        <p class="Pp">Maintenant que vous connaissez le problème, que pouvez-vous faire pour l'éviter ? Avant l'introduction de la méthode facultative UNTIE, la seule façon était le bon vieux drapeau <code class="Li>"-w"</code>. Cela repérera toutes les instances où vous appelez <code class="Li">untie()</code> et où il existe encore des références valides à l'objet lié. Si le second script ci-dessus avait en haut <code class="Li">"use warnings 'untie'"</code> ou était exécuté avec le drapeau <code class="Li>"-w"</code>, Perl affiche ce message d'avertissement :</p>
+        <pre>
+untie attempted while 1 inner references still exist</pre>
+        <p class="Pp">Pour que le script fonctionne correctement et pour faire taire l'avertissement, assurez-vous qu'il n'y a plus de références valides à l'objet lié *avant* que <code class="Li">untie()</code> ne soit appelée :</p>
+        <pre>
+undef $x;
+untie $fred;</pre>
+        <p class="Pp">Maintenant qu'UNTIE existe, le concepteur de classe peut décider quelles parties des fonctionnalités de la classe sont réellement associées à <code class="Li">"untie"</code> et quelles parties sont associées à la destruction de l'objet. Ce qui a du sens pour une classe donnée dépend du fait que les références internes soient conservées afin que des méthodes non liées à la liaison puissent être appelées sur l'objet. Mais dans la plupart des cas, il est probablement judicieux de déplacer la fonctionnalité qui aurait été dans DESTROY vers la méthode UNTIE.</p>
+        <p class="Pp">Si la méthode UNTIE existe, l'avertissement ci-dessus ne se produit pas. Au lieu de cela, la méthode UNTIE reçoit le nombre de références « supplémentaires » et peut émettre son propre avertissement si nécessaire. Par exemple, pour reproduire le cas sans UNTIE, cette méthode peut être utilisée :</p>
+        <pre>
+sub UNTIE
+{
+ my ($obj,$count) = @_;
+ carp "untie attempted while $count inner references still exist"
+                                                             if $count;
+}</pre>
+    </section>
+    <section class="Sh">
+        <h1 class="Sh" id="SEE_ALSO"><a class="permalink" href="#SEE_ALSO">SEE ALSO</a></h1>
+        <p class="Pp">Voir DB_File ou Config pour des implémentations intéressantes de <code class="Li">tie()</code>. Un bon point de départ pour de nombreuses implémentations de <code class="Li">tie()</code> est l'un des modules Tie::Scalar, Tie::Array, Tie::Hash, ou Tie::Handle.</p>
+    </section>
+    <section class="Sh">
+        <h1 class="Sh" id="BUGS"><a class="permalink" href="#BUGS">BUGS</a></h1>
+        <p class="Pp">Le retour normal fourni par <code class="Li">scalar(%hash)</code> n'est pas disponible. Ce que cela signifie, c'est que l'utilisation de <code class="Li>%tied_hash</code> dans un contexte booléen ne fonctionne pas correctement (actuellement, cela teste toujours faux, indépendamment du fait que la table de hachage soit vide ou contienne des éléments).</p>
+        <p class="Pp">La localisation des tableaux ou tables de hachage liés ne fonctionne pas. Après avoir quitté la portée, les tableaux ou les tables de hachage ne sont pas restaurés.</p>
+        <p class="Pp">Le comptage du nombre d'entrées dans une table de hachage via <code class="Li">"scalar(keys(%hash))"</code> ou <code class="Li">scalar(values(%hash))</code> est inefficace car il doit itérer sur toutes les entrées avec FIRSTKEY/NEXTKEY.</p>
+        <p class="Pp">Les tranches de table de hachage/tableau liées provoquent plusieurs paires FETCH/STORE, il n'existe pas de méthodes de liaison pour les opérations de tranche.</p>
+        <p class="Pp">Vous ne pouvez pas facilement lier une structure de données multiniveau (comme une table de hachage de tables de hachage) à un fichier dbm. Le premier problème est que tous, sauf GDBM et Berkeley DB, ont des limitations de taille, mais au-delà de cela, vous avez également des problèmes avec la manière dont les références doivent être représentées sur disque. Un module qui tente de répondre à ce besoin est DBM::Deep. Consultez votre site CPAN le plus proche, comme décrit dans perlmodlib, pour le code source. Notez que malgré son nom, DBM::Deep n'utilise pas dbm. Une autre tentative antérieure pour résoudre le problème est MLDBM, qui est également disponible sur CPAN, mais qui a des limitations assez sérieuses.</p>
+        <p class="Pp">Les descripteurs de fichiers liés sont toujours incomplets. <code class="Li">sysopen()</code>, <code class="Li">truncate()</code>, <code class="Li">flock()</code>, <code class="Li">fcntl()</code>, <code class="Li">stat()</code> et -X ne peuvent actuellement pas être interceptés.</p>
+    </section>
+    <section class="Sh">
+        <h1 class="Sh" id="AUTHOR"><a class="permalink" href="#AUTHOR">AUTHOR</a></h1>
+        <p class="Pp">Tom Christiansen</p>
+        <p class="Pp">TIEHANDLE par Sven Verdoolaege &lt;<i class="Li">skimo@dns.ufsia.ac.be</i>&gt; et Doug MacEachern &lt;<i class="Li">dougm@osf.org</i>&gt;</p>
+        <p class="Pp">UNTIE par Nick Ing-Simmons &lt;<i class="Li">nick@ing-simmons.net</i>&gt;</p>
+        <p class="Pp">SCALAR par Tassilo von Parseval &lt;<i class="Li">tassilo.von.parseval@rwth-aachen.de</i>&gt;</p>
+        <p class="Pp">Liaison de tableaux par Casey West &lt;<i class="Li">casey@geeknest.com</i>&gt;</p>
+    </section>
+</article>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le package Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

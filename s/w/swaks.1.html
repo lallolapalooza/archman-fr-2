@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>swaks(1) — Pages de manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">swaks(1)</h1>
+<p class="pkg">Paquet: <a href="https://archlinux.org/packages/extra/any/swaks/">swaks</a></p>
+<p class="lic">Licences: GPL-2.0-or-later</p>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">BASE(1)</td>
+    <td class="head-vol">Documentation Perl fournie par l'utilisateur</td>
+    <td class="head-rtitle">BASE(1)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<br/>
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">Swaks - Swiss Army Knife SMTP, le testeur de transactions SMTP tout usage</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DESCRIPTION'><a class='permalink' href='#DESCRIPTION'>DESCRIPTION</a></h1>
+<p class="Pp">L'objectif principal de conception de Swaks est d'être un outil de test SMTP flexible, scriptable et orienté transaction. Il gère les fonctionnalités et extensions SMTP telles que TLS, l'authentification et le pipelining ; plusieurs versions du protocole SMTP, y compris SMTP, ESMTP et LMTP ; et plusieurs méthodes de transport, y compris les sockets de domaine UNIX, les sockets de domaine internet et les pipes vers des processus lancés. Les options peuvent être spécifiées dans des variables d'environnement, des fichiers de configuration et la ligne de commande, permettant une configurabilité maximale et une facilité d'utilisation pour les opérateurs et les scripteurs.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DEMARRAGE_RAPIDE'><a class='permalink' href='#DEMARRAGE_RAPIDE'>DÉMARRAGE RAPIDE</a></h1>
+<p class="Pp">Livrer un email de test standard à user@example.com sur le port 25 de test-server.example.net :</p>
+<pre>swaks --to user@example.com --server test-server.example.net</pre>
+<p class="Pp">Livrer un email de test standard, nécessitant l'authentification CRAM-MD5 en tant qu'utilisateur me@example.com. Un en-tête &quot;X-Test&quot; sera ajouté au corps de l'email. Le mot de passe d'authentification sera demandé s'il ne peut pas être obtenu à partir de votre fichier .netrc.</p>
+<pre>swaks --to user@example.com --from me@example.com --auth CRAM-MD5 --auth-user me@example.com --header-X-Test &quot;email de test&quot;</pre>
+<p class="Pp">Tester un antivirus utilisant EICAR dans une pièce jointe. Ne pas afficher la partie MESSAGE DATA :</p>
+<pre>swaks -t user@example.com --attach - --server test-server.example.com --suppress-data &lt;/path/to/eicar.txt</pre>
+<p class="Pp">Tester un filtre anti-spam utilisant GTUBE dans le corps d'un email, acheminé via les enregistrements MX de example.com :</p>
+<pre>swaks --to user@example.com --body @/path/to/gtube/file</pre>
+<p class="Pp">Livrer un email de test standard à user@example.com en utilisant le protocole LMTP via un fichier socket de domaine UNIX</p>
+<pre>swaks --to user@example.com --socket /var/lda.sock --protocol LMTP</pre>
+<p class="Pp">Rapporter tous les destinataires d'un fichier texte qui ne sont pas vérifiables sur un serveur de test :</p>
+<pre>for E in `cat /path/to/email/file`
+do
+    swaks --to $E --server test-server.example.com --quit-after RCPT --hide-all
+    [ $? -ne 0 ] &amp;&amp; echo $E
+done</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='TERMES_ET_CONVENTIONS'><a class='permalink' href='#TERMES_ET_CONVENTIONS'>TERMES ET CONVENTIONS</a></h1>
+<p class="Pp">Ce document essaie d'être cohérent et précis dans son utilisation des termes suivants afin de réduire la confusion.</p>
+<dl class="Bl-tag">
+  <dt id="Cible"><a class="permalink" href="#Cible">Cible</a></dt>
+  <dd>La cible d'une transaction est l'élément auquel Swaks se connecte. Ce terme générique est utilisé tout au long de la documentation car la plupart des autres termes impliquent incorrectement quelque chose sur le transport utilisé.</dd>
+  <dt id="Transport"><a class="permalink" href="#Transport">Transport</a></dt>
+  <dd>Le transport est la méthode sous-jacente utilisée pour se connecter à la cible.</dd>
+  <dt id="Transaction"><a class="permalink" href="#Transaction">Transaction</a></dt>
+  <dd>Une transaction est l'établissement d'une connexion via un transport vers une cible et l'utilisation d'un protocole de messagerie pour tenter de livrer un message.</dd>
+  <dt id="Protocole"><a class="permalink" href="#Protocole">Protocole</a></dt>
+  <dd>Le protocole est le langage d'application utilisé pour communiquer avec la cible. Ce document utilise le terme générique SMTP pour parler des trois protocoles pris en charge, sauf lorsqu'il indique qu'il parle du protocole spécifique 'SMTP' et exclut les autres.</dd>
+  <dt id="Message"><a class="permalink" href="#Message">Message</a></dt>
+  <dd>Les protocoles SMTP existent pour transférer des messages, un ensemble d'octets dans un format convenu qui a un expéditeur et un destinataire.</dd>
+  <dt id="Enveloppe"><a class="permalink" href="#Enveloppe">Enveloppe</a></dt>
+  <dd>L'enveloppe d'un message contient l'expéditeur et le destinataire &quot;réels&quot; d'un message. Elle peut également être désignée par ses composants, expéditeur-enveloppe et destinataires-enveloppe. Il est important de noter que l'enveloppe d'un message ne doit pas nécessairement correspondre à ses en-têtes <span class="Li">&quot;À&quot;</span> et <span class="Li">&quot;De&quot;</span>.</dd>
+  <dt id="DATA"><a class="permalink" href="#DATA">DATA</a></dt>
+  <dd>La partie DATA d'une transaction SMTP est le message réel qui est transporté. Elle comprend à la fois les en-têtes et le corps du message. DATA et corps sont parfois utilisés de manière synonyme, mais ce sont toujours deux choses distinctes dans ce document.</dd>
+  <dt id="En-têtes"><a class="permalink" href="#En-têtes">En-têtes</a></dt>
+  <dd>Les en-têtes d'un message sont définis comme toutes les lignes de la section DATA du message avant la première ligne vide. Ils contiennent des informations sur l'email qui seront affichées au destinataire, telles que <span class="Li">&quot;À&quot;</span>, <span class="Li">&quot;De&quot;</span>, <span class="Li">&quot;Objet&quot;</span>, etc. Dans ce document, les en-têtes seront toujours écrits avec une première lettre capitale et deux-points à la fin.</dd>
+  <dt id="Corps"><a class="permalink" href="#Corps">Corps</a></dt>
+  <dd>Le corps d'un message est la partie de sa section DATA qui suit la première ligne vide.</dd>
+  <dt id="Option"><a class="permalink" href="#Option">Option</a></dt>
+  <dd>Une option est un drapeau qui modifie le comportement de Swaks. Toujours appelée option, quelle que soit la manière dont elle est fournie. Par exemple, <span class="Li">&quot;--no-data-fixup&quot;</span> est une option.</dd>
+  <dt id="Argument"><a class="permalink" href="#Argument">Argument</a></dt>
+  <dd>Lorsqu'une option prend des données supplémentaires en plus de l'option elle-même, ces données supplémentaires sont appelées un argument. Dans <span class="Li">&quot;--quit-after &lt;stop-point&gt;'&quot;</span>, <span class="Li">&quot;&lt;stop-point&gt;&quot;</span> est l'argument de l'option <span class="Li">&quot;--quit-after&quot;</span>.</dd>
+  <dt>&lt;chaîne-littérale&gt;</dt>
+  <dd>Lorsqu'il est utilisé dans la définition d'une option, le texte à l'intérieur d'angles (<span class="Li">&quot;&lt;&gt;&quot;</span>) indique une étiquette descriptive pour une valeur que l'utilisateur doit fournir. Par exemple, <span class="Li">&quot;--quit-after &lt;stop-point&gt;&quot;</span> indique que <span class="Li">&quot;&lt;stop-point&gt;&quot;</span> doit être remplacé par une valeur de point d'arrêt valide.</dd>
+  <dt>[&lt;valeur-optionnelle&gt;]</dt>
+  <dd>Lorsqu'il est utilisé dans la définition d'une option, le texte entre crochets ([]) indique que la valeur est optionnelle et peut être omise. Par exemple, <span class="Li">&quot;--to [&lt;destinataire&gt;]&quot;</span> indique que l'option <span class="Li">&quot;--to&quot;</span> peut être utilisée avec ou sans destinataire spécifié.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='TRAITEMENT_DES_OPTIONS'><a class='permalink' href='#TRAITEMENT_DES_OPTIONS'>TRAITEMENT DES OPTIONS</a></h1>
+<p class="Pp">Pour éviter toute confusion potentielle dans ce document, un drapeau pour Swaks est toujours désigné par le terme &quot;option&quot;. Si l'option prend des données supplémentaires, ces données supplémentaires sont désignées comme un argument de l'option. Par exemple, <span class="Li">&quot;--from fred@example.com&quot;</span> peut être fourni à Swaks sur la ligne de commande, <span class="Li">&quot;--from&quot;</span> étant l'option et <span class="Li">&quot;fred@example.com&quot;</span> étant l'argument de <span class="Li">&quot;--from&quot;</span>.</p>
+<p class="Pp">Les options et leurs arguments sont les seuls moyens de fournir des informations à Swaks. Si Swaks trouve des données lors du traitement des options qui ne sont ni une option ni un argument d'option, il générera une erreur et quittera. Par exemple, si <span class="Li">&quot;--no-data-fixup 1&quot;</span> était trouvé sur la ligne de commande, cela entraînerait une erreur car <span class="Li">&quot;--no-data-fixup&quot;</span> ne prend pas d'argument et Swaks ne saurait donc pas quoi faire de <span class="Li">1</span>.</p>
+<p class="Pp">Les options peuvent être fournies à Swaks de trois manières : dans un fichier de configuration, dans des variables d'environnement et sur la ligne de commande. Selon l'option spécifique et si un argument lui est donné, Swaks peut demander à l'utilisateur l'argument.</p>
+<p class="Pp">Lorsque Swaks évalue ses options, il recherche d'abord un fichier de configuration (soit à un emplacement par défaut, soit spécifié avec <span class="Li">&quot;--config&quot;</span>). Ensuite, il évalue les options dans les variables d'environnement. Enfin, il évalue les options de la ligne de commande. À chaque tour de traitement, les options définies précédemment seront remplacées. De plus, toute option peut être précédée de <span class="Li">&quot;no-&quot;</span> pour que Swaks oublie que la variable avait été précédemment définie (soit lors d'un tour précédent, soit plus tôt dans le même tour). Cette capacité est nécessaire car de nombreuses options traitent une valeur définie-mais-sans-argument différemment d'une valeur non définie.</p>
+<p class="Pp">En règle générale, si la même option est fournie plusieurs fois, la dernière fois qu'elle est fournie est celle qui sera utilisée. Cela s'applique aussi bien à l'interne d'une méthode (si <span class="Li">&quot;--from user1@example.com --from user2@example.com&quot;</span> est donné, <span class="Li">&quot;user2@example.com&quot;</span> sera utilisé) qu'entre les méthodes (si <span class="Li">&quo
+t;depuis user1@example.com&quot;</span> est donné dans un fichier de configuration et <span class="Li">&quot;--from
+    user2@example.com&quot;</span> est donné sur la ligne de commande,
+    <span class="Li">&quot;user2@example.com&quot;</span> sera utilisé)</p>
+<p class="Pp">Chaque définition d'option se termine par un synopsis entre parenthèses expliquant le comportement de l'option. Les codes suivants peuvent être utilisés</p>
+<dl class="Bl-tag">
+  <dt id="Arg-None,"><a class="permalink" href="#Arg-None,">Arg-None,
+    Arg-Optional, Arg-Required</a></dt>
+  <dd>Ces trois codes sont mutuellement exclusifs et décrivent si l'option prend ou non un argument. Notez que cela ne décrit pas nécessairement si l'argument doit être spécifié directement, mais plutôt si un argument est requis à terme. Par exemple,
+      <span class="Li">&quot;--to&quot;</span> est étiqueté comme Arg-Required, mais
+      il est légal de spécifier <span class="Li">&quot;--to&quot;</span> sur la
+      ligne de commande sans argument. C'est parce que Swaks peut demander l'argument requis s'il n'est pas fourni directement.</dd>
+  <dt id="From-Prompt"><a class="permalink" href="#From-Prompt">From-Prompt</a></dt>
+  <dd>Une option étiquetée From-Prompt demandera interactivement à l'utilisateur l'argument si aucun n'est fourni.</dd>
+  <dt id="From-File"><a class="permalink" href="#From-File">From-File</a></dt>
+  <dd>Une option étiquetée From-File traitera les arguments comme des fichiers dans certaines situations.
+    <p class="Pp">Si l'argument initial est
+        <span class="Li">&quot;-&quot;</span>, l'argument final est le
+        contenu de <span class="Li">&quot;STDIN&quot;</span>. Plusieurs options
+        peuvent toutes spécifier <span class="Li">&quot;STDIN&quot;</span>, mais le même
+        contenu sera utilisé pour chacune d'elles.</p>
+    <p class="Pp">Si l'argument initial est précédé de
+        <span class="Li">&quot;@&quot;</span>, l'argument sera traité comme un
+        chemin vers un fichier. Le fichier sera ouvert et son contenu sera utilisé comme
+        argument final. Si le contenu du fichier ne peut pas être lu, Swaks
+        s'arrêtera. Pour spécifier une chaîne littérale commençant par un
+        <span class="Li">&quot;@&quot;</span>, utilisez deux
+        <span class="Li">&quot;@&quot;</span>. Le premier sera retiré. Il n'est pas possible d'inclure un fichier non qualifié commençant par un
+        signe <span class="Li">&quot;@&quot;</span> (comme
+        <span class="Li">&quot;--attach @file.txt&quot;</span> ou
+        <span class="Li">&quot;--attach @@file.txt&quot;</span>), mais si vous
+        incluez un chemin vers le fichier qui sépare les deux
+        <span class="Li">&quot;@&quot;</span>, cela fonctionnera (par exemple
+        <span class="Li">&quot;--attach @./@file.txt&quot;</span> inclura
+        le contenu du fichier <span class="Li">@file</span>.txt).</p>
+  </dd>
+  <dt id="Sensitive"><a class="permalink" href="#Sensitive">Sensitive</a></dt>
+  <dd>Si une option marquée Sensitive tente de demander à l'utilisateur un argument et que l'option
+      <span class="Li">&quot;--protect-prompt&quot;</span> est définie, Swaks tentera de masquer la saisie de l'utilisateur pour qu'elle ne soit pas affichée sur le terminal. Swaks essaie de masquer la saisie de plusieurs manières, mais si aucune d'entre elles ne fonctionne, le programme continuera avec une saisie non masquée.</dd>
+  <dt id="Deprecated"><a class="permalink" href="#Deprecated">Deprecated</a></dt>
+  <dd>Une option marquée Deprecated a été officiellement dépréciée et sera supprimée dans une future version. Voir la section "DEPRECATIONS" de cette documentation pour plus de détails sur les dépréciations.</dd>
+</dl>
+<p class="Pp">Le mécanisme exact et le format d'utilisation de chaque type sont
+    listés ci-dessous.</p>
+<dl class="Bl-tag">
+  <dt id="CONFIGURATION"><a class="permalink" href="#CONFIGURATION">FICHIERS DE
+    CONFIGURATION</a></dt>
+  <dd>Un fichier de configuration peut être utilisé pour définir des options couramment utilisées ou anormalement verbeuses. Par défaut, Swaks recherche dans l'ordre
+      <span class="Li"><i>$SWAKS_HOME</i></span><i>/.swaksrc</i>,
+      <i></i><span class="Li"><i>$HOME</i></span><i>/.swaksrc</i>, et
+      <i></i><span class="Li"><i>$LOGDIR</i></span><i>/.swaksrc</i>. Si l'un d'eux est trouvé existant (et que <span class="Li">&quot;--config&quot;</span>
+      n'a pas été utilisé) ce fichier est utilisé comme fichier de configuration.
+    <p class="Pp">De plus, un fichier de configuration dans un emplacement non standard
+        peut être spécifié en utilisant <span class="Li">&quot;--config&quot;</span>. Si
+        cela est défini et qu'aucun argument n'est donné, Swaks n'utilisera aucun
+        fichier de configuration, y compris les fichiers par défaut. Si
+        <span class="Li">&quot;--config&quot;</span> pointe vers un fichier lisible,
+        il est utilisé comme fichier de configuration, remplaçant tout défaut qui pourrait
+        exister. S'il pointe vers un fichier illisible, une erreur sera affichée et
+        Swaks s'arrêtera.</p>
+    <p class="Pp">Un ensemble de valeurs par défaut "portables" peut également être créé en
+        ajoutant des options à la fin du fichier programme Swaks. Tel qu'il est distribué, la
+        dernière ligne de Swaks devrait être
+        <span class="Li">&quot;__END__&quot;</span>. Toutes les lignes ajoutées après
+        <span class="Li">&quot;__END__&quot;</span> seront traitées comme le
+        contenu d'un fichier de configuration. Cela permet à un ensemble de préférences utilisateur
+        d'être automatiquement copié de serveur en serveur dans un seul fichier.</p>
+    <p class="Pp">Si les fichiers de configuration n'ont pas été explicitement désactivés,
+        la configuration <span class="Li">&quot;__END__&quot;</span> est toujours lue.
+        Un seul autre fichier de configuration sera jamais utilisé par invocation
+        de Swaks, même si plusieurs fichiers de configuration sont spécifiés.
+        Si la configuration <span class="Li">&quot;__END__&quot;</span> et une autre
+        configuration doivent être lues, la configuration <span class="Li">&quot;__END__&quot;</span>
+        sera traitée en premier. Spécifier l'option
+        <span class="Li">&quot;--config&quot;</span> sans argument
+        désactive le traitement de la configuration <span class="Li">&quot;__END__&quot;</span> et des fichiers de configuration réels.</p>
+    <p class="Pp">Dans un fichier de configuration, les lignes commençant par un dièse
+        (<span class="Li">&quot;#&quot;</span>) sont ignorées. Toutes les autres lignes sont
+        supposées être une option pour Swaks, avec le trait d'union ou les traits d'union initiaux
+        facultatifs. Tout ce qui suit la première espace de la ligne d'option est supposé être
+        l'argument de l'option et n'est pas traité par le shell. Par conséquent, les guillemets sont
+        généralement inutiles et seront inclus littéralement dans l'argument.</p>
+    <p class="Pp">Il y a une différence subtile entre fournir une option sans argument
+        et fournir une option avec un argument vide. Si une ligne d'option n'a pas d'espace, la ligne entière est traitée comme une option et
+        il n'y a pas d'argument. Si la ligne se termine par une seule espace, elle sera
+        traitée comme une option avec un argument vide. Donc,
+        <span class="Li">&quot;apt&quot;</span> sera traité comme
+        <span class="Li">&quot;--apt&quot;</span>, mais
+        <span class="Li">&quot;apt &quot;</span> sera traité comme
+        <span class="Li">&quot;--apt&#x00A0;''&quot;</span>.</p>
+    <p class="Pp">Voici un exemple du contenu d'un fichier de configuration :</p>
+        <pre># utiliser toujours cet expéditeur, quel que soit le serveur ou l'utilisateur connecté
+--from fred@example.com
+# Je préfère que mes e-mails de test aient un en-tête From agréable. Notez
+# l'absence de traits d'union sur l'option et l'absence de guillemets autour
+# de l'argument entier.
+h-From: &quot;Fred Example&quot; &lt;fred@example.com&gt;
+</pre>
+    <p class="Pp">Options spécifiques au fichier de configuration :</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="config"><a class="permalink" href="#config">--config
+    [&lt;config-file&gt;]</a></dt>
+  <dd>Cette option fournit un chemin vers un fichier de configuration spécifique à utiliser.
+      Si elle est spécifiée sans argument, aucun fichier de configuration trouvé automatiquement
+      (via <span class="Li">$HOME</span>, etc., ou
+      <span class="Li">&quot;__END__&quot;</span>) ne sera traité. Si l'argument est un fichier valide, ce fichier sera utilisé comme fichier de configuration
+      (après la configuration <span class="Li">&quot;__END__&quot;</span>). Si l'argument n'est pas un fichier valide et lisible, Swaks générera une erreur et s'arrêtera. Cette option peut être spécifiée plusieurs fois, mais seule la première fois où elle est spécifiée (dans l'ordre de recherche des variables d'environnement et de la ligne de commande) sera utilisée.
+      (Arg-Optional)</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="CONFIGURATION~2"><a class="permalink" href="#CONFIGURATION~2">VARIABLES D'ENVIRONNEMENT DE
+    CONFIGURATION</a></dt>
+  <dd>Les options peuvent être fournies via des variables d'environnement. Les variables sont sous la forme <span class="Li">$SWAKS_OPT_name</span>, où
+      <span class="Li">&quot;name&quot;</span> est le nom de l'option qui serait spécifiée sur la ligne de commande. Comme les traits d'union ne sont pas autorisés dans les noms de variables d'environnement dans la plupart des shells de type UNIX, aucun trait d'union initial ne doit être utilisé et tout trait d'union dans le nom de l'option doit être remplacé par des underscores. Les exemples suivants créeraient les mêmes options que celles montrées dans l'exemple de fichier de configuration :
+        <pre>$ SWAKS_OPT_from='fred@example.com'
+$ SWAKS_OPT_h_From='&quot;Fred Example&quot; &lt;fred@example.com&gt;'
+</pre>
+    <p class="Pp">Définir une variable à une valeur vide équivaut à la spécifier sur la ligne de commande sans argument. Par exemple, définir
+        &lt;SWAKS_OPT_server=&quot;&quot;&gt; demanderait à Swaks de solliciter l'utilisateur pour le serveur auquel se connecter à chaque invocation. Sous Windows, il n'est pas possible de définir des variables d'environnement vides. Le comportement peut être simulé en définissant la variable d'environnement sur
+        <span class="Li">&quot;&lt;&gt;&quot;</span> à la place. De plus, intégrer le nom de l'en-tête dans l'option d'en-tête via une variable d'environnement n'est pas autorisé sous Windows (par exemple
+        <span class="Li">&quot;SWAKS_OPT_header_Foo=bar&quot;</span> entraînera une erreur, mais <span class="Li">&quot;SWAKS_OPT_header=&quot;Foo:
+        bar&quot;&quot;</span> fonctionnera.)</p>
+    <p class="Pp">Comme il n'y a pas d'ordre intrinsèque dans les options fournies en définissant des variables d'environnement, les options sont triées avant d'être traitées. Ce n'est pas une excellente solution, mais elle définit au moins le comportement, qui serait autrement indéfini. Par exemple, si à la fois
+        <span class="Li">$SWAKS_OPT_from</span> et
+        <span class="Li">$SWAKS_OPT_f</span> étaient définis, la valeur de
+        <span class="Li">$SWAKS_OPT_from</span> serait utilisée, car elle est triée
+        après <span class="Li">$SWAKS_OPT_f</span>. De plus, en raison de l'absence d'ordre intrinsèque dans le traitement de l'environnement, la désactivation des options avec le préfixe
+        <span class="Li">&quot;no-&quot;</span> n'est pas fiable.
+        Cela fonctionne si l'option désactivée est triée avant
+        <span class="Li">&quot;no-&quot;</span>, mais échoue si elle est triée après.
+        Comme <span class="Li">&quot;no-&quot;</span> est principalement destiné à fonctionner entre les types de configuration (par exemple, désactiver en ligne de commande une option définie dans un fichier de configuration), cela ne devrait pas poser de problème.</p>
+    <p class="Pp">En plus de définir l'équivalent des options de ligne de commande,
+        <span class="Li">$SWAKS_HOME</span> peut être défini sur un répertoire contenant le <i>.swaksrc</i> par défaut à utiliser.</p>
+  </dd>
+  <dt id="COMMAND"><a class="permalink" href="#COMMAND">OPTIONS DE LIGNE DE
+    COMMANDE</a></dt>
+  <dd>La dernière méthode pour fournir des options à Swaks est via la ligne de commande.
+      Les options se comportent d'une manière cohérente avec la plupart des programmes de ligne de commande de type UNIX. De nombreuses options ont à la fois une forme courte et une forme longue (par exemple
+      <span class="Li">&quot;-s&quot;</span> et
+      <span class="Li">&quot;--server&quot;</span>). Par convention, les options courtes ooptions
+      sont spécifiés avec un trait d'union simple et les options longues avec
+      un double trait d'union. Ceci n'est qu'une convention et l'un ou l'autre
+      préfixe fonctionnera avec l'un ou l'autre type.
+    <p class="Pp">L'exemple suivant illustre celui montré dans les sections
+        fichiers de configuration et variables d'environnement :</p>
+        <pre>$ swaks --from fred@example.com --h-From: '&quot;Fred Example&quot; &lt;fred@example.com&gt;'
+</pre>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='TRANSPORTS'><a class='permalink' href='#TRANSPORTS'>TRANSPORTS</a></h1>
+<p class="Pp">Swaks peut se connecter à une cible via des tuyaux UNIX (« pipes »),
+    des sockets de domaine UNIX (« sockets UNIX ») ou des sockets de domaine
+    Internet (« sockets réseau »). La connexion via des sockets réseau est le
+    comportement par défaut. En raison de la nature singulière du transport
+    utilisé, chaque ensemble d'options dans la section suivante est mutuellement
+    exclusif. La spécification de plus d'une des options
+    <span class="Li">&quot;--server&quot;</span>,
+    <span class="Li">&quot;--pipe&quot;</span> ou
+    <span class="Li">&quot;--socket&quot;</span> entraînera une erreur. Le mélange
+    d'autres options entre les types de transport ne fera qu'ignorer les options
+    non pertinentes. Vous trouverez ci-dessous une brève description de chaque
+    type de transport et des options qui lui sont spécifiques.</p>
+<dl class="Bl-tag">
+  <dt id="NETWORK"><a class="permalink" href="#NETWORK">SOCKETS RÉSEAU</a></dt>
+  <dd>Ce transport tente de délivrer un message via TCP/IP, la méthode standard
+      de délivrance SMTP. C'est le transport par défaut pour Swaks. Si aucune des
+      options <span class="Li">&quot;--server&quot;</span>,
+      <span class="Li">&quot;--pipe&quot;</span> ou
+      <span class="Li">&quot;--socket&quot;</span> n'est fournie, alors ce
+      transport est utilisé et le serveur cible est déterminé à partir du domaine
+      du destinataire (voir <span class="Li">&quot;--server&quot;</span> ci-dessous
+      pour plus de détails).
+    <p class="Pp">Ce transport nécessite le module IO::Socket::IP pour les sockets
+        IPv4 et IPv6. Si ce module ne peut pas être chargé, Swaks tentera d'utiliser
+        la bibliothèque IO::Socket pour IPv4 et IO::Socket::INET6 pour le support
+        IPv6. Tenter d'utiliser ce transport sans aucune de ces bibliothèques
+        disponibles entraînera une erreur et l'arrêt du programme.</p>
+    <p class="Pp">Le recours à IO::Socket et IO::Socket::INET6 est déprécié et
+        sera supprimé dans une future version. Voir DÉPRÉCATIONS ci-dessous.</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="s,"><a class="permalink" href="#s,">-s, --server
+    [&lt;serveur-cible&gt;[:&lt;port&gt;]]</a></dt>
+  <dd>Indique explicitement à Swaks d'utiliser des sockets réseau et spécifie le
+      nom d'hôte ou l'adresse IP à laquelle se connecter, ou demande si aucun
+      argument n'est donné. Si cette option n'est pas fournie et qu'aucune autre
+      option de transport n'est fournie, le serveur de messagerie cible est
+      déterminé à partir des enregistrements DNS appropriés pour le domaine de
+      l'adresse e-mail du destinataire en utilisant le module Net::DNS. Si Net::DNS
+      n'est pas disponible, Swaks tentera de se connecter à localhost pour la
+      délivrance. Le port cible peut être défini en option ici. Les formats pris
+      en charge incluent SERVER:PORT (prenant en charge les noms et les adresses
+      IPv4) ; [SERVER]:PORT et SERVER/PORT (prenant en charge les noms, les
+      adresses IPv4 et IPv6). Un port défini via cette option ne sera utilisé que
+      si l'option <span class="Li">&quot;--port&quot;</span> n'est pas utilisée.
+      Voir également <span class="Li">&quot;--copy-routing&quot;</span>.
+      (Arg-Requis, Demande-Si-Absence)</dd>
+  <dt id="p,"><a class="permalink" href="#p,">-p, --port [&lt;port&gt;]</a></dt>
+  <dd>Spécifie le port TCP à utiliser sur la cible, ou demande si aucun argument
+      n'est fourni. L'argument peut être un nom de service (tel que récupéré par
+      <a href='/man/getservbyname.3.en'>getservbyname(3)</a>) ou un numéro de
+      port. Le port par défaut est smtp/25, sauf influence des options
+      <span class="Li">&quot;--protocol&quot;</span> ou
+      <span class="Li">&quot;--tls-on-connect&quot;</span>.
+      (Arg-Requis, Demande-Si-Absence)</dd>
+  <dt id="li,"><a class="permalink" href="#li,">-li, --local-interface
+    [&lt;interface-locale&gt;[:&lt;port&gt;]]</a></dt>
+  <dd>Utilise l'argument comme interface locale pour la connexion SMTP sortante,
+      ou demande à l'utilisateur si aucun argument n'est donné. L'argument peut
+      être une adresse IP ou un nom d'hôte. L'action par défaut est de laisser le
+      système d'exploitation choisir l'interface locale. Voir
+      <span class="Li">&quot;--server&quot;</span> pour des commentaires
+      supplémentaires sur le format :&lt;port&gt;. Un port défini via cette
+      option ne sera utilisé que si l'option
+      <span class="Li">&quot;--port&quot;</span> n'est pas utilisée.
+      (Arg-Requis, Demande-Si-Absence)</dd>
+  <dt id="lp,"><a class="permalink" href="#lp,">-lp, --local-port, --lport
+    [&lt;port&gt;]</a></dt>
+  <dd>Spécifie le port sortant à partir duquel initier la transaction. L'argument
+      peut être un nom de service (tel que récupéré par
+      <a href='/man/getservbyname.3.en'>getservbyname(3)</a>) ou un numéro de
+      port. Si cette option n'est pas spécifiée, le système choisira un port
+      éphémère. Notez que les utilisateurs ordinaires ne peuvent pas spécifier
+      certains ports. (Arg-Requis, Demande-Si-Absence)</dd>
+  <dt id="copy">--copy-routing
+    &lt;domaine&gt;</dt>
+  <dd>L'argument est interprété comme la partie domaine d'une adresse e-mail et
+      il est utilisé pour trouver le serveur cible en utilisant la même logique
+      qui serait utilisée pour rechercher le serveur cible d'une adresse e-mail
+      de destinataire. Voir l'option
+      <span class="Li">&quot;--to&quot;</span> pour plus de détails sur la façon
+      dont la cible est déterminée à partir du domaine de l'e-mail.
+      (Arg-Requis)</dd>
+  <dt>-4, -6</dt>
+  <dd>Forcer IPv4 ou IPv6. (Arg-Aucun)</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="UNIX"><a class="permalink" href="#UNIX">SOCKETS UNIX</a></dt>
+  <dd>Cette méthode de transport tente de délivrer des messages via un fichier
+      de socket de domaine UNIX. Ceci est utile pour tester les MTA/MDA qui
+      écoutent sur des fichiers de socket (par exemple, tester la livraison LMTP
+      à Cyrus). Ce transport nécessite le module IO::Socket::UNIX qui fait partie
+      de la distribution standard de Perl. Si ce module ne peut pas être chargé,
+      tenter d'utiliser ce transport entraînera une erreur et l'arrêt du
+      programme.</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="socket"><a class="permalink" href="#socket">--socket
+    [&lt;fichier-socket&gt;]</a></dt>
+  <dd>Cette option prend comme argument un fichier de socket de domaine UNIX. Si
+      Swaks ne parvient pas à ouvrir ce socket, il affichera une erreur et
+      s'arrêtera. (Arg-Requis, Demande-Si-Absence)</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="PIPES"><a class="permalink" href="#PIPES">PIPES</a></dt>
+  <dd>Ce transport tente de lancer un processus et de communiquer avec lui via des
+      tuyaux. Le programme lancé doit être prêt à se comporter comme un serveur de
+      messagerie sur
+      <span class="Li">&quot;STDIN&quot;</span>/<span class="Li">&quot;STDOUT&quot;</span>.
+      Tout MTA conçu pour fonctionner à partir d'inet/xinet devrait supporter cela.
+      De plus, certains MTA fournissent des modes de test avec lesquels on peut
+      communiquer via
+      <span class="Li">&quot;STDIN&quot;</span>/<span class="Li">&quot;STDOUT&quot;</span>.
+      Ce transport peut être utilisé pour automatiser ces tests. Par exemple, si
+      vous avez implémenté la vérification DNSBL avec Exim et que vous vouliez vous
+      assurer qu'elle fonctionnait, vous pourriez exécuter
+      <span class="Li">&quot;swaks --pipe &quot;exim -bh 127.0.0.2&quot;&quot;</span>.
+      Idéalement, le processus auquel vous parlez devrait se comporter exactement
+      comme un serveur SMTP sur
+      <span class="Li">&quot;STDIN&quot;</span> et
+      <span class="Li">&quot;STDOUT&quot;</span>. Tout débogage devrait être envoyé
+      à
+      <span class="Li">&quot;STDERR&quot;</span>, qui sera dirigé vers votre
+      terminal. En pratique, Swaks peut généralement gérer une certaine quantité
+      de débogage sur le
+      <span class="Li">&quot;STDOUT&quot;</span> de l'enfant, mais il n'y a aucune
+      garantie sur la quantité qu'il peut gérer.
+    <p class="Pp">Ce transport nécessite le module IPC::Open2 qui fait partie de la
+        distribution standard de Perl. Si ce module ne peut pas être chargé,
+        tenter d'utiliser ce transport entraînera une erreur et l'arrêt du
+        programme.</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="pipe"><a class="permalink" href="#pipe">--pipe
+    [&lt;commande-et-arguments&gt;]</a></dt>
+  <dd>Fournit un nom de processus et des arguments au processus. Swaks tentera de
+      lancer le processus et de communiquer avec lui via des tuyaux. Si l'argument
+      n'est pas exécutable, Swaks affichera une erreur et s'arrêtera.
+      (Arg-Requis, Demande-Si-Absence)</dd>
+</dl>
+</div>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PROTOCOL_OPTIONS'><a class='permalink' href='#PROTOCOL_OPTIONS'>OPTIONS DE PROTOCOLE</a></h1>
+<p class="Pp">Ces options sont liées à la couche protocolaire.</p>
+<dl class="Bl-tag">
+  <dt id="t,"><a class="permalink" href="#t,">-t, --to
+    [&lt;adresse-e-mail&gt;[,&lt;adresse-e-mail&gt;[,...]]]</a></dt>
+  <dd></dd>
+  <dt id="cc"><a class="permalink" href="#cc">--cc
+    [&lt;adresse-e-mail&gt;[,&lt;adresse-e-mail&gt;[,...]]]</a></dt>
+  <dd></dd>
+  <dt id="bcc"><a class="permalink" href="#bcc">--bcc
+    [&lt;adresse-e-mail&gt;[,&lt;adresse-e-mail&gt;[,...]]]</a></dt>
+  <dd>Toutes ces options indiquent à Swaks d'utiliser l'argument (les arguments)
+      comme destinataire de l'enveloppe pour l'e-mail. Il existe des différences
+      subtiles entre ces trois options, détaillées ci-dessous. Si une option est
+      spécifiée mais sans arguments, Swaks demandera à l'utilisateur un argument.
+    <p class="Pp"><span class="Li">&quot;--to&quot;</span> est spécial car c'est
+        la seule option requise par Swaks. Il n'y a pas de valeur par défaut pour
+        cette option. Si aucun destinataire n'est fourni par quelque moyen que ce
+        soit, l'utilisateur sera invité à en fournir un interactivement. La seule
+        exception est si une valeur
+        <span class="Li">&quot;--quit-after&quot;</span> est fournie, ce qui
+        provoquera la terminaison de la transaction SMTP avant que le destinataire
+        ne soit nécessaire. Si plusieurs destinataires sont fournis et que le
+        domaine du destinataire est nécessaire pour déterminer le routage, le
+        domaine du dernier destinataire dans la liste d'arguments
+        <span class="Li">&quot;--to&quot;</span> est utilisé.</p>
+    <p class="Pp">La principale distinction entre ces options réside dans la façon
+        dont leurs arguments sont traités lors de la génération de la partie DATA
+        de l'e-mail. Elles ont chacune leurs propres jetons de remplacement
+        (<span class="Li">&quot;%TO_ADDRESS%&quot;</span>,
+        <span class="Li">&quot;%CC_ADDRESS%&quot;</span> et
+        <span class="Li">&quot;%BCC_ADDRESS%&quot;</span> respectivement) qui peuvent
+        être utilisés par quiconque crée une donnée personnalisée. Dans le message
+        par défaut de Swaks,
+        <span class="Li">&quot;%TO_ADDRESS%&quot;</span> sera utilisé pour l'en-tête
+        To : et, s'il est renseigné,
+        <span class="Li">&quot;%CC_HEADER%&quot;</span> sera utilisé pour un en-tête
+        Cc :.
+        <span class="Li">&quot;%BCC_ADDRESS%&quot;</span> n'est pas utilisé dans
+        la donnée par défaut. (Arg-Requis, Demande-Si-Absence)</p>
+  </dd>
+  <dt id="f,"><a class="permalink" href="#f,">-f, --from
+    [&lt;adresse-e-mail&gt;]</a></dt>
+  <dd>Utilise l'argument comme expéditeur de l'enveloppe pour l'e-mail, ou demande
+      à l'utilisateur si aucun argument n'est spécifié. La chaîne
+      <span class="Li">&quot;&lt;&gt;&quot;</span> peut être fournie pour signifier
+      l'expéditeur nul. Si l'utilisateur ne spécifie pas d'adresse d'expéditeur,
+      une valeur par défaut est utilisée. La partie domaine de l'expéditeur par
+      défaut est une meilleure estimation du nom de domaine pleinement qualifié de
+      l'hôte local. La méthode de détermination de la partie locale varie. Si la
+      variable d'environnement
+      <span class="Li">$LOGNAME</span> est définie, elle sera utilisée comme
+      partie locale. Sinon, la valeur de
+      <span class="Li">Win32::LoginName()</span> sera utilisée sous Windows et
+      <a href='/man/getpwuid.3.en'>getpwuid(3)</a> sur les plateformes de type UNIX.
+      Voir également
+class="Li">&quot;--force-getpwuid&quot;</span>. Si Swaks ne parvient pas à
+      déterminer un nom d'hôte local et que l'adresse de l'expéditeur est
+      nécessaire pour la transaction, Swaks générera une erreur et se
+      terminera. Dans ce cas, une chaîne de caractères valide doit être
+      fournie via cette option. (Arg-Requis, Invite)</dd>
+  <dt id="ehlo,"><a class="permalink" href="#ehlo,">--ehlo, --lhlo, -h, --helo
+    [&lt;chaîne-helo&gt;]</a></dt>
+  <dd>Chaîne à utiliser comme argument pour la commande HELO/EHLO/LHLO, ou invite
+      l'utilisateur si aucun argument n'est spécifié. Si cette option n'est pas
+      utilisée, une estimation du nom de domaine pleinement qualifié de l'hôte
+      local est utilisée. Si Swaks ne parvient pas à déterminer un nom
+      d'hôte local et que la chaîne helo est nécessaire pour la transaction,
+      Swaks générera une erreur et se terminera. Dans ce cas, une chaîne
+      valide doit être fournie via cette option. (Arg-Requis, Invite)</dd>
+  <dt id="q,"><a class="permalink" href="#q,">-q, --quit, --quit-after
+    &lt;point-arrêt&gt;</a></dt>
+  <dd>Point auquel la transaction doit être arrêtée. Lorsque le point d'arrêt
+      demandé est atteint dans la transaction, et à condition que Swaks n'ait
+      pas généré d'erreur avant de l'atteindre, Swaks enverra &quot;QUIT&quot;
+      et tentera de fermer la connexion proprement. Ce sont les arguments
+      valides et les notes sur leur signification. (Arg-Requis)</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="PROXY"><a class="permalink" href="#PROXY">PROXY</a></dt>
+  <dd>Quitter après que le serveur a envoyé une réponse à une requête PROXY. Notez
+      que s'il n'y a pas d'erreur lors de la négociation du proxy, cela sera
+      synonyme de CONNECT.</dd>
+  <dt id="CONNECT,"><a class="permalink" href="#CONNECT,">CONNECT,
+    BANNER</a></dt>
+  <dd>Terminer la session après avoir reçu la bannière d'accueil de la cible.</dd>
+  <dt id="FIRST-HELO,"><a class="permalink" href="#FIRST-HELO,">FIRST-HELO,
+    FIRST-EHLO, FIRST-LHLO</a></dt>
+  <dd>Dans une session STARTTLS (mais pas tls-on-connect), terminer la
+      transaction après le premier des deux HELO. Dans une transaction non-STARTTLS,
+      se comporte de la même manière que HELO (voir ci-dessous).</dd>
+  <dt id="XCLIENT"><a class="permalink" href="#XCLIENT">XCLIENT</a></dt>
+  <dd>Quitter après la négociation XCLIENT. Cela quitte toujours après le point
+      où XCLIENT aurait été négocié, indépendamment du fait qu'il ait été
+      tenté ou non.</dd>
+  <dt id="XCLIENT-HELO"><a class="permalink" href="#XCLIENT-HELO">XCLIENT-HELO</a></dt>
+  <dd>Quitter après le HELO déclenché par la négociation XCLIENT. Ceci diffère
+      de HELO et FIRST-HELO car la négociation XCLIENT peut se produire à
+      plusieurs points de la transaction SMTP et il est impossible de faire
+      spécifiquement référence au HELO déclenché par XCLIENT en utilisant les
+      points d'arrêt HELO ou FIRST-HELO. Cela quitte toujours après le point
+      où le HELO déclenché par XCLIENT se serait produit, indépendamment du
+      fait qu'il ait été tenté ou non.</dd>
+  <dt id="STARTTLS,"><a class="permalink" href="#STARTTLS,">STARTTLS,
+    TLS</a></dt>
+  <dd>Quitter la transaction immédiatement après la négociation TLS. Notez que
+      cela se produit à différents endroits selon que STARTTLS ou
+      tls-on-connect sont utilisés. Cela quitte toujours après le point où
+      TLS aurait été négocié, indépendamment du fait qu'il ait été tenté ou
+      non.</dd>
+  <dt id="HELO,"><a class="permalink" href="#HELO,">HELO, EHLO, LHLO</a></dt>
+  <dd>Dans une session STARTTLS ou XCLIENT, quitter après le second HELO.
+      Sinon, quitter après le premier et unique HELO.</dd>
+  <dt id="AUTH"><a class="permalink" href="#AUTH">AUTH</a></dt>
+  <dd>Quitter après l'authentification. Cela quitte toujours après le point où
+      l'authentification aurait été négociée, indépendamment du fait qu'elle
+      ait été tentée ou non.</dd>
+  <dt id="MAIL,"><a class="permalink" href="#MAIL,">MAIL, FROM</a></dt>
+  <dd>Quitter après l'envoi de MAIL FROM :.</dd>
+  <dt id="RCPT,"><a class="permalink" href="#RCPT,">RCPT, TO</a></dt>
+  <dd>Quitter après l'envoi de RCPT TO :.</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="da,"><a class="permalink" href="#da,">--da, --drop-after
+    &lt;point-arrêt&gt;</a></dt>
+  <dd>L'option est similaire à
+      <span class="Li">&quot;--quit-after&quot;</span>, mais au lieu d'essayer
+      de fermer proprement la session, elle termine simplement la session.
+      Cette option accepte les mêmes points d'arrêt que
+      <span class="Li">&quot;--quit-after&quot;</span> et accepte en plus
+      DATA et DOT, détaillés ci-dessous. (Arg-Requis)</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="DATA~2"><a class="permalink" href="#DATA~2">DATA</a></dt>
+  <dd>Couper la connexion après que DATA a été envoyé par le serveur.</dd>
+  <dt id="DOT"><a class="permalink" href="#DOT">DOT</a></dt>
+  <dd>Couper la connexion après que le dernier '.' du message a été envoyé par
+      le serveur.</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="das,"><a class="permalink" href="#das,">--das, --drop-after-send
+    &lt;point-arrêt&gt;</a></dt>
+  <dd>Cette option est similaire à
+      <span class="Li">&quot;--drop-after&quot;</span>, mais au lieu de couper
+      la connexion après avoir lu une réponse au point d'arrêt, elle coupe la
+      connexion immédiatement après avoir envoyé le point d'arrêt. Elle accepte
+      les mêmes points d'arrêt que
+      <span class="Li">&quot;--drop-after&quot;</span>. Si le point d'arrêt
+      concerne une partie facultative de la transaction qui n'est pas réellement
+      envoyée (par exemple, STARTTLS ou AUTH), cette option se comportera
+      identiquement à
+      <span class="Li">&quot;--drop-after&quot;</span>. Voir ci-dessous pour
+      des détails spécifiques. (Arg-Requis)</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="CONNECT"><a class="permalink" href="#CONNECT">CONNECT</a></dt>
+  <dd>Se connecter au serveur, puis couper la connexion avant de recevoir la
+      bannière du serveur.</dd>
+  <dt id="STARTTLS,~2"><a class="permalink" href="#STARTTLS,~2">STARTTLS,
+    TLS</a></dt>
+  <dd>Se comporte identiquement à
+    <span class="Li">&quot;--drop-after&quot;</span>.</dd>
+  <dt id="HELO,~2"><a class="permalink" href="#HELO,~2">HELO, EHLO,
+    LHLO</a></dt>
+  <dd>Ne fonctionne pas nécessairement comme prévu. Si elle semble lire la
+      réponse HELO incorrectement, utilisez plutôt FIRST-HELO.</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="timeout"><a class="permalink" href="#timeout">--timeout
+    [&lt;temps&gt;]</a></dt>
+  <dd>Utiliser l'argument comme délai d'attente de la transaction SMTP, ou
+      inviter l'utilisateur si aucun argument n'est donné. L'argument peut être
+      un simple chiffre, qui sera interprété en secondes, ou peut avoir un
+      spécificateur s, m, ou h (5s = 5 secondes, 3m = 180 secondes, 1h = 3600
+      secondes). Cas spécial, 0 signifie pas de délai d'attente pour les
+      transactions. La valeur par défaut est 30s. (Arg-Requis, Invite)</dd>
+  <dt id="protocol"><a class="permalink" href="#protocol">--protocol
+    &lt;protocole&gt;</a></dt>
+  <dd>Spécifier quel protocole utiliser dans la transaction. Les options
+      valides sont présentées dans le tableau ci-dessous. Actuellement, les
+      protocoles 'de base' sont SMTP, ESMTP et LMTP. En utilisant des variations
+      de ces types de protocoles, on peut spécifier de manière concise les ports
+      par défaut, si l'authentification doit être tentée, et le type de connexion
+      TLS qui doit être tenté. Le protocole par défaut est ESMTP. Le tableau
+      suivant présente les arguments disponibles pour
+      <span class="Li">&quot;--protocol&quot;</span> et les options que
+      chacun définit comme effet secondaire. (Arg-Requis)</dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="SMTP"><a class="permalink" href="#SMTP">SMTP</a></dt>
+  <dd>HELO, &quot;-p 25&quot;</dd>
+  <dt id="SSMTP"><a class="permalink" href="#SSMTP">SSMTP</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-tlsc -p 465&quot;</dd>
+  <dt id="SSMTPA"><a class="permalink" href="#SSMTPA">SSMTPA</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-a -tlsc -p 465&quot;</dd>
+  <dt id="SMTPS"><a class="permalink" href="#SMTPS">SMTPS</a></dt>
+  <dd>HELO, &quot;-tlsc -p 465&quot;</dd>
+  <dt id="ESMTP"><a class="permalink" href="#ESMTP">ESMTP</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-p 25&quot;</dd>
+  <dt id="ESMTPA"><a class="permalink" href="#ESMTPA">ESMTPA</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-a -p 25&quot;</dd>
+  <dt id="ESMTPS"><a class="permalink" href="#ESMTPS">ESMTPS</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-tls -p 25&quot;</dd>
+  <dt id="ESMTPSA"><a class="permalink" href="#ESMTPSA">ESMTPSA</a></dt>
+  <dd>EHLO-&gt;HELO, &quot;-a -tls -p 25&quot;</dd>
+  <dt id="LMTP"><a class="permalink" href="#LMTP">LMTP</a></dt>
+  <dd>LHLO, &quot;-p 24&quot;</dd>
+  <dt id="LMTPA"><a class="permalink" href="#LMTPA">LMTPA</a></dt>
+  <dd>LHLO, &quot;-a -p 24&quot;</dd>
+  <dt id="LMTPS"><a class="permalink" href="#LMTPS">LMTPS</a></dt>
+  <dd>LHLO, &quot;-tls -p 24&quot;</dd>
+  <dt id="LMTPSA"><a class="permalink" href="#LMTPSA">LMTPSA</a></dt>
+  <dd>LHLO, &quot;-a -tls -p 24&quot;</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="pipeline"><a class="permalink" href="#pipeline">--pipeline</a></dt>
+  <dd>Si le serveur distant le prend en charge, tenter le PIPELINING SMTP (RFC
+      2920). (Arg-Aucun)</dd>
+  <dt id="prdr"><a class="permalink" href="#prdr">--prdr</a></dt>
+  <dd>Si le serveur le prend en charge, tenter la réponse de données par
+      destinataire (PRDR)
+      (<a href='https://tools.ietf.org/html/draft-hall-prdr-00.txt'>https://tools.ietf.org/html/draft-hall-prdr-00.txt</a>). PRDR n'est
+      pas encore standardisé, mais les MTA ont commencé à implémenter la
+      proposition. (Arg-Aucun)</dd>
+  <dt id="force"><a class="permalink" href="#force">--force-getpwuid</a></dt>
+  <dd>Indiquer à Swaks d'utiliser la méthode par défaut du système pour
+      déterminer le nom d'utilisateur de l'utilisateur actuel pour la partie
+      locale de l'expéditeur par défaut, au lieu d'essayer d'abord
+      <span class="Li">$LOGNAME</span>. Malgré le nom de l'option spécifique à
+      UNIX, cette option fonctionne également sous Windows. (Arg-Aucun)</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='TLS_/_ENCRYPTION'><a class='permalink' href='#TLS_/_ENCRYPTION'>TLS   / CHIFFREMENT</a></h1>
+<p class="Pp">Ce sont des options relatives au chiffrement de la transaction.
+    Celles-ci ont été testées et confirmées pour fonctionner avec les trois
+    méthodes de transport. Le module Net::SSLeay est utilisé pour effectuer le
+    chiffrement lorsqu'il est demandé. Si ce module n'est pas chargeable, Swaks
+    ignorera la demande TLS ou générera une erreur, selon que la demande était
+    facultative. STARTTLS est défini comme une extension dans le protocole ESMTP
+    et ne sera pas disponible si
+    <span class="Li">&quot;--protocol&quot;</span> est défini sur une variation
+    de SMTP brut. Parce qu'il n'est pas défini dans le protocole lui-même,
+    <span class="Li">&quot;--tls-on-connect&quot;</span> est disponible pour
+    tout type de protocole si la cible le prend en charge.</p>
+<p class="Pp">Un certificat local n'est pas requis pour qu'une connexion TLS
+    soit négociée. Cependant, certains serveurs utilisent la vérification du
+    certificat client pour s'assurer que le client est autorisé à se connecter.
+    Swaks peut être configuré pour utiliser un certificat local spécifique à l'aide
+    des options <span class="Li">&quot;--tls-cert&quot;</span> et
+    <span class="Li">&quot;--tls-key&quot;</span>, et éventuellement utiliser une
+    chaîne de certificats à l'aide de l'option
+    <span class="Li">&quot;--tls-chain&quot;</span>.</p>
+<dl class="Bl-tag">
+  <dt id="tls"><a class="permalink" href="#tls">-tls</a></dt>
+  <dd>Exiger que la connexion utilise STARTTLS. Quitter si TLS n'est pas disponible
+      pour une raison quelconque (non annoncé, négociations échouées, etc.).
+      (Arg-Aucun)</dd>
+  <dt id="tlso,"><a class="permalink" href="#tlso,">-tlso,
+    --tls-optional</a></dt>
+  <dd>Tenter d'utiliser STARTTLS si disponible, continuer avec la transaction
+      normale si TLS n'a pas pu être négocié pour une raison quelconque. Notez
+      qu'il s'agit d'une option semi-inutile telle qu'implémentée actuellement
+      car après un échec de négociation, l'état de la connexion est inconnu.
+      Dans certains cas, comme une incompatibilité de version, la connexion
+      devrait rester en texte brut. Dans d'autres, comme un échec de vérification,
+      le serveur peut penser qu'il doit continuer à parler TLS tandis que le
+      client pense qu'il s'agit de texte brut. Une tentative d'ajout d'une
+      détection d'état plus granulaire pourrait être faite à l'avenir, mais pour
+      l'instant, soyez simplement conscient que les choses étranges</dd>
+</dl>
+gs peut se produire avec cette option si la
+      négociation TLS est tentée et échoue. (Arg-None)</dd>
+  <dt id="tlsos,"><a class="permalink" href="#tlsos,">-tlsos,
+    --tls-optional-strict</a></dt>
+  <dd>Tente d'utiliser STARTTLS s'il est disponible. Poursuit la transaction si TLS
+      est négocié avec succès ou si STARTTLS n'est pas annoncé. Si STARTTLS est
+      annoncé mais que les négociations TLS échouent, traite cela comme une erreur
+      et abandonne la transaction. En raison de la mise en garde notée ci-dessus,
+      c'est une option beaucoup plus saine que <span class="Li">&quot;--tls-optional&quot;</span>. (Arg-None)</dd>
+  <dt id="tlsc,"><a class="permalink" href="#tlsc,">-tlsc,
+    --tls-on-connect</a></dt>
+  <dd>Initie une connexion TLS immédiatement à la connexion. Suivant la convention
+      commune, si cette option est spécifiée, le port par défaut passe de 25 à
+      465, bien que cela puisse toujours être remplacé par l'option --port.
+      (Arg-None)</dd>
+  <dt id="tlsp,"><a class="permalink" href="#tlsp,">-tlsp, --tls-protocol
+    &lt;tls-version-specification&gt;</a></dt>
+  <dd>Spécifie quels protocoles utiliser (ou ne pas utiliser) lors de la négociation
+      TLS. Au moment de la rédaction, les protocoles disponibles sont sslv2,
+      sslv3, tlsv1, tlsv1_1, tlsv1_2 et tlsv1_3. La disponibilité de ces protocoles
+      dépend de votre bibliothèque OpenSSL sous-jacente, donc tous ne peuvent pas
+      être disponibles. La liste des protocoles disponibles est affichée dans la
+      sortie de <span class="Li">&quot;--dump&quot;</span> (en supposant que TLS
+      est disponible).
+    <p class="Pp">La chaîne de spécification est une liste de protocoles séparés par
+        des virgules qui peuvent être utilisés ou non. Par exemple,
+        'tlsv1,tlsv1_1' ne réussira que si l'un de ces deux protocoles est
+        disponible sur le client et le serveur. Inversement,
+        'no_sslv2,no_sslv3' tentera de négocier tout protocole sauf sslv2 et
+        sslv3. Les deux formes de spécification ne peuvent pas être mélangées.
+        (Arg-Required)</p>
+  </dd>
+  <dt>--tls-cipher &lt;cipher-string&gt;</dt>
+  <dd>L'argument de cette option est passé à la bibliothèque OpenSSL sous-jacente
+      pour définir la liste des chiffrements acceptables à utiliser pour la
+      connexion. Le format de cette chaîne est opaque pour Swaks et est défini
+      dans <a href='https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html#CIPHER-LIST-FORMAT'>https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html#CIPHER-LIST-FORMAT</a>.
+      Un bref exemple serait <span class="Li">&quot;--tls-cipher
+      '3DES:+RSA'&quot;</span>. (Arg-Required)</dd>
+  <dt>--tls-verify</dt>
+  <dd>Indique à Swaks de tenter de vérifier le certificat du serveur. Cette option est
+      identique à la spécification des options
+      <span class="Li">&quot;--tls-verify-ca&quot;</span> et
+      <span class="Li">&quot;--tls-verify-host&quot;</span>. Voir ces options pour
+      des descriptions détaillées sur la façon d'affiner chaque type de
+      vérification.
+    <p class="Pp">Par défaut, la vérification TLS n'est pas requise. Si la vérification
+        TLS est requise par
+        <span class="Li">&quot;--tls-verify&quot;</span>,
+        <span class="Li">&quot;--tls-verify-ca&quot;</span> ou
+        <span class="Li">&quot;--tls-verify-host&quot;</span> et que le type de
+        vérification demandé échoue, la négociation TLS ne réussira pas.
+      (Arg-None)</p>
+  </dd>
+  <dt>--tls-verify-ca</dt>
+  <dd>Exige que le certificat du serveur soit signé par une autorité de certification
+      connue et ne soit pas expiré. Par défaut, la liste des AC connues sera celle
+      disponible via le client sur lequel Swaks s'exécute. Pour fournir une AC
+      personnalisée, voir <span class="Li">&quot;--tls-ca-path&quot;</span>.
+      (Arg-None)</dd>
+  <dt>--tls-verify-host</dt>
+  <dd>Exige que la cible de la connexion actuelle soit listée dans le nom alternatif
+      du sujet (SAN) ou le nom commun (CN) du certificat du serveur.
+    <p class="Pp">La cible que Swaks utilise pour la vérification variera. Il peut
+        s'agir d'un nom d'hôte, fourni directement via l'option
+        <span class="Li">&quot;--server&quot;</span> ou recherché via les enregistrements
+        MX. Dans ce cas, la vérification fonctionne comme prévu. Si la cible est
+        une adresse IP, l'adresse IP sera recherchée dans le certificat, ce qui est
+        possible mais inhabituel. Si le transport est
+        <span class="Li">&quot;--pipe&quot;</span> ou
+        <span class="Li">&quot;--socket&quot;</span>, il n'y aura pas de cible
+        significative à vérifier dans le certificat et la vérification échouera.
+        Dans cette situation, il est préférable d'utiliser uniquement
+        <span class="Li">&quot;--tls-verify-ca&quot;</span> ou de remplacer la
+        cible utilisée pour la vérification avec l'option
+        <span class="Li">&quot;--tls-verify-target&quot;</span>.
+        (Arg-None)</p>
+  </dd>
+  <dt>--tls-verify-target &lt;verification-string&gt;</dt>
+  <dd>Lorsqu'il est défini, l'argument de cette option sera utilisé comme nom d'hôte
+      à vérifier pour <span class="Li">&quot;--tls-verify-host&quot;</span>. Ceci est
+      nécessaire lors de l'utilisation de
+      <span class="Li">&quot;--tls-verify-host&quot;</span> avec les transports
+      <span class="Li">&quot;--pipe&quot;</span> ou
+      <span class="Li">&quot;--socket&quot;</span>, qui n'ont pas de cible vérifiable
+      par défaut. Il peut également être utilisé pour remplacer la cible par
+      défaut lors de l'utilisation du transport
+      <span class="Li">&quot;--server&quot;</span>. Par exemple, il peut être utilisé
+      pour vérifier que le certificat d'un serveur auquel on s'est connecté
+      explicitement via IP contient un certificat spécifique. (Arg-Required)</dd>
+  <dt>--tls-ca-path &lt;ca-location&gt;</dt>
+  <dd>Spécifie un emplacement alternatif pour les informations d'AC pour vérifier les
+      certificats serveur. L'argument peut pointer vers un fichier ou un répertoire.
+      Le comportement par défaut est d'utiliser les informations par défaut de la
+      bibliothèque OpenSSL sous-jacente. (Arg-Required)</dd>
+  <dt>--tls-cert &lt;cert-file&gt;</dt>
+  <dd>Fournit un chemin vers un fichier contenant le certificat local que Swaks doit
+      utiliser si TLS est négocié. Si une chaîne de certificats doit être fournie,
+      elle peut être fournie via ce fichier ou via un fichier séparé avec
+      <span class="Li">&quot;--tls-chain&quot;</span>. Le chemin du fichier est
+      requis. Tel qu'implémenté actuellement, le certificat dans le fichier doit
+      être au format PEM. Contactez l'auteur s'il existe un besoin impérieux pour
+      l'ASN1. Si cette option est définie, <span class="Li">&quot;--tls-key&quot;</span>
+      est également requis. (Arg-Required)</dd>
+  <dt>--tls-key &lt;key-file&gt;</dt>
+  <dd>Fournit un chemin vers un fichier contenant la clé privée locale que Swaks doit
+      utiliser si TLS est négocié. Le chemin du fichier est requis. Tel qu'implémenté
+      actuellement, le certificat dans le fichier doit être au format PEM. Contactez
+      l'auteur s'il existe un besoin impérieux pour l'ASN1. Si cette option est
+      définie, <span class="Li">&quot;--tls-cert&quot;</span> est également requis.
+      (Arg-Required)</dd>
+  <dt>--tls-chain &lt;chain-file&gt;</dt>
+  <dd>Fournit un chemin vers un fichier contenant la chaîne de certificats locale que
+      Swaks doit utiliser si TLS est négocié. Le chemin du fichier est requis. Tel
+      qu'implémenté actuellement, le certificat dans le fichier doit être au format
+      PEM. Contactez l'auteur s'il existe un besoin impérieux pour l'ASN1. Si cette
+      option est définie, <span class="Li">&quot;--tls-cert&quot;</span> et
+      <span class="Li">&quot;--tls-key&quot;</span> sont également requis.
+      (Arg-Required)</dd>
+  <dt>--tls-get-peer-cert [&lt;output-file&gt;]</dt>
+  <dd>Obtient une copie du certificat du pair TLS. Si aucun argument n'est donné, il sera
+      affiché sur <span class="Li">&quot;STDOUT&quot;</span>. Si un argument est
+      donné, il est supposé être un chemin de système de fichiers spécifiant où le
+      certificat doit être écrit. Le certificat enregistré peut alors être examiné
+      à l'aide d'outils standard tels que la commande openssl. Si un fichier est
+      spécifié, son contenu sera écrasé. Cette option ne renverra jamais qu'un seul
+      certificat. Pour obtenir chaque certificat envoyé par le serveur, voir
+      <span class="Li">&quot;--tls-get-peer-chain&quot;</span>.
+    (Arg-Optional)</dd>
+  <dt>--tls-get-peer-chain [&lt;output-file&gt;]</dt>
+  <dd>Obtient une copie de la chaîne de certificats TLS envoyée par le serveur. Si aucun
+      argument n'est donné, elle sera affichée sur
+      <span class="Li">&quot;STDOUT&quot;</span>. Si un argument est donné, il est
+      supposé être un chemin de système de fichiers spécifiant où le certificat doit
+      être écrit. La chaîne enregistrée peut alors être examinée à l'aide d'outils
+      standard tels que la commande openssl. Si un fichier est spécifié, son contenu
+      sera écrasé. Voir également
+      <span class="Li">&quot;--tls-get-peer-cert&quot;</span>.
+    (Arg-Optional)</dd>
+  <dt>--tls-sni &lt;sni-string&gt;</dt>
+  <dd>Spécifie le champ Server Name Indication (SNI) à envoyer lors de l'initiation de la
+      connexion TLS. (Arg-Required)</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='AUTHENTICATION'><a class='permalink' href='#AUTHENTICATION'>AUTHENTICATION</a></h1>
+<p class="Pp">Swaks tentera de s'authentifier auprès du serveur de messagerie cible
+    s'il y est invité. Cette section détaille les types d'authentification disponibles,
+    les exigences, les options et leurs interactions, ainsi que d'autres points
+    fins dans l'utilisation de l'authentification. Comme l'authentification est définie
+    comme une extension dans le protocole ESMTP, elle sera indisponible si
+    <span class="Li">&quot;--protocol&quot;</span> est défini sur une variation de
+    SMTP.</p>
+<p class="Pp">Toutes les méthodes d'authentification nécessitent un encodage
+    base64. Si le module Perl MIME::Base64 peut être chargé, Swaks tente de
+    l'utiliser pour effectuer ces encodages. Si MIME::Base64 n'est pas disponible,
+    Swaks utilisera ses propres routines base64 intégrées. Celles-ci sont plus lentes
+    que les routines MIME::Base64 et moins revues, bien qu'elles aient été testées
+    en profondeur. L'utilisation du module MIME::Base64 est encouragée.</p>
+<p class="Pp">Si l'authentification est requise (voir les options ci-dessous pour
+    quand elle est requise et quand elle ne l'est pas) et que les exigences ne sont
+    pas satisfaites pour le type d'authentification disponible, Swaks affiche une
+    erreur et se termine. Deux façons dont cela peut se produire incluent le fait
+    de forcer Swaks à utiliser un type d'authentification spécifique que Swaks ne
+    peut pas utiliser en raison d'exigences manquantes, ou de permettre à Swaks
+    d'utiliser n'importe quel type d'authentification, mais le serveur n'annonce
+    que des types que Swaks ne peut pas prendre en charge. Dans le premier cas, Swaks
+    se termine lors du traitement des options car il sait à l'avance qu'il ne
+    pourra pas s'authentifier. Dans le second cas, Swaks se terminera lors de
+    l'étape d'authentification de la transaction SMTP, car Swaks ne sera pas
+    conscient qu'il ne pourra pas s'authentifier avant ce moment.</p>
+<p class="Pp">Voici les types d'authentification pris en charge, y compris toutes les
+    notes et exigences individuelles.</p>
+<p class="Pp">Les options suivantes affectent l'utilisation de l'authentification par
+    Swaks. Ces options sont toutes interdépendantes. Par exemple, spécifier
+    <span class="Li">&quot;--auth-user&quot;</span> implique
+    <span class="Li">&quot;--auth&quot;</span> et
+    <span class="Li">&quot;--auth-password&quot;</span>. Spécifier
+    <span class="Li">&quot;--auth-optional&quot;</span> implique
+    <span class="Li">&quot;--auth-user&quot;</span> et
+    <span class="Li">&quot;--auth-password&quot;</span>, etc.</p>
+<dl class="Bl-tag">
+  <dt id="a,"><a class="permalink" href="#a,">-a, --auth
+    [&lt;auth-type&gt;[,&lt;auth-type&gt;[,...]]]</a></dt>
+  <dd>Exige que Swaks s'authentifie. Si aucun argument n'est donné, tous les types
+      d'authentification pris en charge annoncés par le serveur sont essayés
+      jusqu'à ce que l'un réussisse ou que tous échouent. Si un ou plusieurs
+      types d'authentification sont spécifiés comme argument, chacun que le
+      serveur prend également en charge est essayé dans l'ordre jusqu'à ce que
+      l'un réussisse ou que tous échouent. Cette option exige que Swaks
+      s'authentifie, donc si aucun type d'authentification commun n'est trouvé ou
+      si aucune identifiant ne réussit, Swaks affiche une erreur et se termine.
+      (Arg-Optional)
+    <p class="Pp">Les tables suivantes répertorient les types d'authentification valides</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id<section class="Sh">
+<h1 class="Sh" id="AUTHENTICATION_OPTIONS"><a class="permalink" href="#AUTHENTICATION_OPTIONS">AUTHENTICATION OPTIONS</a></h1>
+<dl class="Bl-tag">
+  <dt id="LOGIN,"><a class="permalink" href="#LOGIN,">LOGIN, PLAIN</a></dt>
+  <dd>Ces types d'authentification de base sont entièrement pris en charge et testés et n'ont aucune exigence supplémentaire</dd>
+  <dt id="CRAM"><a class="permalink" href="#CRAM">CRAM-MD5</a></dt>
+  <dd>L'authentificateur CRAM-MD5 nécessite le module Digest::MD5. Il est entièrement testé et est censé fonctionner avec tout serveur qui l'implémente.</dd>
+  <dt id="DIGEST"><a class="permalink" href="#DIGEST">DIGEST-MD5</a></dt>
+  <dd>L'authentificateur DIGEST-MD5 (RFC2831) nécessite le module Authen::SASL.
+      Les versions 20100211.0 et antérieures utilisaient Authen::DigestMD5, qui présentait des erreurs au niveau du protocole qui empêchaient son fonctionnement avec certains serveurs.
+      La gestion DIGEST-MD5 d'Authen::SASL est beaucoup plus robuste.
+    <p class="Pp">L'implémentation DIGEST-MD5 dans Swaks est assez immature. Elle ne prend actuellement en charge que le type qop &quot;auth&quot;, par exemple. Si vous avez de l'expérience avec DIGEST-MD5 et souhaitez aider Swaks à mieux prendre en charge DIGEST-MD5, veuillez me contacter.</p>
+    <p class="Pp">La valeur &quot;realm&quot; du protocole DIGEST-MD5 peut être définie à l'aide du mot-clé &quot;realm&quot; de l'option <span class="Li">&quot;--auth-extra&quot;</span>. Si aucun realm n'est fourni, une valeur par défaut raisonnable sera utilisée.</p>
+    <p class="Pp">Les valeurs &quot;digest-uri&quot; du protocole DIGEST-MD5 peuvent être définies à l'aide de l'option <span class="Li">&quot;--auth-extra&quot;</span>. Par exemple, vous pourriez créer la valeur digest-uri de &quot;lmtp/mail.example.com/example.com&quot; avec l'option <span class="Li">&quot;--auth-extra
+        dmd5-serv-type=lmtp,dmd5-host=mail.example.com,dmd5-serv-name=example.com&quot;</span>. La chaîne &quot;digest-uri-value&quot; et ses composants sont définis dans la RFC2831. Si aucune de ces valeurs n'est fournie, des valeurs par défaut raisonnables seront utilisées.</p>
+  </dd>
+  <dt id="CRAM~2"><a class="permalink" href="#CRAM~2">CRAM-SHA1</a></dt>
+  <dd>L'authentificateur CRAM-SHA1 nécessite le module Digest::SHA. Ce type n'a été testé qu'avec une implémentation non standard sur un serveur Exim et peut donc présenter des lacunes d'implémentation.</dd>
+  <dt id="NTLM/SPA/MSN"><a class="permalink" href="#NTLM/SPA/MSN">NTLM/SPA/MSN</a></dt>
+  <dd>Ces authentificateurs nécessitent le module Authen::NTLM. Ce type a été testé avec Exim, Communigate et Exchange 2007.
+    <p class="Pp">En plus du nom d'utilisateur et du mot de passe standard, ce type d'authentification peut également reconnaître un &quot;domaine&quot;. Le domaine peut être défini à l'aide du mot-clé &quot;domain&quot; de l'option <span class="Li">&quot;--auth-extra&quot;</span>. Notez que cela n'a jamais été testé avec un serveur de messagerie qui ignore DOMAIN, cela pourrait donc être mal implémenté.</p>
+  </dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="ao,"><a class="permalink" href="#ao,">-ao, --auth-optional
+    [&lt;auth-type&gt;[,&lt;auth-type&gt;[,...]]]</a></dt>
+  <dd>Cette option se comporte de manière identique à
+      <span class="Li">&quot;--auth&quot;</span>, sauf qu'elle demande une authentification au lieu de l'exiger. Si aucun type d'authentification commun n'est trouvé ou si aucune information d'identification ne réussit, Swaks continue comme si l'authentification n'avait pas été demandée. (Arg-Optional)</dd>
+  <dt id="aos,"><a class="permalink" href="#aos,">-aos, --auth-optional-strict
+    [&lt;auth-type&gt;[,&lt;auth-type&gt;[,...]]]</a></dt>
+  <dd>Cette option est un compromis entre
+      <span class="Li">&quot;--auth&quot;</span> et
+      <span class="Li">&quot;--auth-optional&quot;</span>. Si l'authentification n'est jamais tentée (le serveur ne propose pas d'authentification ou aucun type d'authentification commun n'est trouvé), elle se comporte comme
+      <span class="Li">&quot;--auth-optional&quot;</span> et la transaction smtp continue. Si l'authentification est tentée mais échoue, elle se comporte comme
+      <span class="Li">&quot;--auth&quot;</span> et se termine avec une erreur. (Arg-Optional)</dd>
+  <dt id="au,"><a class="permalink" href="#au,">-au, --auth-user
+    [&lt;username&gt;]</a></dt>
+  <dd>Fournit le nom d'utilisateur à utiliser pour l'authentification. Si aucun nom d'utilisateur n'est fourni, indiquez que Swaks doit tenter de trouver le nom d'utilisateur via
+      <i>.netrc</i> (nécessite le module Net::Netrc). Si aucun nom d'utilisateur n'est fourni et qu'il ne peut pas être trouvé via
+      <i>.netrc</i>, l'utilisateur sera invité à en fournir un. La chaîne <span class="Li">&quot;&lt;&gt;&quot;</span> peut être fournie pour signifier un nom d'utilisateur vide. (Arg-Requis, Invité)</dd>
+  <dt id="ap,"><a class="permalink" href="#ap,">-ap, --auth-password
+    [&lt;password&gt;]</a></dt>
+  <dd>Fournit le mot de passe à utiliser pour l'authentification. Si aucun mot de passe n'est fourni, indiquez que Swaks doit tenter de trouver le mot de passe via
+      <i>.netrc</i> (nécessite le module Net::Netrc). Si aucun mot de passe n'est fourni et qu'il ne peut pas être trouvé via
+      <i>.netrc</i>, l'utilisateur sera invité à en fournir un. La chaîne <span class="Li">&quot;&lt;&gt;&quot;</span> peut être fournie pour signifier un mot de passe vide. (Arg-Requis, Invité, Sensible)</dd>
+  <dt id="ae,"><a class="permalink" href="#ae,">-ae, --auth-extra
+    &lt;key-value-pair&gt;[,&lt;key-value-pair&gt;[,...]]</a></dt>
+  <dd>Certains types d'authentification permettent d'inclure des informations supplémentaires dans le processus d'authentification. Plutôt que d'ajouter une nouvelle option pour chaque détail de chaque authentificateur, l'option
+      <span class="Li">&quot;--auth-extra&quot;</span> permet de fournir ces informations. Le format pour &lt;key-value-pair&gt; est CLÉ=VALEUR. (Arg-Requis)
+    <p class="Pp">Le tableau suivant liste les mots-clés actuellement reconnus et les authentificateurs qui les utilisent.</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt id="realm,"><a class="permalink" href="#realm,">realm, domain</a></dt>
+  <dd>Les mots-clés realm et domain sont synonymes. L'utilisation de l'un ou l'autre définira l'option &quot;domain&quot; dans NTLM/MSN/SPA et l'option &quot;realm&quot; dans DIGEST-MD5.</dd>
+  <dt id="dmd5"><a class="permalink" href="#dmd5">dmd5-serv-type</a></dt>
+  <dd>Le mot-clé dmd5-serv-type est utilisé par l'authentificateur DIGEST-MD5 et sert, en partie, à construire la chaîne digest-uri-value (voir RFC2831).</dd>
+  <dt id="dmd5~2"><a class="permalink" href="#dmd5~2">dmd5-host</a></dt>
+  <dd>Le mot-clé dmd5-host est utilisé par l'authentificateur DIGEST-MD5 et sert, en partie, à construire la chaîne digest-uri-value (voir RFC2831).</dd>
+  <dt id="dmd5~3"><a class="permalink" href="#dmd5~3">dmd5-serv-name</a></dt>
+  <dd>Le mot-clé dmd5-serv-name est utilisé par l'authentificateur DIGEST-MD5 et sert, en partie, à construire la chaîne digest-uri-value (voir RFC2831).</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="am,"><a class="permalink" href="#am,">-am, --auth-map
+    &lt;key-value-pair&gt;[,&lt;key-value-pair&gt;[,...]]</a></dt>
+  <dd>Fournit un moyen de mapper des noms alternatifs sur des types d'authentification de base.
+      Utile pour tout site utilisant des noms alternatifs pour des types courants. Le format pour &lt;key-value-pair&gt; est AUTH-ALIAS=AUTH-TYPE. Cette fonctionnalité est en fait utilisée en interne pour mapper les types SPA et MSN sur le type de base NTLM.
+      L'argument de ligne de commande pour simuler cela serait
+      <span class="Li">&quot;--auth-map SPA=NTLM,MSN=NTLM&quot;</span>. Tous les types d'authentification listés ci-dessus sont des cibles valides pour le mappage, à l'exception de SPA et MSN. (Arg-Requis)</dd>
+  <dt id="apt,"><a class="permalink" href="#apt,">-apt,
+    --auth-plaintext</a></dt>
+  <dd>Au lieu d'afficher les chaînes AUTH encodées en base64 telles qu'elles sont transmises, les traduire en texte brut avant de les afficher à l'écran. (Arg-Aucun)</dd>
+  <dt id="ahp,"><a class="permalink" href="#ahp,">-ahp, --auth-hide-password
+    [&lt;replacement-string&gt;]</a></dt>
+  <dd>Si cette option est spécifiée, chaque fois qu'un mot de passe lisible serait affiché sur le terminal (spécifiquement AUTH PLAIN et AUTH LOGIN), le mot de passe sera remplacé par la chaîne 'PROVIDED_BUT_REMOVED' (ou le contenu de
+      &lt;replacement-string&gt; s'il est fourni). La chaîne factice peut être encodée ou non en base64, en fonction de l'option
+      <span class="Li">&quot;--auth-plaintext&quot;</span>.
+    <p class="Pp">Notez que
+        <span class="Li">&quot;--auth-hide-password&quot;</span> est similaire, mais
+        pas identique, à l'option
+        <span class="Li">&quot;--protect-prompt&quot;</span>. La première protège les mots de passe de l'affichage dans la transaction SMTP, quelle que soit la manière dont ils sont saisis. La seconde protège les chaînes sensibles lorsque l'utilisateur les tape au terminal, quelle que soit la manière dont la chaîne serait utilisée. (Arg-Optional)</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="XCLIENT_OPTIONS"><a class="permalink" href="#XCLIENT_OPTIONS">OPTIONS XCLIENT</a></h1>
+<p class="Pp">XCLIENT est une extension SMTP introduite par le projet Postfix.
+    XCLIENT permet à un client (correctement autorisé) de dire à un serveur d'utiliser des informations alternatives, telles que l'adresse IP ou le nom d'hôte, pour le client. Cela permet des chemins beaucoup plus simples pour tester les configurations de serveurs de messagerie. Les détails complets du protocole sont disponibles sur
+    <a href="http://www.postfix.org/XCLIENT_README.html">http://www.postfix.org/XCLIENT_README.html</a>.</p>
+<p class="Pp">Le verbe XCLIENT peut être passé au serveur plusieurs fois par session SMTP avec différents attributs. Par exemple, HELO et PROTO peuvent être passés dans un appel et NAME et ADDR dans un second. Parce que cela peut être utile pour les tests, Swaks offre un certain contrôle sur la façon dont les attributs sont groupés et dans quel ordre ils sont passés au serveur. Les différentes options tentent d'offrir la simplicité pour ceux qui utilisent Swaks en tant que client, et la complexité pour ceux qui utilisent Swaks pour tester des installations.</p>
+<dl class="Bl-tag">
+  <dt id="xclient"><a class="permalink" href="#xclient">--xclient-addr
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~2"><a class="permalink" href="#xclient~2">--xclient-name
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~3"><a class="permalink" href="#xclient~3">--xclient-port
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~4"><a class="permalink" href="#xclient~4">--xclient-proto
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~5"><a class="permalink" href="#xclient~5">--xclient-destaddr
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~6"><a class="permalink" href="#xclient~6">--xclient-destport
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~7"><a class="permalink" href="#xclient~7">--xclient-helo
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~8"><a class="permalink" href="#xclient~8">--xclient-login
+    [&lt;string&gt;]</a></dt>
+  <dd></dd>
+  <dt id="xclient~9"><a class="permalink" href="#xclient~9">--xclient-reverse-name
+    [&lt;string&gt;]</a></dt>
+  <dd>Ces options spécifient les attributs XCLIENT qui doivent être envoyés au serveur cible. Si &lt;string&gt; n'est pas fourni, Swaks invitera l'utilisateur et lira la valeur sur <span class="Li">&quot;STDIN&quot;</span>. Voir
+      <a href="http://www.postfix.org/XCLIENT_README.html">http://www.postfix.org/XCLIENT_README.html</a> pour la documentation officielle sur la signification des attributs et leurs valeurs possibles, y compris les valeurs spéciales &quot;[UNAVAILABLE]&quot; et
+      &quot;[TEMPUNAVAIL]&quot;.
+    <p class="Pp">À titre d'exemple simple, la définition de
+        <span class="Li">&quot;--xclient-name foo.example.com --xclient-addr
+        192.168.1.1&quot;</span> amènera Swaks à envoyer la commande SMTP
+        <span class="Li">&quot;XCLIENT NAME=foo.example.com
+        ADDR=192.168.1.1&quot;</span>.</p>
+    <p class="Pp">Notez que l'attribut &quot;REVERSE_NAME&quot; ne semble pas apparaître dans la documentation officielle. Il y a une discussion sur une liste de diffusion
+        th</p>
+  </dd>
+</dl>
+</section>
+at documents it, viewable at
+        <a href='http://comments.gmane.org/gmane.mail.postfix.user/192623'>http://comments.gmane.org/gmane.mail.postfix.user/192623</a>.</p>
+    <p class="Pp">Ces options peuvent toutes être mélangées entre elles, et peuvent être
+        mélangées avec l'option <span class="Li">&quot;--xclient&quot;</span> (voir ci-dessous). Par défaut, tous les attributs seront combinés en un seul appel XCLIENT, mais voir <span class="Li">&quot;--xclient-delim&quot;</span>.
+        (Arg-Requis, Invite-Depuis)</p>
+  </dd>
+  <dt id="xclient~10"><a class="permalink" href="#xclient~10">--xclient-delim</a></dt>
+  <dd>Lorsque cette option est spécifiée, elle indique une séparation dans les attributs XCLIENT à envoyer. Par exemple, définir <span class="Li">&quot;--xclient-helo 'chaîne de helo' --xclient-delim --xclient-name foo.example.com
+      --xclient-addr 192.168.1.1&quot;</span> amènera Swaks à envoyer deux appels XCLIENT, <span class="Li">&quot;XCLIENT
+      HELO=helo+20chaîne&quot;</span> et <span class="Li">&quot;XCLIENT
+      NAME=foo.example.com ADDR=192.168.1.1&quot;</span>. Cette option est ignorée lorsqu'elle n'a pas de sens (au début ou à la fin des options XCLIENT, seule, consécutivement, etc.). (Arg-Aucun)</dd>
+  <dt id="xclient~11"><a class="permalink" href="#xclient~11">--xclient
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>C'est l'option XCLIENT de &quot;forme libre&quot;. Quelle que soit la valeur fournie pour &lt;chaîne&gt;, elle sera envoyée telle quelle comme argument à la commande SMTP XCLIENT. Par exemple, si <span class="Li">&quot;--xclient
+      'NAME= ADDR=192.168.1.1 FOO=bar'&quot;</span> est utilisé, Swaks enverra la commande SMTP <span class="Li">&quot;XCLIENT NAME= ADDR=192.168.1.1
+      FOO=bar&quot;</span>. Si aucun argument n'est passé en ligne de commande, Swaks invitera l'utilisateur à saisir la valeur sur STDIN.
+    <p class="Pp">L'avantage principal par rapport aux options plus spécifiques ci-dessus est qu'il n'y a aucune validation de syntaxe XCLIENT ici. Cela vous permet d'envoyer des XCLIENT invalides au serveur cible pour les tests.
+        De plus, au moins un MTA (Message Systems' Momentum, anciennement
+        ecelerity) implémente XCLIENT sans annoncer les attributs pris en charge.
+        L'option <span class="Li">&quot;--xclient&quot;</span> vous permet d'ignorer la vérification des &quot;attributs pris en charge&quot; lors de la communication avec ce type de MTA (bien que voir aussi
+        <span class="Li">&quot;--xclient-no-verify&quot;</span>).</p>
+    <p class="Pp">L'option <span class="Li">&quot;--xclient&quot;</span> peut être mélangée librement avec les options <span class="Li">&quot;--xclient-*&quot;</span> ci-dessus. L'argument de
+        <span class="Li">&quot;--xclient&quot;</span> sera envoyé dans son propre groupe de commandes. Par exemple, si <span class="Li">&quot;--xclient-addr
+        192.168.0.1 --xclient-port 26 --xclient 'FOO=bar NAME=wind'&quot;</span> est donné à Swaks, <span class="Li">&quot;XCLIENT ADDR=192.168.0.1
+        PORT=26&quot;</span> et <span class="Li">&quot;XCLIENT FOO=bar
+        NAME=wind&quot;</span> seront tous deux envoyés au serveur cible.
+        (Arg-Requis, Invite-Depuis)</p>
+  </dd>
+  <dt id="xclient~12"><a class="permalink" href="#xclient~12">--xclient-no-verify</a></dt>
+  <dd>Ne pas imposer l'exigence qu'un attribut XCLIENT doit être annoncé par le serveur pour que Swaks l'envoie dans une commande XCLIENT. Ceci est pour prendre en charge les serveurs qui n'annoncent pas les attributs mais les prennent néanmoins en charge. (Arg-Aucun)</dd>
+  <dt id="xclient~13"><a class="permalink" href="#xclient~13">--xclient-before-starttls</a></dt>
+  <dd>Si Swaks est configuré pour tenter à la fois XCLIENT et STARTTLS, il fera d'abord STARTTLS. Si cette option est spécifiée, il tentera d'abord XCLIENT.
+      (Arg-Aucun)</dd>
+  <dt id="xclient~14"><a class="permalink" href="#xclient~14">--xclient-optional</a></dt>
+  <dd></dd>
+  <dt id="xclient~15"><a class="permalink" href="#xclient~15">--xclient-optional-strict</a></dt>
+  <dd>En fonctionnement normal, la définition de l'une des options
+      <span class="Li">&quot;--xclient*&quot;</span> nécessitera une transaction XCLIENT réussie pour pouvoir continuer (c'est-à-dire que XCLIENT doit être annoncé, tous les attributs demandés par l'utilisateur doivent avoir été annoncés, et le serveur doit avoir accepté la requête XCLIENT de Swaks). Ces options modifient ce comportement.
+      <span class="Li">&quot;--xclient-optional&quot;</span> indique à Swaks de continuer inconditionnellement après l'étape XCLIENT de la transaction SMTP, qu'elle ait réussi ou non.
+      <span class="Li">&quot;--xclient-optional-strict&quot;</span> est similaire mais plus granulaire. La version stricte continuera si XCLIENT n'a pas été annoncé, mais échouera si XCLIENT a été tenté mais n'a pas réussi.
+      (Arg-Aucun)</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PROXY_OPTIONS'><a class='permalink' href='#PROXY_OPTIONS'>OPTIONS PROXY</a></h1>
+<p class="Pp">Swaks implémente le protocole Proxy tel que défini dans
+    <a href='http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt'>http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt</a>. Proxy
+    permet à un équilibreur de charge d'application, tel que HAProxy, d'être placé devant
+    un MTA tout en permettant au MTA d'accéder aux informations de l'hôte d'origine. Le support Proxy dans Swaks permet des tests directs d'un MTA
+    configuré pour attendre des requêtes provenant d'un proxy, en contournant le proxy lui-même
+    pendant les tests.</p>
+<p class="Pp">Swaks ne fait aucun effort pour garantir que les options Proxy utilisées sont
+    cohérentes en interne. Par exemple,
+    <span class="Li">&quot;--proxy-family&quot;</span> (en version 1) est
+    attendu pour être l'une des valeurs &quot;TCP4&quot; ou &quot;TCP6&quot;. Bien que cela n'ait probablement aucun sens pour le serveur cible, Swaks ne tente pas de garantir
+    que <span class="Li">&quot;--proxy-source&quot;</span> et
+    <span class="Li">&quot;--proxy-dest&quot;</span> appartiennent à la même famille de protocoles que <span class="Li">&quot;--proxy-family&quot;</span> ou entre
+  eux.</p>
+<p class="Pp">L'option <span class="Li">&quot;--proxy&quot;</span> est mutuellement exclusive avec toutes les autres options <span class="Li">&quot;--proxy-*&quot;</span>
+    sauf <span class="Li">&quot;--proxy-version&quot;</span>.</p>
+<p class="Pp">Lorsque <span class="Li">&quot;--proxy&quot;</span> n'est pas utilisé, toutes les options <span class="Li">&quot;--proxy-family&quot;</span>,
+    <span class="Li">&quot;--proxy-source&quot;</span>,
+    <span class="Li">&quot;--proxy-source-port&quot;</span>,
+    <span class="Li">&quot;--proxy-dest&quot;</span>, et
+    <span class="Li">&quot;--proxy-dest-port&quot;</span> sont requises.
+    De plus, lorsque <span class="Li">&quot;--proxy-version&quot;</span> est 2,
+    <span class="Li">&quot;--proxy-protocol&quot;</span> et
+    <span class="Li">&quot;--proxy-command&quot;</span> sont optionnels.</p>
+<dl class="Bl-tag">
+  <dt id="proxy"><a class="permalink" href="#proxy">--proxy-version [ 1 | 2
+    ]</a></dt>
+  <dd>Indique s'il faut utiliser la version 1 (lisible par l'homme) ou la version 2 (binaire) du protocole Proxy. La version 1 est la valeur par défaut. La version 2 n'est implémentée que par le biais du &quot;bloc d'adresses&quot;, et est à peu près équivalente aux informations fournies dans la version 1. (Arg-Requis, Invite-Depuis)</dd>
+  <dt id="proxy~2"><a class="permalink" href="#proxy~2">--proxy
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Cette option fournit la chaîne proxy brute qui sera envoyée au serveur. Le préfixe du protocole (&quot;PROXY &quot; pour la version 1, l'en-tête de protocole de 12 octets pour la version 2) peut être présent ou non dans l'argument. Cette option permet d'envoyer des chaînes Proxy incomplètes ou malformées à un serveur cible pour des tests. Cette option est mutuellement exclusive avec toutes les autres options
+      <span class="Li">&quot;--proxy-*&quot;</span> qui fournissent des informations proxy granulaires.
+    <p class="Pp">Étant donné que la version 2 du protocole Proxy est un protocole binaire, il existe plusieurs façons de fournir l'argument à cette option. Si l'argument commence par &quot;base64:&quot;, ce préfixe est retiré et le reste de la chaîne est décodé en base64 avant utilisation. Si l'argument commence par <span class="Li">&quot;@&quot;</span>, il sera traité comme un nom de fichier et la valeur proxy sera lue à partir du fichier. Toute autre valeur est supposée être la valeur littérale de la chaîne proxy.
+        (Arg-Requis, Invite-Depuis, Depuis-Fichier)</p>
+  </dd>
+  <dt id="proxy~3"><a class="permalink" href="#proxy~3">--proxy-family
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Pour la version 1, spécifie à la fois la famille d'adresses et le protocole de transport.
+      Le protocole définit TCP4 et TCP6.
+    <p class="Pp">Pour la version 2, spécifie uniquement la famille d'adresses. Le protocole définit AF_UNSPEC, AF_INET, AF_INET6 et AF_UNIX. (Arg-Requis,
+        Invite-Depuis)</p>
+  </dd>
+  <dt id="proxy~4"><a class="permalink" href="#proxy~4">--proxy-protocol
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Pour la version 2, spécifie le protocole de transport. Le protocole définit
+      UNSPEC, STREAM et DGRAM. La valeur par défaut est STREAM. Cette option n'est pas utilisée dans la version 1. (Arg-Requis, Invite-Depuis)</dd>
+  <dt id="proxy~5"><a class="permalink" href="#proxy~5">--proxy-command
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Pour la version 2, spécifie le protocole de transport. Le protocole définit
+      LOCAL et PROXY. La valeur par défaut est PROXY. Cette option n'est pas utilisée dans la version 1. (Arg-Requis, Invite-Depuis)</dd>
+  <dt id="proxy~6"><a class="permalink" href="#proxy~6">--proxy-source
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Spécifie l'adresse source de la connexion proxifiée. (Arg-Requis,
+      Invite-Depuis)</dd>
+  <dt id="proxy~7"><a class="permalink" href="#proxy~7">--proxy-source-port
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Spécifie le port source de la connexion proxifiée. (Arg-Requis,
+      Invite-Depuis)</dd>
+  <dt id="proxy~8"><a class="permalink" href="#proxy~8">--proxy-dest
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Spécifie l'adresse de destination de la connexion proxifiée. (Arg-Requis,
+      Invite-Depuis)</dd>
+  <dt id="proxy~9"><a class="permalink" href="#proxy~9">--proxy-dest-port
+    [&lt;chaîne&gt;]</a></dt>
+  <dd>Spécifie le port de destination de la connexion proxifiée. (Arg-Requis,
+      Invite-Depuis)</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='DATA_OPTIONS'><a class='permalink' href='#DATA_OPTIONS'>OPTIONS DE DONNÉES</a></h1>
+<p class="Pp">Ces options concernent le contenu de la partie DATA de la transaction SMTP. Par défaut, un message très simple est envoyé. Si les options
+    <span class="Li">&quot;--attach&quot;</span> ou
+    <span class="Li">&quot;--attach-body&quot;</span> sont utilisées, Swaks tente de passer à un message MIME.</p>
+<dl class="Bl-tag">
+  <dt id="d,"><a class="permalink" href="#d,">-d, --data
+    [&lt;portion de données&gt;]</a></dt>
+  <dd>Utilise l'argument comme contenu entier de DATA.
+    <p class="Pp">Si aucun argument n'est fourni, l'utilisateur sera invité à fournir la valeur.</p>
+    <p class="Pp">Si l'argument <span class="Li">&quot;-&quot;</span> est
+        fourni, les données seront lues depuis
+        <span class="Li">&quot;STDIN&quot;</span> sans invite.</p>
+    <p class="Pp">Si l'argument commence par
+        <span class="Li">&quot;@&quot;</span>, il sera traité comme un nom de fichier.
+        Si vous souhaitez passer un argument qui commence par
+        <span class="Li">&quot;@&quot;</span> et qui n'est pas un nom de fichier, préfixez l'argument avec un <span class="Li">&quot;@&quot;</span> supplémentaire. Par exemple, <span class="Li">&quot;@file.txt&quot;</span> forcera le traitement de
+        <i>file.txt</i>. <span class="Li">@@data</span> utilisera la chaîne '@data'.</p>
+    <p class="Pp">Si l'argument ne contient aucun caractère de nouvelle ligne littéral (0x0a) ou représentatif (0x5c, 0x6e ou <span class="Li">%NEWLINE%</span>), il sera traité comme un fichier</p>
+  </dd>
+</dl>
+</section>name. Si le fichier est ouvrable,
+        le contenu du fichier sera utilisé comme partie de données. Si le fichier
+        ne peut pas être ouvert, Swaks générera une erreur et s'arrêtera. L'ensemble du comportement décrit dans ce paragraphe est déprécié et sera supprimé dans une future version. Utilisez plutôt un préfixe
+        <span class="Li">&quot;@&quot;</span> pour spécifier explicitement que l'argument est un nom de fichier.</p>
+    <p class="Pp">Tout autre argument sera utilisé comme contenu des DONNÉES.</p>
+    <p class="Pp">La valeur peut être sur une seule ligne, avec
+        <span class="Li">&quot;\n&quot;</span> (ASCII 0x5c, 0x6e) représentant
+        où les sauts de ligne doivent être placés. Les points en début de ligne seront mis entre guillemets. Le point de fin n'est pas obligatoire mais est autorisé. La valeur par défaut pour cette option est
+        <span class="Li">&quot;Date: %DATE%\nTo: %TO_ADDRESS%\nFrom:
+        %FROM_ADDRESS%\nSubject: test %DATE%\nMessage-Id:
+        &lt;%MESSAGEID%&gt;\nX-Mailer: swaks v%SWAKS_VERSION%
+        jetmore.org/john/code/swaks/\n%NEW_HEADERS%\n%BODY%\n&quot;</span>.</p>
+    <p class="Pp">Un traitement très basique des jetons est effectué sur la partie DONNÉES. Le tableau suivant présente les jetons reconnus et leurs valeurs de remplacement. (Arg-Requis, Prompt-Depuis, Fichier-Depuis)</p>
+  </dd>
+</dl>
+<div class="Bd-indent">
+<dl class="Bl-tag">
+  <dt>%FROM_ADDRESS%, ..FROM_ADDRESS..</dt>
+  <dd>Remplacé par l'expéditeur de l'enveloppe.</dd>
+  <dt>%TO_ADDRESS%, ..TO_ADDRESS..</dt>
+  <dd>Remplacé par le(s) destinataire(s) de l'enveloppe défini(s) par l'option
+      <span class="Li">&quot;--to&quot;</span>.</dd>
+  <dt>%CC_ADDRESS%, ..CC_ADDRESS..</dt>
+  <dd>Remplacé par le(s) destinataire(s) de l'enveloppe défini(s) par l'option
+      <span class="Li">&quot;--cc&quot;</span>.</dd>
+  <dt>%BCC_ADDRESS%, ..BCC_ADDRESS..</dt>
+  <dd>Remplacé par le(s) destinataire(s) de l'enveloppe défini(s) par l'option
+      <span class="Li">&quot;--bcc&quot;</span>.</dd>
+  <dt>%DATE%, ..DATE..</dt>
+  <dd>Remplacé par l'heure actuelle dans un format approprié pour l'inclusion dans l'en-tête Date:. Notez que cela tente d'utiliser le module standard POSIX pour les calculs de fuseau horaire. Si ce module n'est pas disponible ou si l'environnement actuel ne prend pas en charge le jeton de format strftime
+      <span class="Li">%z</span> (comme sous Windows), la chaîne de date sera en GMT.</dd>
+  <dt>%MESSAGEID%, ..MESSAGEID..</dt>
+  <dd>Remplacé par une chaîne d'identifiant de message appropriée pour un en-tête Message-Id:. La valeur de ce jeton restera cohérente pendant la durée de vie du processus.</dd>
+  <dt>%SWAKS_VERSION%, ..SWAKS_VERSION..</dt>
+  <dd>Remplacé par la version du processus Swaks actuellement en cours d'exécution.</dd>
+  <dt>%NEW_HEADERS%, ..NEW_HEADERS..</dt>
+  <dd>Remplacé par le contenu de l'option
+      <span class="Li">&quot;--add-header&quot;</span>. Si
+      <span class="Li">&quot;--add-header&quot;</span> n'est pas spécifié, ce jeton est simplement supprimé.</dd>
+  <dt>%BODY%, ..BODY..</dt>
+  <dd>Remplacé par la valeur spécifiée par l'option
+      <span class="Li">&quot;--body&quot;</span>. Voir
+      <span class="Li">&quot;--body&quot;</span> pour la valeur par défaut.</dd>
+  <dt>%NEWLINE%, ..BODY..</dt>
+  <dd>Remplacé par un retour chariot, une nouvelle ligne (0x0d, 0x0a). Ceci est identique à l'utilisation de
+      <span class="Li">&quot;\n&quot;</span> (0x5c, 0x6e), mais n'a pas les préoccupations d'échappement que la barre oblique inverse peut causer sur la
+    nouvelle ligne.</dd>
+</dl>
+</div>
+<dl class="Bl-tag">
+  <dt id="dab,"><a class="permalink" href="#dab,">-dab, --dump-as-body
+    [&lt;section&gt;[,&lt;section&gt;[,...]]]</a></dt>
+  <dd>Si <span class="Li">&quot;--dump-as-body&quot;</span> est utilisé et qu'aucune autre option n'est utilisée pour modifier le corps par défaut du message, le corps est remplacé par une sortie similaire à celle fournie par
+      <span class="Li">&quot;--dump&quot;</span>.
+      La section initiale de capacité du programme de <span class="Li">&quot;--dump&quot;</span> n'est pas affichée, et la section « data » n'est pas incluse.
+      De plus, <span class="Li">&quot;--dump&quot;</span> inclut toujours les mots de passe. Par défaut, <span class="Li">&quot;--dump-as-body&quot;</span> n'inclut pas les mots de passe, bien que cela puisse être modifié avec
+      <span class="Li">&quot;--dump-as-body-shows-password&quot;</span>.
+      <span class="Li">&quot;--dump-as-body&quot;</span> accepte les mêmes
+      arguments que <span class="Li">&quot;--dump&quot;</span>, à l'exception des arguments SUPPORT et DATA qui ne sont pas pris en charge. (Arg-Optionnel)</dd>
+  <dt id="dabsp,"><a class="permalink" href="#dabsp,">-dabsp,
+    --dump-as-body-shows-password</a></dt>
+  <dd>Force <span class="Li">&quot;--dump-as-body&quot;</span> à inclure les
+      mots de passe en clair. Cette option n'est pas recommandée. Cette option implique
+      <span class="Li">&quot;--dump-as-body&quot;</span>. (Arg-Aucun)</dd>
+  <dt id="body"><a class="permalink" href="#body">--body
+    [&lt;spécification-corps&gt;]</a></dt>
+  <dd>Spécifie le corps de l'e-mail. La valeur par défaut est « This is a test
+      mailing ». Si aucun argument n'est donné à
+      <span class="Li">&quot;--body&quot;</span>, une invite interactive est générée pour en fournir un. Si <span class="Li">&quot;-&quot;</span> est spécifié, le corps sera lu depuis l'entrée standard. Les arguments commençant par
+      <span class="Li">&quot;@&quot;</span> seront traités comme des noms de fichiers contenant les données du corps à utiliser (voir
+      <span class="Li">&quot;--data&quot;</span> pour plus de détails).
+    <p class="Pp">Si, après le traitement ci-dessus, l'argument représente un fichier
+        ouvrable, le contenu de ce fichier est utilisé comme corps. Ceci est un comportement déprécié et sera supprimé dans une future version. Utilisez plutôt un préfixe <span class="Li">&quot;@&quot;</span> pour spécifier explicitement que l'argument est un nom de fichier.</p>
+    <p class="Pp">Si le message est forcé au format MIME (voir
+        <span class="Li">&quot;--attach&quot;</span>),
+        <span class="Li">&quot;--body 'texte du corps'&quot;</span> est équivalent à
+        <span class="Li">&quot;--attach-type text/plain --attach-body 'texte du corps'&quot;</span>. Voir
+        <span class="Li">&quot;--attach-body&quot;</span> pour les détails sur la création d'un corps multipart/alternative. (Arg-Requis, Prompt-Depuis, Fichier-Depuis)</p>
+  </dd>
+  <dt id="attach"><a class="permalink" href="#attach">--attach
+    [&lt;spécification-pièce-jointe&gt;]</a></dt>
+  <dd>Lorsque une ou plusieurs options <span class="Li">&quot;--attach&quot;</span> sont fournies, le message est transformé en un message MIME multipart/mixed. Les arguments de
+      <span class="Li">&quot;--attach&quot;</span> sont traités de la même manière que <span class="Li">&quot;--body&quot;</span> en ce qui concerne
+      <span class="Li">&quot;STDIN&quot;</span>, le contenu des fichiers, etc.
+      <span class="Li">&quot;--attach&quot;</span> peut être fourni plusieurs fois pour créer plusieurs pièces jointes. Par défaut, chaque pièce jointe est ajoutée en tant que fichier application/octet-stream. Voir
+      <span class="Li">&quot;--attach-type&quot;</span> pour changer ce comportement.
+    <p class="Pp">Si le contenu de la pièce jointe est fourni via un nom de fichier, l'encodage MIME inclura ce nom de fichier. Voir
+        <span class="Li">&quot;--attach-name&quot;</span> pour plus de détails sur la dénomination des fichiers.</p>
+    <p class="Pp">Il est légal de spécifier <span class="Li">&quot;-&quot;</span>
+        (<span class="Li">&quot;STDIN&quot;</span>) comme argument plusieurs fois (une fois pour
+        <span class="Li">&quot;--body&quot;</span> et plusieurs fois pour
+        <span class="Li">&quot;--attach&quot;</span>). Dans ce cas, le même contenu sera joint chaque fois qu'il est spécifié. Ceci est utile pour joindre le même contenu avec plusieurs types MIME. (Arg-Requis,
+        Fichier-Depuis)</p>
+  </dd>
+  <dt id="attach~2"><a class="permalink" href="#attach~2">--attach-body
+    [&lt;spécification-corps&gt;]</a></dt>
+  <dd>Ceci est une variation de <span class="Li">&quot;--attach&quot;</span> qui
+      concerne spécifiquement la partie corps de l'e-mail. Elle se comporte de manière identique à
+      <span class="Li">&quot;--attach&quot;</span> en ce sens qu'elle accepte les mêmes arguments et force la création d'un message MIME. Cependant, elle est différente en ce que l'argument sera toujours la première partie MIME du message, quel que soit l'ordre de traitement des options.
+      De plus, les options <span class="Li">&quot;--attach-body&quot;</span> s'empilent pour permettre la création de corps multipart/alternative. Par exemple,
+      <span class="Li">&quot;--attach-type text/plain --attach-body 'corps texte brut' --attach-type text/html --attach-body 'corps html'&quot;</span> créera un corps de message multipart/alternative. (Arg-Requis,
+    Fichier-Depuis)</dd>
+  <dt id="attach~3"><a class="permalink" href="#attach~3">--attach-type
+    &lt;type-mime&gt;</a></dt>
+  <dd>Par défaut, le contenu qui est attaché en MIME à un message avec l'option
+      <span class="Li">&quot;--attach&quot;</span> est encodé en application/octet-stream (sauf pour le corps, qui est text/plain par défaut). <span class="Li">&quot;--attach-type&quot;</span> modifie le type MIME pour chaque option <span class="Li">&quot;--attach&quot;</span> qui suit. Il peut être spécifié plusieurs fois. Le type MIME actuel est réinitialisé à application/octet-stream entre le traitement des parties du corps et des autres parties. (Arg-Requis)</dd>
+  <dt id="attach~4"><a class="permalink" href="#attach~4">--attach-name
+    [&lt;nom&gt;]</a></dt>
+  <dd>Cette option définit le nom de fichier qui sera inclus dans la partie MIME
+      créée pour la prochaine option <span class="Li">&quot;--attach&quot;</span>.
+      Si aucun argument n'est défini pour cette option, aucune information de nom de fichier ne sera incluse pour la prochaine partie MIME, même si Swaks pouvait la générer à partir du nom de fichier local. (Arg-Optionnel)</dd>
+  <dt id="ah,"><a class="permalink" href="#ah,">-ah, --add-header
+    &lt;en-tete&gt;</a></dt>
+  <dd>Cette option permet d'ajouter des en-têtes aux DONNÉES. Si
+      <span class="Li">&quot;%NEW_HEADERS%&quot;</span> est présent dans les DONNÉES, il est remplacé par l'argument de cette option. Si
+      <span class="Li">&quot;%NEW_HEADERS%&quot;</span> n'est pas présent, l'argument est inséré entre les deux premiers nouvelles lignes consécutives dans les DONNÉES (c'est-à-dire qu'il est inséré à la fin des en-têtes existants).
+    <p class="Pp">L'option peut être spécifiée plusieurs fois ou une seule fois avec plusieurs en-têtes séparés par une chaîne littérale
+        <span class="Li">&quot;\n&quot;</span>. Ainsi,
+        <span class="Li">&quot;--add-header 'Foo: bar' --add-header 'Baz:
+        foo'&quot; et &quot;--add-header 'Foo: bar\nBaz: foo'&quot;</span> ajoutent les mêmes deux en-têtes. (Arg-Requis)</p>
+  </dd>
+  <dt id="header"><a class="permalink" href="#header">--header
+    &lt;en-tete-et-donnees&gt;, --h-&lt;en-tete&gt; &lt;donnees&gt;</a></dt>
+  <dd>Ces options permettent de modifier des en-têtes déjà présents dans les
+      DONNÉES. <span class="Li">&quot;--header 'Subject: foo'&quot;</span> et
+      <span class="Li">&quot;--h-Subject foo&quot;</span> sont équivalents. Si l'en-tête n'existe pas déjà dans les données, cet argument se comporte de manière identique à
+      <span class="Li">&quot;--add-header&quot;</span>. Cependant, si l'en-tête existe déjà, il est remplacé par celui spécifié.
+      Nier la version de cette option avec le nom de l'en-tête dans l'option (par exemple
+      <span class="Li">&quot;--no-header-Subject&quot;</span>) supprimera toutes les options <span class="Li">&quot;--header&quot;</span> traitées précédemment, pas seulement celles utilisées pour 'Subject'. L'intégration du nom de l'en-tête dans l'option via une variable d'environnement n'est pas prise en charge sous Windows et entraînera une erreur. (Arg-Requis)</dd>
+  <dt id="g"><a class="permalink" href="#g">-g</a></dt>
+  <dd>Cette option est un alias direct de <span class="Li">&quot;--data
+      -&quot;</span> (lire les DONNÉES depuis l </dd>
+</dl>
+an class="Li">&quot;STDIN&quot;</span>).
+      Il est totalement secondaire par rapport à <span class="Li">&quot;--data&quot;</span>. Toute occurrence de <span class="Li">&quot;--data&quot;</span> entraînera l'ignorance de <span class="Li">&quot;-g&quot;</span>. Cette option ne peut pas être niée avec le préfixe <span class="Li">&quot;no-&quot;</span>. Cette option est obsolète et sera supprimée dans une future version de Swaks.
+      (Arg-None, Obsolète)</dd>
+  <dt id="no"><a class="permalink" href="#no">--no-data-fixup, -ndf</a></dt>
+  <dd>Cette option force Swaks à ne faire aucune retouche de la partie DATA de l'e-mail. Cela inclut le remplacement de jetons, la suppression de From_, l'ajout de points finaux, l'inclusion de <span class="Li">&quot;--body&quot;</span>/pièces jointes, et toute addition d'en-tête. Cette option n'est utile que lorsqu'elle est utilisée avec <span class="Li">&quot;--data&quot;</span>, car la partie DATA interne par défaut utilise des jetons. (Arg-None)</dd>
+  <dt id="no~2"><a class="permalink" href="#no~2">--no-strip-from, -nsf</a></dt>
+  <dd>Ne pas supprimer la ligne From_ de la partie DATA, si elle est présente.
+    (Arg-None)</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='OPTIONS_DE_SORTIE'><a class='permalink' href='#OPTIONS_DE_SORTIE'>OPTIONS DE SORTIE</a></h1>
+<p class="Pp">Swaks fournit une transcription de ses transactions à son appelant
+    (<span class="Li">&quot;STDOUT&quot;</span>/<span class="Li">&quot;STDERR&quot;</span>)
+    par défaut. Cette transcription vise à être une représentation aussi fidèle que
+    possible de la transaction, bien qu'elle modifie cette sortie en ajoutant
+    des préfixes d'information aux lignes et en fournissant des versions en texte brut des
+    transactions TLS.</p>
+<p class="Pp">Les « préfixes d'information » sont appelés indices de transaction. Ces indices sont initialement composés de ceux qui marquent les lignes qui sont la sortie de Swaks lui-même, soit des messages d'information ou d'erreur, et de ceux qui indiquent une ligne de données réellement envoyée ou reçue dans une transaction. Ce tableau indique les indices et leur signification :</p>
+<dl class="Bl-tag">
+  <dt>&quot;===&quot;</dt>
+  <dd>Indique une ligne d'information générée par Swaks.</dd>
+  <dt>&quot;***&quot;</dt>
+  <dd>Indique une erreur générée dans Swaks.</dd>
+  <dt>&quot;&#x00A0;-&gt;&quot;</dt>
+  <dd>Indique une ligne attendue envoyée par Swaks au serveur cible.</dd>
+  <dt>&quot;&#x00A0;~&gt;&quot;</dt>
+  <dd>Indique une ligne attendue, cryptée en TLS, envoyée par Swaks au serveur cible.</dd>
+  <dt>&quot;**&gt;&quot;</dt>
+  <dd>Indique une ligne inattendue envoyée par Swaks au serveur cible.</dd>
+  <dt>&quot;*~&gt;&quot;</dt>
+  <dd>Indique une ligne inattendue, cryptée en TLS, envoyée par Swaks au serveur cible.</dd>
+  <dt>&quot;&#x00A0;&#x00A0;&gt;&quot;</dt>
+  <dd>Indique un bloc de texte brut envoyé par Swaks à un serveur cible (voir
+      <span class="Li">&quot;--show-raw-text&quot;</span>). Il n'y a pas de concept
+      de « attendu » ou « inattendu » à ce niveau.</dd>
+  <dt>&quot;&lt;-&#x00A0;&quot;</dt>
+  <dd>Indique une ligne attendue envoyée par le serveur cible à Swaks.</dd>
+  <dt>&quot;&lt;~&#x00A0;&quot;</dt>
+  <dd>Indique une ligne attendue, cryptée en TLS, envoyée par le serveur cible à
+    Swaks.</dd>
+  <dt>&quot;&lt;**&quot;</dt>
+  <dd>Indique une ligne inattendue envoyée par le serveur cible à Swaks.</dd>
+  <dt>&quot;&lt;~*&quot;</dt>
+  <dd>Indique une ligne inattendue, cryptée en TLS, envoyée par le serveur cible à
+    Swaks.</dd>
+  <dt>&quot;&lt;&#x00A0;&#x00A0;&quot;</dt>
+  <dd>Indique un bloc de texte brut reçu par Swaks d'un serveur cible (voir
+      <span class="Li">&quot;--show-raw-text&quot;</span>). Il n'y a pas de concept
+      de « attendu » ou « inattendu » à ce niveau.</dd>
+</dl>
+<p class="Pp">Les options suivantes contrôlent quoi et comment la sortie est affichée à l'appelant.</p>
+<dl class="Bl-tag">
+  <dt id="n,"><a class="permalink" href="#n,">-n, --suppress-data</a></dt>
+  <dd>Résume la partie DATA de la transaction SMTP au lieu d'imprimer chaque ligne. Cette option est très utile, voire indispensable, lorsque vous utilisez Swaks pour envoyer certains e-mails de test. Les e-mails avec pièces jointes, par exemple, submergeront rapidement un terminal si les données ne sont pas supprimées.
+      (Arg-None)</dd>
+  <dt id="stl,"><a class="permalink" href="#stl,">-stl, --show-time-lapse
+    [i]</a></dt>
+  <dd>Affiche l'intervalle de temps entre les paires d'envoi/réception. Cette option est plus utile lorsque Time::HiRes est disponible, auquel cas l'intervalle de temps sera affiché en millièmes de seconde. Si Time::HiRes n'est pas disponible ou si « i » est donné comme argument, l'intervalle sera affiché uniquement en secondes entières. (Arg-Optionnel)
+    <p class="Pp">Ne pas afficher l'indice de transaction pour les transactions informatives. Ceci est particulièrement utile lorsque vous devez copier une partie des lignes d'information, par exemple la sortie du certificat de
+      <span class="Li">&quot;--tls-get-peer-cert&quot;</span>. (Arg-None)</p>
+  </dd>
+  <dt id="nih,"><a class="permalink" href="#nih,">-nih, --no-info-hints</a></dt>
+  <dd></dd>
+  <dt id="nsh,"><a class="permalink" href="#nsh,">-nsh, --no-send-hints</a></dt>
+  <dd></dd>
+  <dt id="nrh,"><a class="permalink" href="#nrh,">-nrh,
+    --no-receive-hints</a></dt>
+  <dd></dd>
+  <dt id="nth,"><a class="permalink" href="#nth,">-nth, --no-hints</a></dt>
+  <dd><span class="Li">&quot;--no-info-hints&quot;</span>,
+      <span class="Li">&quot;--no-send-hints&quot;</span> et
+      <span class="Li">&quot;--no-receive-hints&quot;</span> suppriment les
+      indices de transaction des lignes d'information, d'envoi et de réception, respectivement. Ceci est souvent utile lors de la copie d'une partie de la transaction à utiliser ailleurs (par exemple,
+      <span class="Li">&quot;--no-send-hints --hide-receive --hide-informational&quot;</span> est un moyen utile d'obtenir uniquement les commandes côté client pour une transaction donnée et
+      <span class="Li">&quot;--no-info-hints --tls-get-peer-cert&quot;</span>
+      pour copier le certificat du pair).
+      <span class="Li">&quot;--no-hints&quot;</span> est identique à spécifier
+      <span class="Li">&quot;--no-info-hints --no-send-hints
+      --no-receive-hints&quot;</span>. (Arg-None)</dd>
+  <dt id="raw,"><a class="permalink" href="#raw,">-raw, --show-raw-text</a></dt>
+  <dd>Cette option affichera un dump hexadécimal des données brutes envoyées et reçues par Swaks.
+      Chaque dump hexadécimal correspond au contenu d'une seule lecture ou écriture sur le réseau.
+      Cela devrait être identique à ce qui est déjà affiché (à l'exception des caractères
+      <span class="Li">&quot;\r&quot;</span> qui sont supprimés). Cette option est utile pour voir les détails lorsque les serveurs envoient beaucoup de données dans des paquets uniques, ou divisent des lignes individuelles en plusieurs paquets. Si vous avez vraiment besoin d'approfondir ce domaine, un analyseur de paquets est probablement préférable, mais cette option est une bonne première étape pour observer des problèmes de connexion inhabituels. (Arg-None)</dd>
+  <dt id="output,"><a class="permalink" href="#output,">--output, --output-file
+    &lt;chemin-fichier&gt;</a></dt>
+  <dd></dd>
+  <dt id="output"><a class="permalink" href="#output">--output-file-stdout
+    &lt;chemin-fichier&gt;</a></dt>
+  <dd></dd>
+  <dt id="output~2"><a class="permalink" href="#output~2">--output-file-stderr
+    &lt;chemin-fichier&gt;</a></dt>
+  <dd>Ces options permettent à l'utilisateur d'envoyer la sortie vers des fichiers au lieu de
+      <span class="Li">&quot;STDOUT&quot;</span>/<span class="Li">&quot;STDERR&quot;</span>.
+      La première option envoie les deux vers le même fichier. Les arguments de
+      <span class="Li">&amp;STDOUT</span> et
+      <span class="Li">&amp;STDERR</span> sont traités spécialement, faisant référence aux descripteurs de fichier « normaux », donc
+      <span class="Li">&quot;--output-file-stderr '&amp;STDOUT'&quot;</span>
+      redirigerait <span class="Li">&quot;STDERR&quot;</span> vers
+      <span class="Li">&quot;STDOUT&quot;</span>. Ces options sont prises en compte pour toute la sortie, à l'exception de
+      <span class="Li">&quot;--help&quot;</span> et
+      <span class="Li">&quot;--version&quot;</span>. (Arg-Requis)</dd>
+  <dt id="pp,"><a class="permalink" href="#pp,">-pp, --protect-prompt</a></dt>
+  <dd>Ne pas écho les entrées utilisateur dans les invites qui sont potentiellement sensibles (actuellement uniquement le mot de passe d'authentification). Très spécifiquement, toute option marquée comme 'Sensible' et demandant éventuellement un argument fera de son mieux pour masquer cet argument afin qu'il ne soit pas écho. Voir aussi
+      <span class="Li">&quot;--auth-hide-password&quot;</span>. (Arg-None)</dd>
+  <dt id="hr,"><a class="permalink" href="#hr,">-hr, --hide-receive</a></dt>
+  <dd>Ne pas afficher les lignes envoyées par le serveur distant reçues par Swaks.
+      (Arg-None)</dd>
+  <dt id="hs,"><a class="permalink" href="#hs,">-hs, --hide-send</a></dt>
+  <dd>Ne pas afficher les lignes envoyées par Swaks au serveur distant.
+    (Arg-None)</dd>
+  <dt id="hi,"><a class="permalink" href="#hi,">-hi,
+    --hide-informational</a></dt>
+  <dd>Ne pas afficher les lignes informatives non erronées de Swaks lui-même.
+    (Arg-None)</dd>
+  <dt id="ha,"><a class="permalink" href="#ha,">-ha, --hide-all</a></dt>
+  <dd>Ne rien afficher sur le terminal. (Arg-None)</dd>
+  <dt id="S,"><a class="permalink" href="#S,">-S, --silent [ 1 | 2 | 3
+    ]</a></dt>
+  <dd>Permet à Swaks d'être silencieux. Si aucun argument n'est donné ou si un argument de
+      « 1 » est donné, n'imprime aucune sortie sauf/jusqu'à ce qu'une erreur se produise, après quoi toute la sortie est affichée. Si un argument de « 2 » est donné, n'imprime que les erreurs. Si « 3 » est donné, ne montre jamais aucune sortie.
+      <span class="Li">&quot;--silent&quot;</span> affecte la plupart des sorties mais pas toutes. Par exemple,
+      <span class="Li">&quot;--help&quot;</span>,
+      <span class="Li">&quot;--version&quot;</span>,
+      <span class="Li">&quot;--dump&quot;</span> et
+      <span class="Li">&quot;--dump-mail&quot;</span> ne sont pas affectés. Pour des raisons historiques, -S n'est pas configurable via une variable d'environnement sur Windows, utilisez plutôt SWAKS_OPT_silent. (Arg-Optionnel)</dd>
+  <dt id="support"><a class="permalink" href="#support">--support</a></dt>
+  <dd>Imprime les capacités et quitte. Certaines fonctionnalités nécessitent des modules Perl non standard. Cette option évalue si ces modules sont présents et affiche quelles fonctionnalités sont disponibles et lesquelles ne le sont pas, et quels modules devraient être ajoutés pour obtenir la fonctionnalité manquante.
+      (Arg-None)</dd>
+  <dt id="dump"><a class="permalink" href="#dump">--dump-mail</a></dt>
+  <dd>Force Swaks à traiter toutes les options pour générer le message qu'il enverrait, puis imprime ce message sur <span class="Li">&quot;STDOUT&quot;</span> au lieu de l'envoyer. Cette sortie est identique à la section « data » de <span class="Li">&quot;--dump&quot;</span>, sauf sans le point final. (Arg-None)</dd>
+  <dt id="dump~2"><a class="permalink" href="#dump~2">--dump
+    [&lt;section&gt;[,&lt;section&gt;[,...]]]</a></dt>
+  <dd>Cette option permet à Swaks d'imprimer les résultats du traitement des options,
+      juste avant que le courrier ne soit envoyé. Aucun courrier ne sera envoyé lorsque
+      <span class="Li">&quot;--dump&quot;</span> est utilisé. Notez que
+      <span class="Li">&quot;--dump&quot;</span> est un outil de diagnostic purement interne et aucun effort n'est fait ou ne sera jamais fait pour masquer les mots de passe dans la sortie de
+      <span class="Li">&quot;--dump&quot;</span>. Si une section est fournie comme argument à cette option, seule la section demandée sera affichée. Les arguments actuellement pris en charge sont SUPPORT, APP, OUTPUT, TRANSPORT,
+      PROTOCOLE, XCLIENT, PROXY, TLS, AUTH, DATA et ALL. Si aucun argument n'est fourni, toutes les sections sont affichées (Arg-Optionnel)</dd>
+  <dt id="help"><a class="permalink" href="#help">--help</a></dt>
+  <dd>Affiche cette aide et quitte. (Arg-None)</dd>
+  <dt id="version"><a class="permalink" href="#version">--version</a></dt>
+  <dd>Affiche les informations de version et quitte. (Arg-None)</dd>
+</dl>
+</section>
+<section cl<section class="Sh">
+<h1 class="Sh" id='DEPRECATIONS'><a class='permalink' href='#DEPRECATIONS'>DÉPRÉCIATIONS</a></h1>
+<p class="Pp">Les fonctionnalités suivantes sont obsolètes et seront supprimées dans une future version de Swaks.</p>
+<dl class="Bl-tag">
+  <dt id="use"><a class="permalink" href="#use">utilisation des modules IO::Socket et IO::Socket::INET6</a></dt>
+  <dd>Sera supprimée au plus tôt le 1er février 2025.
+    <p class="Pp">La méthode principale d'envoi via les sockets IPv4 et IPv6 est implémentée avec le module IO::Socket::IP. Pour le moment, il existe toujours un support hérité des modules IO::Socket et IO::Socket::INET6 qui étaient utilisés précédemment. Veuillez vous assurer que IO::Socket::IP est installé pour garantir la fonctionnalité future.</p>
+  </dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PORTABILITY'><a class='permalink' href='#PORTABILITY'>PORTABILITÉ</a></h1>
+<dl class="Bl-tag">
+  <dt id="OPERATING"><a class="permalink" href="#OPERATING">SYSTÈMES D'EXPLOITATION</a></dt>
+  <dd>Ce programme était principalement destiné à être utilisé sur des systèmes d'exploitation de type UNIX, et il devrait fonctionner sur n'importe quelle version raisonnable de ceux-ci. Il a été développé et testé sur Solaris, Linux et Mac OS X et est complet sur tous ces systèmes.
+    <p class="Pp">Ce programme est connu pour démontrer des fonctionnalités de base sous Windows en utilisant Strawberry Perl. Dans toute la documentation, sauf indication contraire, &quot;Windows&quot; fait référence à l'exécution de Swaks via CMD.exe, et non WSL ou cygwin. Il n'a pas été entièrement testé, mais on sait qu'il fonctionne pour les fonctionnalités SMTP de base et les types d'authentification LOGIN, PLAIN et CRAM-MD5. La fonctionnalité TLS et les types d'authentification NTLM/SPA et DIGEST-MD5 sont inconnus. Certaines fonctionnalités sont connues pour être limitées sous Windows, notamment l'impossibilité d'intégrer le nom de l'en-tête dans les variables d'environnement (voir &quot;VARIABLES D'ENVIRONNEMENT DE CONFIGURATION&quot; et <span class="Li">&quot;--header&quot;</span>), l'impossibilité de générer une chaîne de date en fuseau horaire local (voir le jeton <span class="Li">&quot;%DATE%&quot;</span> sous <span class="Li">&quot;--data&quot;</span>), l'impossibilité d'utiliser l'option <span class="Li">&quot;-S&quot;</span> comme variable d'environnement (voir <span class="Li">&quot;--silent&quot;</span>), et l'impossibilité d'avoir une valeur &quot;définie mais vide&quot; dans une variable d'environnement (voir &quot;VARIABLES D'ENVIRONNEMENT DE CONFIGURATION&quot; pour une solution de contournement).</p>
+    <p class="Pp">Étant donné que ce programme devrait fonctionner partout où Perl fonctionne, j'apprécierais de connaître tout nouveau système d'exploitation sur lequel vous avez utilisé Swaks de manière approfondie, ainsi que tout problème rencontré sur un nouveau système d'exploitation.</p>
+  </dd>
+  <dt id="MAIL"><a class="permalink" href="#MAIL">SERVEURS DE COURRIER</a></dt>
+  <dd>Ce programme a été développé presque exclusivement contre les serveurs de messagerie Exim. Il a été utilisé occasionnellement par l'auteur, bien que pas testé de manière approfondie, avec Sendmail, Smail, Exchange, Oracle Collaboration Suite, qpsmtpd et Communigate. Étant donné que toutes les fonctionnalités de Swaks sont basées sur des normes connues, il devrait fonctionner avec tout serveur de messagerie assez moderne. Si un problème est trouvé, veuillez en informer l'auteur à l'adresse ci-dessous.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ENVIRONMENT_VARIABLES'><a class='permalink' href='#ENVIRONMENT_VARIABLES'>VARIABLES D'ENVIRONNEMENT</a></h1>
+<dl class="Bl-tag">
+  <dt id="LOGNAME"><a class="permalink" href="#LOGNAME">LOGNAME</a></dt>
+  <dd>Si Swaks doit créer une adresse d'expéditeur, <span class="Li">$LOGNAME</span> est utilisé comme partie locale du message s'il est défini, et sauf si <span class="Li">&quot;--force-getpwuid&quot;</span> est utilisé.</dd>
+  <dt id="SWAKS_HOME"><a class="permalink" href="#SWAKS_HOME">SWAKS_HOME</a></dt>
+  <dd>Utilisé lors de la recherche d'un fichier de configuration <i>.swaksrc</i>. Voir TRAITEMENT DES OPTIONS -&gt; &quot;FICHIERS DE CONFIGURATION&quot; ci-dessus.</dd>
+  <dt id="SWAKS_OPT_*"><a class="permalink" href="#SWAKS_OPT_*">SWAKS_OPT_*</a></dt>
+  <dd>Préfixe de variable d'environnement utilisé pour spécifier les options de Swaks à partir des variables d'environnement. Voir TRAITEMENT DES OPTIONS -&gt; &quot;VARIABLES D'ENVIRONNEMENT DE CONFIGURATION&quot; ci-dessus.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='EXIT_CODES'><a class='permalink' href='#EXIT_CODES'>CODES DE SORTIE</a></h1>
+<dl class="Bl-tag">
+  <dt>0</dt>
+  <dd>aucune erreur ne s'est produite</dd>
+  <dt>1</dt>
+  <dd>erreur lors de l'analyse des options de la ligne de commande</dd>
+  <dt>2</dt>
+  <dd>erreur de connexion au serveur distant</dd>
+  <dt>3</dt>
+  <dd>type de connexion inconnu</dd>
+  <dt>4</dt>
+  <dd>lors de l'exécution avec le type de connexion &quot;pipe&quot;, problème fatal lors de l'écriture ou de la lecture du processus enfant</dd>
+  <dt>5</dt>
+  <dd>lors de l'exécution avec le type de connexion &quot;pipe&quot;, le processus enfant est mort de manière inattendue. Cela peut signifier que le programme spécifié avec <span class="Li">&quot;--pipe&quot;</span> n'existe pas.</dd>
+  <dt>6</dt>
+  <dd>connexion fermée de manière inattendue. Si la fermeture est détectée en réponse à la commande 'QUIT' que Swaks envoie suite à une réponse inattendue, le code d'erreur de cette réponse inattendue est utilisé à la place. Par exemple, si un serveur de messagerie renvoie une réponse 550 à un MAIL FROM: puis ferme immédiatement la connexion, Swaks détecte que la connexion est fermée, mais utilise le code de sortie plus spécifique 23 pour détailler la nature de l'échec. Si, au lieu de cela, le serveur renvoie un code 250 puis ferme immédiatement la connexion, Swaks utilisera le code de sortie 6 car il n'y a pas de code de sortie plus spécifique.</dd>
+  <dt>10</dt>
+  <dd>erreur dans les prérequis (module nécessaire non disponible)</dd>
+  <dt>21</dt>
+  <dd>erreur de lecture de la bannière initiale du serveur</dd>
+  <dt>22</dt>
+  <dd>erreur dans la transaction HELO</dd>
+  <dt>23</dt>
+  <dd>erreur dans la transaction MAIL</dd>
+  <dt>24</dt>
+  <dd>aucun RCPT accepté</dd>
+  <dt>25</dt>
+  <dd>le serveur a renvoyé une erreur à la requête DATA</dd>
+  <dt>26</dt>
+  <dd>le serveur n'a pas accepté le courrier après les données</dd>
+  <dt>27</dt>
+  <dd>le serveur a renvoyé une erreur après la demande de déconnexion normale de la session</dd>
+  <dt>28</dt>
+  <dd>erreur dans la transaction AUTH</dd>
+  <dt>29</dt>
+  <dd>erreur dans la transaction TLS</dd>
+  <dt>30</dt>
+  <dd>PRDR demandé/requis mais non annoncé</dd>
+  <dt>32</dt>
+  <dd>erreur dans EHLO suite à la négociation TLS</dd>
+  <dt>33</dt>
+  <dd>erreur dans la transaction XCLIENT</dd>
+  <dt>34</dt>
+  <dd>erreur dans EHLO suite à XCLIENT</dd>
+  <dt>35</dt>
+  <dd>erreur dans le traitement de l'option PROXY</dd>
+  <dt>36</dt>
+  <dd>erreur lors de l'envoi de la bannière PROXY</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='ABOUT_THE_NAME'><a class='permalink' href='#ABOUT_THE_NAME'>À PROPOS DU NOM</a></h1>
+<p class="Pp">Le nom &quot;Swaks&quot; est un (sorte de) acronyme pour &quot;SWiss Army Knife SMTP&quot;. Il a été choisi pour être assez distinct et prononçable. Bien que &quot;Swaks&quot; soit unique en tant que nom d'un paquet logiciel, il a d'autres significations non liées au logiciel. Veuillez envoyer d'autres utilisations de &quot;swak&quot; ou &quot;swaks&quot; pour inclusion.</p>
+<dl class="Bl-tag">
+  <dt>&quot;Sealed With A Kiss&quot;</dt>
+  <dd>SWAK/SWAKs apparaît occasionnellement sur Internet avec la signification &quot;avec amour&quot;.</dd>
+  <dt id="bad"><a class="permalink" href="#bad">mauvais / pauvre / mal (Afrikaans)</a></dt>
+  <dd>Vu dans le titre &quot;SA se bes en swaks gekledes in 2011&quot;, qui a été traduit par &quot;les mieux et les moins bien habillés&quot; par des locuteurs natifs. Google Translate n'aime pas &quot;swaks gekledes&quot;, mais il traduira &quot;swak&quot; par &quot;pauvre&quot; et &quot;swak geklede&quot; par &quot;mal habillé&quot;.</dd>
+</dl>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='LICENSE'><a class='permalink' href='#LICENSE'>LICENCE</a></h1>
+<p class="Pp">Ce programme est un logiciel libre ; vous pouvez le redistribuer et/ou le modifier selon les termes de la Licence Publique Générale GNU telle que publiée par la Free Software Foundation ; soit la version 2 de la Licence, soit (à votre choix) toute version ultérieure.</p>
+<p class="Pp">Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE GARANTIE ; sans même la garantie implicite de COMMERCIALISATION ou d'ADÉQUATION À UN USAGE PARTICULIER. Voir la Licence Publique Générale GNU pour plus de détails.</p>
+<p class="Pp">Vous devriez avoir reçu une copie de la Licence Publique Générale GNU avec ce programme ; sinon, écrivez à la Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='CONTACT_INFORMATION'><a class='permalink' href='#CONTACT_INFORMATION'>INFORMATIONS DE CONTACT</a></h1>
+<p class="Pp">Contact général, questions, correctifs, demandes, etc. à proj-swaks@jetmore.net.</p>
+<p class="Pp">Les journaux de modifications, cette aide et la dernière version se trouvent sur <a href='http://www.jetmore.org/john/code/swaks/'>http://www.jetmore.org/john/code/swaks/</a>.</p>
+<p class="Pp">Swaks est créé avec amour par John Jetmore des champs de maïs de l'Indiana, États-Unis d'Amérique.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='NOTIFICATIONS'><a class='permalink' href='#NOTIFICATIONS'>NOTIFICATIONS</a></h1>
+<dl class="Bl-tag">
+  <dt id="Email"><a class="permalink" href="#Email">Email</a></dt>
+  <dd>updates-swaks@jetmore.net
+    <p class="Pp">Si vous souhaitez être inscrit sur une liste pour recevoir des notifications lors de la sortie d'une nouvelle version de Swaks, veuillez envoyer un email à cette adresse. Il n'y aura pas de réponse à votre email.</p>
+  </dd>
+  <dt id="Website"><a class="permalink" href="#Website">Site Web</a></dt>
+  <dd><a href='http://www.jetmore.org/john/blog/c/swaks/'>http://www.jetmore.org/john/blog/c/swaks/</a></dd>
+  <dt id="RSS"><a class="permalink" href="#RSS">Flux RSS</a></dt>
+  <dd><a href='http://www.jetmore.org/john/blog/c/swaks/feed/'>http://www.jetmore.org/john/blog/c/swaks/feed/</a></dd>
+  <dt id="Twitter"><a class="permalink" href="#Twitter">Twitter</a></dt>
+  <dd><a href='http://twitter.com/SwaksSMTP'>http://twitter.com/SwaksSMTP</a></dd>
+</dl>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">2025-05-03</td>
+    <td class="foot-os">perl v5.40.2</td>
+  </tr>
+</table>
+
+</section>
+
+            </article>
+            <aside id="sidebar">
+                
+<section class="search">
+    <form action="/search" class="search direct-search" role="search">
+    <input type="search" placeholder="Rechercher dans la page de manuel" name="q" value=""
+         />
+    <input type="submit" name="go" value="Go" />
+</form>
+
+</section>
+
+<section class="package-info">
+    <p>Informations sur le paquet :</p>
+    <dl>
+        <dt>Nom du paquet :</dt>
+        <dd><a href="https://www.archlinux.org/packages/extra/any/swaks/">extra/swaks</a></dd>
+        <dt>Version :</dt>
+        <dd>20240103.0-3</dd>
+        <dt>Amont :</dt>
+        <dd><a href="https://jetmore.org/john/code/swaks/">https://jetmore.org/john/code/swaks/</a></dd>
+        <dt>Licences :</dt>
+        <dd>GPL-2.0-or-later</dd>
+        <dt>Manuels :</dt>
+        <dd><a href="/listing/extra/swaks/">/listing/extra/swaks/</a></dd>
+    </dl>
+</section>
+
+<details>
+    <summary>Table des matières</summary>
+    <nav class="toc">
+        <ul>
+        
+            <li><a href="#NAME">NOM</a></li>
+        
+            <li><a href="#DESCRIPTION">DESCRIPTION</a></li>
+        
+            <li><a href="#QUICK_START">DÉMARRAGE RAPIDE</a></li>
+        
+            <li><a href="#TERMS_AND_CONVENTIONS">TERMES ET CONVENTIONS</a></li>
+        
+            <li><a href="#OPTION_PROCESSING">TRAITEMENT DES OPTIONS</a></li>
+        
+            <li><a href="#TRANSPORTS">TRANSPORTS</a></li>
+        
+            <li><a href="#PROTOCOL_OPTIONS">OPTIONS DE PROTOCOLE</a></li>
+        
+            <li><a href="#TLS_/_ENCRYPTION">TLS / CHIFFREMENT</a></li>
+        
+            <li><a href="#AUTHENTICATION">AUTHENTIFICATION</a></li>
+        
+            <li><a href="#XCLIENT_OPTIONS"></a></li>
+        
+            <li><a href="#DEPRECATIONS">DÉPRÉCIATIONS</a></li>
+        
+            <li><a href="#PORTABILITY">PORTABILITÉ</a></li>
+        
+            <li><a href="#ENVIRONMENT_VARIABLES">VARIABLES D'ENVIRONNEMENT</a></li>
+        
+            <li><a href="#EXIT_CODES">CODES DE SORTIE</a></li>
+        
+            <li><a href="#ABOUT_THE_NAME">À PROPOS DU NOM</a></li>
+        
+            <li><a href="#LICENSE">LICENCE</a></li>
+        
+            <li><a href="#CONTACT_INFORMATION">INFORMATIONS DE CONTACT</a></li>
+        
+            <li><a href="#NOTIFICATIONS">NOTIFICATIONS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+            </aside>
+        </div>
+    </body>
+</html>
+XCLIENT OPTIONS</a></li>
+        
+            <li><a href="#PROXY_OPTIONS">OPTIONS PROXY</a></li>
+        
+            <li><a href="#DATA_OPTIONS">OPTIONS DE DONNÉES</a></li>
+        
+            <li><a href="#OUTPUT_OPTIONS">OPTIONS DE SORTIE</a></li>
+        
+            <li><a href="#DEPRECATIONS">OBSOLÈTES</a></li>
+        
+            <li><a href="#PORTABILITY">PORTABILITÉ</a></li>
+        
+            <li><a href="#ENVIRONMENT_VARIABLES">VARIABLES D'ENVIRONNEMENT</a></li>
+        
+            <li><a href="#EXIT_CODES">CODES DE SORTIE</a></li>
+        
+            <li><a href="#ABOUT_THE_NAME">À PROPOS DU NOM</a></li>
+        
+            <li><a href="#LICENSE">LICENCE</a></li>
+        
+            <li><a href="#CONTACT_INFORMATION">INFORMATIONS DE CONTACT</a></li>
+        
+            <li><a href="#NOTIFICATIONS">NOTIFICATIONS</a></li>
+        
+        </ul>
+    </nav>
+</details>
+
+
+
+
+
+
+
+<nav class="other-formats">
+    <p>Autres formats :
+        
+            <a href="/man/swaks.1.en.txt">txt</a>, 
+        
+            <a href="/man/swaks.1.en.raw">raw</a>
+        
+    </p>
+</nav>
+
+            </aside>
+            
+        </main>
+        <footer>
+            
+            <p>Le site web est disponible sous les termes de la licence <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPL-3.0</a>,
+               à l'exception du contenu des pages de manuel, qui ont leur propre licence
+               spécifiée dans le paquet Arch Linux correspondant.
+            </p>
+        </footer>
+    </body>
+</html>

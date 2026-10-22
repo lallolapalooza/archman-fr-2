@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>pcre2perform(3) — Pages du manuel Arch</title>
+        
+        
+        
+        
+        
+    
+    
+
+    <link rel="stylesheet" href="basic.css">
+</head>
+    <body>
+<p class="back"><a href="/archman-fr-2/">← Index</a></p>
+<h1 class="page-title">pcre2perform(3)</h1>
+
+        
+        <main id="content">
+            
+            <article id="content-left">
+                
+<section class="man-page-content">
+    <table class="head">
+  <tr>
+    <td class="head-ltitle">PCRE2PERFORM(3)</td>
+    <td class="head-vol">Manuel des fonctions de bibliothèque</td>
+    <td class="head-rtitle">PCRE2PERFORM(3)</td>
+  </tr>
+</table>
+<div class="manual-text">
+<section class="Sh">
+<h1 class="Sh" id='NOM'><a class='permalink' href='#NOM'>NOM</a></h1>
+<p class="Pp">PCRE2 - Expressions régulières compatibles Perl (API révisée)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='PCRE2_PERFORMANCE'><a class='permalink' href='#PCRE2_PERFORMANCE'>PCRE2   PERFORMANCE</a></h1>
+<p class="Pp">Deux aspects de la performance sont discutés ci-dessous : l'utilisation de la mémoire et le temps de traitement. La manière dont vous exprimez votre modèle en tant qu'expression régulière peut affecter les deux.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION_MÉMOIRE_MODÈLE_COMPILÉ'><a class='permalink' href='#UTILISATION_MÉMOIRE_MODÈLE_COMPILÉ'>UTILISATION   MÉMOIRE MODÈLE COMPILÉ</a></h1>
+<p class="Pp">Les modèles sont compilés par PCRE2 en un code interprétatif raisonnablement efficace, de sorte que la plupart des modèles simples n'utilisent pas beaucoup de mémoire pour stocker la version compilée. Cependant, il existe un cas où l'utilisation de la mémoire d'un modèle compilé peut être inattendument grande. Si un groupe entre parenthèses a un quantificateur avec un minimum supérieur à 1 et/ou un maximum limité, tout le groupe est répété dans le code compilé. Par exemple, le modèle</p>
+<p class="Pp">
+  <br/>
+   (abc|def){2,4}</p>
+<p class="Pp">est compilé comme s'il était</p>
+<p class="Pp">
+  <br/>
+   (abc|def)(abc|def)((abc|def)(abc|def)?)?</p>
+<p class="Pp">(Note technique : C'est fait ainsi afin que les points de retour en arrière au sein de chacune des répétitions puissent être maintenus indépendamment.)</p>
+<p class="Pp">Pour les expressions régulières dont les quantificateurs n'utilisent que de petits nombres, ce n'est généralement pas un problème. Cependant, si les nombres sont grands, et particulièrement si de telles répétitions sont imbriquées, l'utilisation de la mémoire peut devenir embarrassante. Par exemple, le modèle très simple</p>
+<p class="Pp">
+  <br/>
+   ((ab){1,1000}c){1,3}</p>
+<p class="Pp">utilise plus de 50 Ko lorsqu'il est compilé avec la bibliothèque 8 bits. Lorsque PCRE2 est compilé avec sa taille de pointeur interne par défaut de deux octets, la limite de taille d'un modèle compilé est de 65535 unités de code dans les bibliothèques 8 bits et 16 bits, et celle-ci est atteinte avec le modèle ci-dessus si la répétition externe est augmentée de 3 à 4. PCRE2 peut être compilé pour utiliser des pointeurs internes plus grands et ainsi gérer des modèles compilés plus grands, mais il est préférable d'essayer de réécrire votre modèle pour utiliser moins de mémoire si vous le pouvez.</p>
+<p class="Pp">Une façon de réduire l'utilisation de la mémoire pour de tels modèles est d'utiliser la fonction « sous-routine » de PCRE2. Réécrire le modèle ci-dessus comme</p>
+<p class="Pp">
+  <br/>
+   ((ab)(?2){0,999}c)(?1){0,2}</p>
+<p class="Pp">réduit les besoins en mémoire à environ 16 Ko, et elle reste en fait inférieure à 20 Ko même avec la répétition externe augmentée à 100. Cependant, ce type de modèle n'est pas toujours exactement équivalent, car toutes les captures à l'intérieur des appels de sous-routine sont perdues lorsque la sous-routine se termine. Si cela n'est pas un problème, ce type de réécriture vous permettra de traiter des modèles que PCRE2 ne peut pas autrement gérer. La performance de correspondance des deux versions différentes du modèle est à peu près la même. (Ceci s'applique à partir de la version 10.30 - les choses étaient différentes dans les versions antérieures.)</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='UTILISATION_PILE_ET_TAS_À_L_EXÉCUTION'><a class='permalink' href='#UTILISATION_PILE_ET_TAS_À_L_EXÉCUTION'>UTILISATION   PILE ET TAS À L'EXÉCUTION</a></h1>
+<p class="Pp">À partir de la version 10.30, la version interprétative (non-JIT) de
+    <b>pcre2_match()</b> utilise très peu de pile système à l'exécution. Dans les
+    versions antérieures, les appels de fonctions récursifs pouvaient utiliser une
+    grande quantité de pile, ce qui pouvait causer des problèmes, mais cette
+    utilisation a été éliminée. Les positions de retour arrière sont maintenant
+    explicitement mémorisées dans des cadres de mémoire contrôlés par le code.</p>
+<p class="Pp">La taille de chaque cadre dépend de la taille des variables pointeurs
+    et du nombre de groupes capturants entre parenthèses dans le modèle en cours de
+    correspondance. Sur un système 64 bits, la taille du cadre pour un modèle sans
+    captures est de 128 octets. Pour chaque groupe capturant, la taille augmente de
+    16 octets.</p>
+<p class="Pp">Jusqu'à la version 10.41, un vecteur initial de 20 Ko de cadres était
+    alloué sur la pile système, mais cela causait encore quelques problèmes pour
+    les applications multi-thread où chaque thread a une pile très petite. À partir
+    de la version 10.41, les cadres de mémoire de retour arrière sont toujours
+    maintenus dans la mémoire du tas. Une allocation initiale de tas est obtenue la
+    première fois qu'un bloc de données de correspondance est passé à
+    <b>pcre2_match()</b>. Ceci est mémorisé avec le bloc de données de
+    correspondance et réutilisé si ce bloc est utilisé pour une autre correspondance.
+    Il est libéré lorsque le bloc de données de correspondance lui-même est libéré.</p>
+<p class="Pp">La taille du bloc initial est la plus grande des valeurs suivantes : 20 Ko
+    ou dix fois la taille du cadre du modèle, sauf si la limite du tas est inférieure
+    à cela, auquel cas la limite du tas est utilisée. Si le bloc initial s'avère
+    trop petit pendant la correspondance, il est remplacé par un bloc plus grand,
+    sous réserve de la limite du tas. La limite du tas n'est vérifiée que lorsqu'un
+    nouveau bloc doit être alloué. La réduction de la limite du tas entre les appels
+    à <b>pcre2_match()</b> avec le même bloc de données de correspondance n'affecte
+    pas le bloc sauvegardé.</p>
+<p class="Pp">Contrairement à <b>pcre2_match()</b>, <b>pcre2_dfa_match()</b> utilise
+    des appels de fonctions récursifs, mais uniquement pour le traitement des groupes
+    atomiques, des assertions de lookaround, et de la récursion dans le modèle. La
+    version originale du code allouait des vecteurs de travail internes assez
+    grands sur la pile, ce qui causait des problèmes pour certains modèles dans des
+    environnements avec de petites piles. À partir de la version 10.32, le code de
+    <b>pcre2_dfa_match()</b> a été refactorisé pour utiliser la mémoire du tas si
+    nécessaire pour le travail interne lors de la récursion, bien que les appels de
+    fonctions récursifs soient toujours utilisés.</p>
+<p class="Pp">Le paramètre « profondeur de correspondance » peut être utilisé pour
+    limiter la profondeur de la récursion des fonctions, et le paramètre « tas de
+    correspondance » pour limiter la mémoire du tas dans
+    <b>pcre2_dfa_match()</b>.</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id='TEMPS_DE_TRAITEMENT'><a class='permalink' href='#TEMPS_DE_TRAITEMENT'>TEMPS   DE TRAITEMENT</a></h1>
+<p class="Pp">Certains éléments dans les expressions régulières sont traités plus
+    efficacement que d'autres. Il est plus efficace d'utiliser une classe de
+    caractères comme [aeiou] qu'un ensemble d'alternatives de caractères uniques
+    comme (a|e|i|o|u). En général, la construction la plus simple qui fournit le
+    comportement requis est généralement la plus efficace. Le livre de Jeffrey Friedl
+    contient beaucoup de discussions générales utiles sur l'optimisation des
+    expressions régulières pour une performance efficace. Ce document contient
+    quelques observations sur PCRE2.</p>
+<p class="Pp">L'utilisation des propriétés de caractères Unicode (les échappements \p,
+    \P et \X) est lente, car PCRE2 doit utiliser une recherche dans une table en
+    plusieurs étapes chaque fois qu'il a besoin de la propriété d'un caractère. Si
+    vous pouvez trouver un modèle alternatif qui n'utilise pas de propriétés de
+    caractères, il sera probablement plus rapide.</p>
+<p class="Pp">Par défaut, les séquences d'échappement \b, \d, \s et \w, ainsi que les
+    classes de caractères POSIX comme [:alpha:] n'utilisent pas les propriétés
+    Unicode, en partie pour des raisons de compatibilité ascendante et en partie
+    pour des raisons de performance. Cependant, vous pouvez définir l'option
+    PCRE2_UCP ou commencer le modèle par (*UCP) si vous souhaitez que les
+    propriétés de caractères Unicode soient utilisées. Cela peut doubler le temps de
+    correspondance pour des éléments comme \d, lorsqu'il est comparé avec
+    <b>pcre2_match()</b> ; la perte de performance est moindre avec une fonction de
+    correspondance DFA, et dans les deux cas, il n'y a pas beaucoup de différence pour
+    \b.</p>
+<p class="Pp">Lorsqu'un modèle commence par .* non contenu dans des parenthèses
+    atomiques, ni dans des parenthèses qui font l'objet d'une référence arrière, et
+    que l'option PCRE2_DOTALL est définie, le modèle est implicitement ancré par
+    PCRE2, car il ne peut correspondre qu'au début d'une chaîne sujet. Si le modèle
+    a plusieurs branches de haut niveau, elles doivent toutes être ancrables.
+    L'optimisation peut être désactivée par l'option PCRE2_NO_DOTSTAR_ANCHOR, et
+    elle est automatiquement désactivée si le modèle contient (*PRUNE) ou (*SKIP).</p>
+<p class="Pp">Si PCRE2_DOTALL n'est pas défini, PCRE2 ne peut pas effectuer cette
+    optimisation, car le métacaractère point ne correspond pas à un saut de ligne,
+    et si la chaîne sujet contient des sauts de ligne, le modèle peut correspondre
+    à partir du caractère immédiatement après l'un d'eux au lieu de tout début.
+    Par exemple, le modèle</p>
+<p class="Pp">
+  <br/>
+   .*second</p>
+<p class="Pp">correspond au sujet « first\nand second » (où \n représente un
+    caractère de saut de ligne), la correspondance commençant au septième caractère.
+    Pour ce faire, PCRE2 doit réessayer la correspondance en commençant après
+    chaque saut de ligne dans le sujet.</p>
+<p class="Pp">Si vous utilisez un tel modèle avec des chaînes sujet qui ne contiennent
+    pas de sauts de ligne, la meilleure performance est obtenue en définissant
+    PCRE2_DOTALL, ou en commençant le modèle par ^.* ou ^.*? pour indiquer un
+    ancrage explicite. Cela évite à PCRE2 de devoir parcourir le sujet à la
+    recherche d'un saut de ligne pour redémarrer.</p>
+<p class="Pp">Méfiez-vous des modèles qui contiennent des répétitions indéfinies
+    imbriquées. Celles-ci peuvent prendre beaucoup de temps à s'exécuter lorsqu'elles
+    sont appliquées à une chaîne qui ne correspond pas. Considérez le fragment de
+    modèle</p>
+<p class="Pp">
+  <br/>
+   ^(a+)*</p>
+<p class="Pp">Cela peut correspondre à « aaaa » de 16 manières différentes, et ce
+    nombre augmente très rapidement à mesure que la chaîne s'allonge. (La répétition *
+    peut correspondre 0, 1, 2, 3 ou 4 fois, et pour chacun de ces cas sauf 0 ou 4,
+    les répétitions + peuvent correspondre à différents nombres de fois.) Lorsque le
+    reste du modèle est tel que la correspondance entière va échouer, PCRE2 doit en
+    principe essayer chaque variation possible, et cela peut prendre un temps
+    extrêmement long, même pour des chaînes relativement courtes.</p>
+<p class="Pp"<div class="manual-content">
+<section class="Sh">
+<h1 class="Sh" id="NOM"><a class="permalink" href="#NOM">NOM</a></h1>
+<p class="Pp">pcre2perform - PCRE2 performance considerations</p>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="PCRE2_PERFORMANCE"><a class="permalink" href="#PCRE2_PERFORMANCE">PERFORMANCE DE PCRE2</a></h1>
+<p class="Pp">This document describes some aspects of PCRE2 performance.</p>
+<section class="Ss">
+<h2 class="Ss" id="OPTIMISATION_OF_MATCHING_SPEED"><a class="permalink" href="#OPTIMISATION_OF_MATCHING_SPEED">OPTIMISATION DE LA VITESSE DE CORRESPONDANCE</a></h2>
+<p class="Pp">PCRE2 has a number of internal optimizations that help to speed up
+    matching. However, there are times when a particular pattern may run slowly,
+    and it is useful to understand why this happens, and how to avoid it.</p>
+<p class="Pp">An optimization catches some of the more simple cases such as</p>
+<p class="Pp">
+<br/>
+(a+)*b</p>
+<p class="Pp">where a literal character follows. Before embarking on the
+    standard matching procedure, PCRE2 checks that there is a &quot;b&quot;
+    later in the subject string, and if there is not, it fails the match
+    immediately. However, when there is no following literal this optimization
+    cannot be used. You can see the difference by comparing the behaviour of</p>
+<p class="Pp">
+<br/>
+(a+)*\d</p>
+<p class="Pp">with the pattern above. The former gives a failure almost
+    instantly when applied to a whole line of &quot;a&quot; characters, whereas
+    the latter takes an appreciable time with strings longer than about 20
+    characters.</p>
+<p class="Pp">In many cases, the solution to this kind of performance issue is
+    to use an atomic group or a possessive quantifier. This can often reduce
+    memory requirements as well. As another example, consider this pattern:</p>
+<p class="Pp">
+<br/>
+([^&lt;]|&lt;(?!inet))+</p>
+<p class="Pp">It matches from wherever it starts until it encounters
+    &quot;&lt;inet&quot; or the end of the data, and is the kind of pattern that
+    might be used when processing an XML file. Each iteration of the outer
+    parentheses matches either one character that is not &quot;&lt;&quot; or a
+    &quot;&lt;&quot; that is not followed by &quot;inet&quot;. However, each
+    time a parenthesis is processed, a backtracking position is passed, so this
+    formulation uses a memory frame for each matched character. For a long
+    string, a lot of memory is required. Consider now this rewritten pattern,
+    which matches exactly the same strings:</p>
+<p class="Pp">
+<br/>
+([^&lt;]++|&lt;(?!inet))+</p>
+<p class="Pp">This runs much faster, because sequences of characters that do not
+    contain &quot;&lt;&quot; are &quot;swallowed&quot; in one item inside the
+    parentheses, and a possessive quantifier is used to stop any backtracking
+    into the runs of non-&quot;&lt;&quot; characters. This version also uses a
+    lot less memory because entry to a new set of parentheses happens only when
+    a &quot;&lt;&quot; character that is not followed by &quot;inet&quot; is
+    encountered (and we assume this is relatively rare).</p>
+<p class="Pp">This example shows that one way of optimizing performance when
+    matching long subject strings is to write repeated parenthesized subpatterns
+    to match more than one character whenever possible.</p>
+</section>
+<section class="Ss">
+<h2 class="Ss" id="DEFINITION_DES_LIMITES_DE_RESSOURCES"><a class="permalink" href="#DEFINITION_DES_LIMITES_DE_RESSOURCES">DÉFINITION DES LIMITES DE RESSOURCES</a></h2>
+<p class="Pp">You can set limits on the amount of processing that takes place
+    when matching, and on the amount of heap memory that is used. The default
+    values of the limits are very large, and unlikely ever to operate. They can
+    be changed when PCRE2 is built, and they can also be set when
+    <b>pcre2_match()</b> or <b>pcre2_dfa_match()</b> is called. For details of
+    these interfaces, see the <b>pcre2build</b> documentation and the section
+    entitled &quot;The match context&quot; in the <b>pcre2api</b>
+    documentation.</p>
+<p class="Pp">The <b>pcre2test</b> test program has a modifier called
+    &quot;find_limits&quot; which, if applied to a subject line, causes it to
+    find the smallest limits that allow a pattern to match. This is done by
+    repeatedly matching with different limits.</p>
+</section>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="AUTEUR"><a class="permalink" href="#AUTEUR">AUTEUR</a></h1>
+<pre>Philip Hazel
+Retired from University Computing Service
+Cambridge, England.</pre>
+</section>
+<section class="Sh">
+<h1 class="Sh" id="RÉVISION"><a class="permalink" href="#RÉVISION">RÉVISION</a></h1>
+<pre>Last updated: 06 December 2022
+Copyright (c) 1997-2022 University of Cambridge.</pre>
+</section>
+</div>
+<table class="foot">
+  <tr>
+    <td class="foot-date">06 décembre 2022</td>
+    <td class="foot-os">PCRE2 10.47</td>
+  </tr>
+</table>
